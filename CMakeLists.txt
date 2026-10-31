@@ -61,12 +61,15 @@ add_library(aitsnap-adapters STATIC
     src/adapters/json_store.cpp
     src/adapters/hotkeys.cpp
     src/adapters/capture_files.cpp
+    src/adapters/report_queue.cpp
     src/desktop/region_editor.cpp
     src/adapters/scene_render.cpp
     src/desktop/scene_editor.cpp
 )
 target_link_libraries(aitsnap-adapters PUBLIC aitsnap-capture aitsnap-scene Qt${AITSNAP_QT_MAJOR}::Widgets PRIVATE gdi32 user32 dwmapi wtsapi32)
 target_include_directories(aitsnap-adapters PUBLIC src)
+add_executable(aitsnap-word-bridge src/adapters/word_bridge_main.cpp)
+target_link_libraries(aitsnap-word-bridge PRIVATE aitsnap-adapters ole32 oleaut32)
 add_executable(aitsnap WIN32
     src/main.cpp
     src/main_window.cpp
@@ -75,7 +78,7 @@ add_executable(aitsnap WIN32
 )
 
 target_link_libraries(aitsnap PRIVATE aitsnap-adapters)
-set(aitsnap_targets aitsnap aitsnap-adapters)
+set(aitsnap_targets aitsnap aitsnap-adapters aitsnap-word-bridge)
 if(BUILD_TESTING)
     add_executable(aitsnap-desktop-tests tests/desktop_tests.cpp src/main_window.cpp)
     target_link_libraries(aitsnap-desktop-tests PRIVATE aitsnap-adapters dwmapi)
@@ -85,6 +88,14 @@ if(BUILD_TESTING)
     target_link_libraries(aitsnap-scene-tests PRIVATE aitsnap-adapters)
     add_test(NAME scene COMMAND aitsnap-scene-tests)
     list(APPEND aitsnap_targets aitsnap-scene-tests)
+    add_executable(aitsnap-report-tests tests/report_tests.cpp)
+    target_link_libraries(aitsnap-report-tests PRIVATE aitsnap-adapters)
+    add_test(NAME report-queue COMMAND aitsnap-report-tests)
+    list(APPEND aitsnap_targets aitsnap-report-tests)
+    # Office-dependent synthetic integration is opt-in, never an ordinary CTest.
+    add_executable(aitsnap-word-bridge-tests tests/word_bridge_tests.cpp)
+    target_link_libraries(aitsnap-word-bridge-tests PRIVATE aitsnap-adapters ole32 oleaut32)
+    list(APPEND aitsnap_targets aitsnap-word-bridge-tests)
 endif()
 if(AITSNAP_BUILD_RESEARCH_PROBE)
     add_executable(aitsnap-word-probe probes/word_native_probe.cpp)

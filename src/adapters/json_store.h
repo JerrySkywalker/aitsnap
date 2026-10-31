@@ -6,6 +6,10 @@
 #include <QString>
 #include <QStringList>
 namespace aitsnap {
+struct ReportOptions {
+    bool enabled{};
+    QString documentPath, itemMode{"both"}, layout{"inline"};
+};
 struct Settings {
     std::vector<core::CaptureProfile> profiles;
     int activeProfile{};
@@ -17,6 +21,7 @@ struct Settings {
     std::vector<core::SceneTemplate> scenes;
     QStringList selectedSceneIds;
     QString outputMode{"originals"};
+    ReportOptions report;
 };
 QString settingsPath();
 Settings defaultSettings();
