@@ -29,7 +29,7 @@ static void run(const QString& root)
         for (int i = 1; i <= 2; ++i) {
             int end = document.get(L"Content").object().get(L"End").integer() - 1;
             auto range = document.call(L"Range", {Value(end), Value(end)}).object();
-            document.get(L"InlineShapes").object().call(L"AddPicture", {Value(png), Value(false), Value(true), Value(range.raw())});
+            document.get(L"InlineShapes").object().call(L"AddPicture", {filePath(png), Value(false), Value(true), Value(range.raw())});
             end = document.get(L"Content").object().get(L"End").integer() - 1;
             document.call(L"Range", {Value(end), Value(end)}).object().call(L"InsertAfter", {Value(QString("\rSynthetic caption %1\r").arg(i))});
         }
@@ -37,9 +37,9 @@ static void run(const QString& root)
         auto variables = document.get(L"Variables").object();
         variables.call(L"Add", {Value(QStringLiteral("AITSnap_native_probe")), Value(QStringLiteral("COMMITTED"))}); stage("marker-added");
         check(!QFile::exists(docx), "no-overwrite guard");
-        stage("saving"); document.call(L"SaveAs2", {Value(docx), Value(12)}); stage("saved");
+        stage("saving"); document.call(L"SaveAs2", {filePath(docx), Value(12)}); stage("saved");
         document.call(L"Close", {Value(0)}); document = {};
-        document = documents.call(L"Open", {Value(docx), Value(false), Value(false), Value(false)}).object(); stage("reopened");
+        document = documents.call(L"Open", {filePath(docx), Value(false), Value(false), Value(false)}).object(); stage("reopened");
         check(document.get(L"InlineShapes").object().get(L"Count").integer() == 2, "reopened image count");
         const auto marker = document.get(L"Variables").object().invoke(L"Item", DISPATCH_METHOD | DISPATCH_PROPERTYGET, {Value(QStringLiteral("AITSnap_native_probe"))}).object().get(L"Value").text();
         check(marker == "COMMITTED", "marker roundtrip");

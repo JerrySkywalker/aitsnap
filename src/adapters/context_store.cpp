@@ -171,6 +171,13 @@ bool ContextStore::parseEvent(const QJsonObject o, core::ExecutionEvent& event, 
     normalized = o; auto redacted = command; redacted.remove("parameters"); if (o.contains("command")) normalized["command"] = redacted;
     normalized["receivedAtUtc"] = QString::fromStdString(event.receivedAtUtc); normalized["correlationStatus"] = QString::fromStdString(event.context.correlationStatus); return true;
 }
+core::EventResult ContextStore::preview(QJsonObject input) const
+{
+    if (QJsonDocument(input).toJson(QJsonDocument::Compact).size() > 1024 * 1024) return {core::EventDisposition::Rejected, {}, {"EVENT_SIZE", "Event exceeds 1 MiB"}};
+    core::ExecutionEvent event; QJsonObject normalized; QString error;
+    if (!parseEvent(input, event, normalized, error)) return {core::EventDisposition::Rejected, {}, {"EVENT_PARSE", error.toStdString()}};
+    auto candidate = registry_; return candidate.ingest(event);
+}
 core::EventResult ContextStore::ingest(QJsonObject input)
 {
     if (QJsonDocument(input).toJson(QJsonDocument::Compact).size() > 1024 * 1024) return {core::EventDisposition::Rejected, {}, {"EVENT_SIZE", "Event exceeds 1 MiB"}};

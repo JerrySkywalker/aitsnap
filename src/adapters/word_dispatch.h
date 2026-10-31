@@ -6,6 +6,7 @@
 #include <windows.h>
 #include <oleauto.h>
 #include <QString>
+#include <QDir>
 #include <algorithm>
 #include <memory>
 #include <stdexcept>
@@ -67,9 +68,10 @@ public:
 private:
     std::shared_ptr<IDispatch> ptr_;
 };
+inline Value filePath(const QString& path) { return Value(QDir::toNativeSeparators(path)); }
 inline Object Value::object() const
 {
-    if (value.vt != VT_DISPATCH || !value.pdispVal) throw std::runtime_error("Expected Word dispatch object");
+    if (value.vt != VT_DISPATCH || !value.pdispVal) throw std::runtime_error("Expected Word dispatch object; variant type=" + std::to_string(value.vt));
     return Object(value.pdispVal, true);
 }
 inline Object createApplication()
