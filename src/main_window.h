@@ -14,6 +14,7 @@ class QMenu; class QSystemTrayIcon; class QTableWidget; class QListWidget;
 
 namespace aitsnap {
 class ReportQueue;
+class ContextStore;
 
 class MainWindow final : public QMainWindow
 {
@@ -44,6 +45,10 @@ private:
     QLineEdit* reportPath_{};
     QComboBox *reportMode_{}, *reportLayout_{};
     QLabel* reportStatus_{};
+    std::unique_ptr<ContextStore> contextStore_;
+    core::Context selectedContext_;
+    QJsonObject selectedContextSnapshot_;
+    QLabel* contextStatus_{};
     std::shared_ptr<CaptureOutcome> lastOutcome_;
     QLabel *status_{}, *preview_{};
     bool busy_{}, paused_{}, configurationBlocked_{}, editingRegions_{}, editingScene_{};
@@ -56,6 +61,7 @@ private:
     void rebuildScenes(); void rebuildSceneMenu(); void importScene(); void exportScene();
     void completeCapture(const std::shared_ptr<CaptureOutcome>&, const Settings&, int mode);
     void showReportQueue(); void refreshReportStatus();
+    void showContextStore();
 };
 
 } // namespace aitsnap

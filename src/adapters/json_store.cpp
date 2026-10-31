@@ -157,7 +157,7 @@ QString expandFilename(const Settings& s, const core::CaptureRequest& request, c
 {
     QMap<QString, QString> values{{"datetime", QDateTime::fromString(qs(request.issuedAtUtc), Qt::ISODateWithMs).toUTC().toString("yyyyMMdd-HHmmss-zzz")},
         {"sequence", QString::number(s.sequence)}, {"region", qs(r.name)}, {"profile", qs(request.profile.name)},
-        {"test", s.testId}, {"device", s.device}, {"station", s.station}, {"operator", s.operatorName},
+        {"test", qs(request.context.testId)}, {"device", qs(request.context.deviceId)}, {"station", qs(request.context.stationId)}, {"operator", qs(request.context.operatorId)},
         {"run", qs(request.context.sequenceRunId)}, {"step", qs(request.context.stepExecutionId)}, {"command", qs(request.context.commandInvocationId)}};
     QString name = s.filenameTemplate;
     QRegularExpression token("\\{([^{}]+)\\}");
@@ -231,10 +231,12 @@ QJsonObject batchJson(const core::CaptureBatch& b)
     // Runtime v1 manifest extensions preserve full profile snapshot and output diagnostics.
     QJsonArray sceneRevisions;
     for (const auto& revision : b.request.sceneRevisions) sceneRevisions.append(QJsonObject{{"sceneId", qs(revision.first)}, {"revision", revision.second}});
+    QJsonObject extensions{{"profileSnapshot", profileJson(b.request.profile)}, {"displayAcquisitions", displays}, {"outputs", outputs}, {"contextCorrelationStatus", qs(b.request.context.correlationStatus)}};
+    if (!b.request.contextSnapshotJson.empty()) extensions["executionContextSnapshot"] = QJsonDocument::fromJson(QByteArray::fromStdString(b.request.contextSnapshotJson)).object();
     return {{"schemaVersion", 1}, {"batchId", qs(b.batchId)}, {"requestId", qs(b.request.requestId)}, {"sceneRevisions", sceneRevisions},
         {"profileId", qs(b.request.profile.id)}, {"profileRevision", b.request.profile.revision},
         {"createdAtUtc", qs(b.request.issuedAtUtc)}, {"completedAtUtc", QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)},
         {"context", context}, {"captures", captures}, {"artifacts", artifacts}, {"status", successes == 0 ? "FAILED" : failures ? "PARTIAL" : "CAPTURED"},
-        {"extensions", QJsonObject{{"profileSnapshot", profileJson(b.request.profile)}, {"displayAcquisitions", displays}, {"outputs", outputs}}}};
+        {"extensions", extensions}};
 }
 } // namespace aitsnap

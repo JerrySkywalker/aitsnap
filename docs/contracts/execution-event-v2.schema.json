@@ -1,0 +1,159 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/JerrySkywalker/aitsnap/main/docs/contracts/execution-event-v2.schema.json",
+  "title": "ExecutionEvent v2",
+  "description": "Additive event revision supporting explicitly UNLINKED source events without an invented sequence run. Existing v1 records are retained unchanged.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": 2
+    },
+    "eventId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sourceSystem": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sourceSequenceNo": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "sourceTimeUtc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "receivedAtUtc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "eventType": {
+      "type": "string",
+      "enum": [
+        "SEQUENCE_STARTED",
+        "SEQUENCE_COMPLETED",
+        "SEQUENCE_FAILED",
+        "SEQUENCE_ABORTED",
+        "SEQUENCE_PAUSED",
+        "SEQUENCE_RESUMED",
+        "STEP_STARTED",
+        "STEP_COMPLETED",
+        "COMMAND_DISPATCHED",
+        "COMMAND_ACKNOWLEDGED",
+        "COMMAND_FAILED",
+        "TELEMETRY_CONDITION"
+      ]
+    },
+    "testContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "testId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "deviceId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "subsystem": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "testId"
+      ]
+    },
+    "sequence": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "definitionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "definitionRevision": {
+          "type": "string",
+          "minLength": 1
+        },
+        "runId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "stepId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "stepExecutionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "stepPath": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 0
+        }
+      },
+      "required": [
+        "definitionId",
+        "definitionRevision",
+        "runId"
+      ]
+    },
+    "command": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "definitionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "invocationId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "attempt": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "status": {
+          "type": "string",
+          "minLength": 1
+        },
+        "parameters": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "definitionId",
+        "invocationId",
+        "attempt"
+      ]
+    },
+    "correlationStatus": {
+      "type": "string",
+      "enum": [
+        "EXACT",
+        "AMBIGUOUS",
+        "UNLINKED"
+      ]
+    },
+    "extensions": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "eventId",
+    "sourceSystem",
+    "sourceSequenceNo",
+    "sourceTimeUtc",
+    "eventType"
+  ]
+}

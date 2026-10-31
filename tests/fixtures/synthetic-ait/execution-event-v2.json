@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 2,
+  "eventId": "EVT-SYN-UNLINKED-V2",
+  "sourceSystem": "SYNTHETIC_AIT_EXECUTOR",
+  "sourceSequenceNo": 1027,
+  "sourceTimeUtc": "2026-10-31T06:34:12.183Z",
+  "receivedAtUtc": "2026-10-31T06:34:12.210Z",
+  "eventType": "COMMAND_ACKNOWLEDGED",
+  "testContext": {
+    "testId": "TEST-SYN-043",
+    "deviceId": "DUT-SYN-01",
+    "subsystem": "EPS"
+  },
+  "command": {
+    "definitionId": "CMD-READ-V",
+    "invocationId": "INV-SYN-008",
+    "attempt": 2,
+    "status": "ACK_RECEIVED"
+  },
+  "correlationStatus": "UNLINKED"
+}

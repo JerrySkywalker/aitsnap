@@ -5,6 +5,7 @@
 #include "main_window.h"
 #include "adapters/win_capture.h"
 #include "adapters/report_queue.h"
+#include "adapters/context_store.h"
 #include "desktop/region_editor.h"
 #include "desktop/scene_editor.h"
 #include "core/scene_geometry.h"
@@ -25,6 +26,7 @@
 #include <QHeaderView>
 #include <QInputDialog>
 #include <QJsonDocument>
+#include <QJsonArray>
 #include <QListWidget>
 #include <QLabel>
 #include <QLineEdit>
@@ -37,6 +39,8 @@
 #include <QScrollArea>
 #include <QSystemTrayIcon>
 #include <QTableWidget>
+#include <QTabWidget>
+#include <QTreeWidget>
 #include <QThreadPool>
 #include <QTimer>
 #include <QUrl>
@@ -72,6 +76,8 @@ MainWindow::MainWindow(QWidget* parent, QString path) : QMainWindow(parent), con
     buildUi(); setupTray(); loadProfile(); qApp->installNativeEventFilter(&hotkeys_);
     reportQueue_ = new ReportQueue(QFileInfo(configurationPath_).absolutePath() + "/report-jobs", QCoreApplication::applicationDirPath() + "/aitsnap-word-bridge.exe", this);
     reportQueue_->changed = [this] { refreshReportStatus(); }; refreshReportStatus();
+    contextStore_ = std::make_unique<ContextStore>(QFileInfo(configurationPath_).absolutePath() + "/context");
+    if (!contextStore_->diagnostic().isEmpty()) contextStatus_->setText(contextStore_->diagnostic());
     hotkeys_.triggered = [this](int mode) { triggerCapture(mode); };
     hotkeys_.taskbarCreated = [this] { QTimer::singleShot(250, this, [this] { tray_->hide(); tray_->show(); }); };
     QString e;
@@ -111,6 +117,9 @@ void MainWindow::buildUi()
     outputMode_ = new QComboBox; outputMode_->setObjectName("outputMode");
     outputMode_->addItem(QStringLiteral("保存原图"), "originals"); outputMode_->addItem(QStringLiteral("保存拼图（源图存入证据子目录）"), "composites"); outputMode_->addItem(QStringLiteral("原图 + 选中拼图"), "both");
     l->addWidget(outputMode_);
+    auto* contextButton = new QPushButton(QStringLiteral("静态目录 / 执行事件 / 选择截图上下文")); contextButton->setObjectName("openContextStore"); l->addWidget(contextButton);
+    contextStatus_ = new QLabel(QStringLiteral("截图上下文：未关联。事件到达不会自动切换当前上下文。")); contextStatus_->setWordWrap(true); l->addWidget(contextStatus_);
+    connect(contextButton, &QPushButton::clicked, this, [this] { showContextStore(); });
     connect(newScene, &QPushButton::clicked, this, [this] { editScene(true); });
     connect(editSceneButton, &QPushButton::clicked, this, [this] { editScene(false); });
     connect(history, &QPushButton::clicked, this, [this] { editScene(false, true); });
@@ -283,6 +292,7 @@ void MainWindow::triggerCapture(int mode)
     request.issuedAtUtc = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs).toStdString(); request.profile = snapshot.profiles[std::size_t(snapshot.activeProfile)];
     request.context.testId = snapshot.testId.toStdString(); request.context.deviceId = snapshot.device.toStdString();
     request.context.stationId = snapshot.station.toStdString(); request.context.operatorId = snapshot.operatorName.toStdString();
+    if (!selectedContextSnapshot_.isEmpty()) { request.context = selectedContext_; request.context.stationId = snapshot.station.toStdString(); request.context.operatorId = snapshot.operatorName.toStdString(); request.contextSnapshotJson = QJsonDocument(selectedContextSnapshot_).toJson(QJsonDocument::Compact).toStdString(); }
     busy_ = true; setStatus(QStringLiteral("正在后台采集 %1 个源区域…").arg(request.profile.regions.size())); QPointer<MainWindow> self(this);
     QThreadPool::globalInstance()->start(QRunnable::create([self, snapshot, request, mode] {
         WinCaptureBackend backend; auto result = std::make_shared<CaptureOutcome>(captureToFiles(backend, snapshot, request, mode != 1, mode != 0));
@@ -326,6 +336,34 @@ void MainWindow::refreshReportStatus()
     if (!reportQueue_ || !reportStatus_) return; int committed = 0, pending = 0, uncertain = 0, failed = 0;
     for (const auto& job : reportQueue_->jobs()) { const auto state = job["state"].toString(); if (state == "COMMITTED") ++committed; else if (state == "UNCERTAIN") ++uncertain; else if (state == "FAILED") ++failed; else ++pending; }
     reportStatus_->setText(QStringLiteral("Word：已提交 %1 · 排队/执行 %2 · 待核对 %3 · 失败 %4").arg(committed).arg(pending).arg(uncertain).arg(failed) + (reportQueue_->diagnostic().isEmpty() ? "" : "\n" + reportQueue_->diagnostic()));
+}
+void MainWindow::showContextStore()
+{
+    QDialog dialog(this); dialog.setWindowTitle(QStringLiteral("只读目录与执行上下文")); dialog.resize(1180, 640); auto* layout = new QVBoxLayout(&dialog);
+    auto* note = new QLabel(QStringLiteral("此处只关联证据，不执行指令。来源时间与首次接收时间独立；参数值不写入事件/批次/导出。只有完整且静态版本唯一的显式选择可供截图继承。")); note->setWordWrap(true); layout->addWidget(note);
+    auto* actions = new QHBoxLayout; auto* importCatalog = new QPushButton(QStringLiteral("导入目录 JSON / CSV")); auto* importEvent = new QPushButton(QStringLiteral("接收事件 JSON")); auto* exportMetadata = new QPushButton(QStringLiteral("导出脱敏元数据（新文件）")); actions->addWidget(importCatalog); actions->addWidget(importEvent); actions->addWidget(exportMetadata); layout->addLayout(actions);
+    auto* tabs = new QTabWidget; layout->addWidget(tabs, 1);
+    auto* table = new QTableWidget(0, 10); table->setHorizontalHeaderLabels({QStringLiteral("来源"), QStringLiteral("事件"), "Run", "Step execution", "Invocation", QStringLiteral("尝试"), QStringLiteral("关联 / 静态版本"), QStringLiteral("来源 UTC"), QStringLiteral("首次接收 UTC"), QStringLiteral("类型")}); table->setEditTriggers(QAbstractItemView::NoEditTriggers); table->setSelectionBehavior(QAbstractItemView::SelectRows); table->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents); tabs->addTab(table, QStringLiteral("执行事件"));
+    auto* tree = new QTreeWidget; tree->setHeaderLabels({QStringLiteral("定义 / 版本"), QStringLiteral("名称 / 类型"), QStringLiteral("实测来源 SHA-256")}); tabs->addTab(tree, QStringLiteral("静态目录"));
+    auto refresh = [this, table, tree] {
+        table->setRowCount(0); for (const auto& envelope : contextStore_->events()) { const auto event = envelope["event"].toObject(), sequence = event["sequence"].toObject(), command = event["command"].toObject(); const int row = table->rowCount(); table->insertRow(row);
+            const QStringList values{event["sourceSystem"].toString(), event["eventId"].toString(), sequence["runId"].toString(), sequence["stepExecutionId"].toString(), command["invocationId"].toString(), command.contains("attempt") ? QString::number(command["attempt"].toInt()) : QString{}, event["correlationStatus"].toString() + "/" + envelope["definitionStatus"].toString(), event["sourceTimeUtc"].toString(), event["receivedAtUtc"].toString(), event["eventType"].toString()};
+            for (int col = 0; col < values.size(); ++col) table->setItem(row, col, new QTableWidgetItem(values[col])); }
+        tree->clear(); for (const auto& envelope : contextStore_->catalogs()) { const auto catalog = envelope["catalog"].toObject(); auto* item = new QTreeWidgetItem(tree, {catalog["catalogId"].toString() + "@" + catalog["catalogRevision"].toString(), catalog["sourceSystem"].toString(), envelope["measuredSourceDigest"].toString()});
+            for (const auto& value : catalog["commands"].toArray()) { const auto c = value.toObject(); new QTreeWidgetItem(item, {c["commandId"].toString(), c["name"].toString()}); }
+            for (const auto& value : catalog["sequences"].toArray()) { const auto s = value.toObject(); auto* sequence = new QTreeWidgetItem(item, {s["sequenceId"].toString() + "@" + s["revision"].toString(), s["name"].toString()});
+                for (const auto& value2 : s["steps"].toArray()) { const auto step = value2.toObject(); new QTreeWidgetItem(sequence, {step["stepId"].toString(), step["kind"].toString() + ": " + (step["kind"] == "command" ? step["commandId"].toString() : step["subsequenceId"].toString() + "@" + step["subsequenceRevision"].toString())}); } }
+        } tree->resizeColumnToContents(0); tree->resizeColumnToContents(1);
+    }; refresh();
+    connect(importCatalog, &QPushButton::clicked, &dialog, [this, &dialog, note, refresh] { const auto path = QFileDialog::getOpenFileName(&dialog, QStringLiteral("选择来源目录（只读导入）"), {}, "Catalog (*.json *.csv)"); if (path.isEmpty()) return; QString error; note->setText(contextStore_->importCatalog(path, error) ? QStringLiteral("已保存实测哈希和不可变来源副本；未修改来源文件。") : error); refresh(); });
+    connect(importEvent, &QPushButton::clicked, &dialog, [this, &dialog, note, refresh] { const auto path = QFileDialog::getOpenFileName(&dialog, QStringLiteral("选择规范化事件 JSON"), {}, "Event (*.json)"); if (path.isEmpty()) return; QFile file(path); if (!file.open(QIODevice::ReadOnly) || file.size() > 1024 * 1024) { note->setText(QStringLiteral("事件无法读取或超过 1 MiB。")); return; } const auto result = contextStore_->ingest(QJsonDocument::fromJson(file.readAll()).object()); note->setText(result.error ? qs(result.error.message) : QStringLiteral("事件已接收或去重；未切换截图上下文。")); refresh(); });
+    connect(exportMetadata, &QPushButton::clicked, &dialog, [this, &dialog, note] { const auto path = QFileDialog::getSaveFileName(&dialog, QStringLiteral("导出脱敏元数据，不覆盖已有文件"), {}, "JSON (*.json)", nullptr, QFileDialog::DontConfirmOverwrite); if (path.isEmpty()) return; QString error; note->setText(contextStore_->exportMetadata(path, true, error) ? QStringLiteral("脱敏元数据已导出。") : error); });
+    auto* select = new QPushButton(QStringLiteral("明确选择此事件作为截图上下文")); auto* clear = new QPushButton(QStringLiteral("清除关联")); auto* bottom = new QHBoxLayout; bottom->addWidget(select); bottom->addWidget(clear); layout->addLayout(bottom);
+    connect(select, &QPushButton::clicked, &dialog, [this, table, note] { if (table->currentRow() < 0) return; const auto source = table->item(table->currentRow(), 0)->text(), id = table->item(table->currentRow(), 1)->text(); const auto context = contextStore_->context(source, id); const auto snapshot = contextStore_->snapshot(source, id);
+        if (context.correlationStatus != "EXACT" || snapshot["definitionStatus"] != "RESOLVED") { selectedContext_ = {}; selectedContextSnapshot_ = {}; contextStatus_->setText(QStringLiteral("截图上下文：未关联（所选身份或静态版本不唯一）。")); note->setText(QStringLiteral("此事件保留歧义/未关联状态，不能自动供热键截图继承。")); return; }
+        selectedContext_ = context; selectedContextSnapshot_ = snapshot; contextStatus_->setText(QStringLiteral("显式上下文：%1 / %2 · run=%3 · attempt=%4").arg(source, id, qs(context.sequenceRunId)).arg(context.attempt)); note->setText(QStringLiteral("后续截图将冻结此事件的身份、时间和静态版本；不会随新事件自动漂移。")); });
+    connect(clear, &QPushButton::clicked, &dialog, [this] { selectedContext_ = {}; selectedContextSnapshot_ = {}; contextStatus_->setText(QStringLiteral("截图上下文：未关联。")); });
+    auto* close = new QDialogButtonBox(QDialogButtonBox::Close); connect(close, &QDialogButtonBox::rejected, &dialog, &QDialog::reject); layout->addWidget(close); dialog.exec();
 }
 void MainWindow::showReportQueue()
 {
