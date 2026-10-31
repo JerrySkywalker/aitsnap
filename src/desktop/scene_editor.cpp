@@ -93,7 +93,7 @@ void SceneEditor::buildUi()
     x_ = numeric("X", -1000000, 1000000, "layerX"); y_ = numeric("Y", -1000000, 1000000, "layerY");
     width_ = numeric(QStringLiteral("宽"), 0.001, 1000000, "layerWidth"); height_ = numeric(QStringLiteral("高"), 0.001, 1000000, "layerHeight"); rotation_ = numeric(QStringLiteral("旋转 °"), -36000, 36000, "layerRotation");
     zIndex_ = integerSpin(QStringLiteral("层级 Z"), -1000000, std::numeric_limits<int>::max());
-    visible_ = new QCheckBox(QStringLiteral("可见")); locked_ = new QCheckBox(QStringLiteral("锁定移动")); locked_->setObjectName("layerLocked"); aspect_ = new QCheckBox(QStringLiteral("等比适配")); form->addRow(visible_); form->addRow(locked_); form->addRow(aspect_);
+    visible_ = new QCheckBox(QStringLiteral("可见")); locked_ = new QCheckBox(QStringLiteral("锁定移动")); locked_->setObjectName("layerLocked"); aspect_ = new QCheckBox(QStringLiteral("等比适配（不拉伸图片）")); aspect_->setToolTip(QStringLiteral("保持源图或裁剪后的宽高比，在目标框内居中，可能留白。取消后图片会拉伸铺满目标框。")); form->addRow(visible_); form->addRow(locked_); form->addRow(aspect_);
     cropX_ = integerSpin(QStringLiteral("裁剪 X"), 0, 32768); cropY_ = integerSpin(QStringLiteral("裁剪 Y"), 0, 32768); cropWidth_ = integerSpin(QStringLiteral("裁剪宽 (0=完整)"), 0, 32768); cropHeight_ = integerSpin(QStringLiteral("裁剪高 (0=完整)"), 0, 32768);
     missing_ = new QComboBox; missing_->addItems({"fail", "placeholder", "skip"}); form->addRow(QStringLiteral("缺源策略"), missing_);
     group_ = new QLineEdit; group_->setReadOnly(true); form->addRow(QStringLiteral("组标识"), group_);
@@ -152,11 +152,17 @@ void SceneEditor::rebuild()
         QImage preview;
         if (actual) preview = source->second.image;
         else {
-            preview = QImage(640, 400, QImage::Format_RGB32); preview.fill(QColor("#33485d")); QPainter painter(&preview); painter.setPen(Qt::white);
+            const auto region = std::find_if(profile_.regions.begin(), profile_.regions.end(), [&](const auto& r) { return r.id == layer.sourceRegionId; });
+            const QSize geometry = layer.crop.valid() ? QSize(layer.crop.width, layer.crop.height)
+                : region != profile_.regions.end() ? QSize(region->rect.width, region->rect.height)
+                : QSize(qRound(layer.destination.width), qRound(layer.destination.height));
+            auto thumbnail = geometry.scaled(QSize(640, 400), Qt::KeepAspectRatio);
+            thumbnail.setWidth(std::max(1, thumbnail.width())); thumbnail.setHeight(std::max(1, thumbnail.height()));
+            preview = QImage(thumbnail, QImage::Format_RGB32); preview.fill(QColor("#33485d")); QPainter painter(&preview); painter.setPen(Qt::white);
             auto font = painter.font(); font.setPointSize(18); painter.setFont(font);
             painter.drawText(preview.rect().adjusted(20, 20, -20, -20), Qt::AlignCenter | Qt::TextWordWrap, QStringLiteral("未采集 / 未匹配源\n布局占位预览\n") + qs(layer.sourceRegionId));
         }
-        auto* item = new LayerItem(layer, preview); item->setZValue(rank++); graphics_->addItem(item); items_.emplace(layer.id, item);
+        auto* item = new LayerItem(layer, preview, !actual); item->setZValue(rank++); graphics_->addItem(item); items_.emplace(layer.id, item);
         item->beginEdit = [this] { pushUndo(); }; item->snapEnabled = [this] { return snap_->isChecked() && selected_.size() <= 1; };
         item->changed = [this](const auto& changed) { updateLayer(changed); };
         item->setSelected(selected_.count(layer.id) > 0);
