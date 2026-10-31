@@ -3,8 +3,9 @@
 [English README](README.md)
 
 AITSnap 是面向截图整理与试验执行记录关联的开源桌面软件项目。
-当前仅完成仓库初始化：源码只有一个 Qt Widgets 占位窗口，尚无可用产品功能、
-安装包或经过验证的系统兼容性。
+当前仍为软件骨架：源码只有一个 Qt Widgets 占位窗口，尚无可用产品功能或安装包。
+实际构建与启动检查的范围见[本轮验证记录](docs/qt6-baseline-validation.md)，
+不代表全部目标系统或人工视觉验收通过。
 
 ## 已确定的产品方向
 
@@ -20,30 +21,34 @@ AITSnap 是面向截图整理与试验执行记录关联的开源桌面软件项
 
 ## 技术与系统边界
 
-- 技术栈：C++20、Qt Widgets、CMake 3.16 或更高版本。
-- 初始依赖基线：Qt 5.15，链接 `Qt5::Widgets`。
-- 目标系统：Windows 7 SP1、Windows 10/11；目前均未完成系统验收。
-- Windows 7 SP1 与 Qt 5.15 的兼容性保留待验证。编译器、Qt 构建、运行库和
-  部署依赖需要共同验证，支持 C++20 不等于支持 Windows 7 运行。
-- Linux 仅保留未来移植可能，当前没有 Linux 验证结论。
+- 正式平台基线：Windows 10（1809 或更高版本）/ Windows 11，x64。
+- 技术栈：C++20、Qt 6.12 Widgets、CMake 3.24 或更高版本；链接 `Qt6::Widgets`。
+- 首选编译器：MSVC 2022（v143）x64，配套相同 ABI 的 Qt SDK。
+- Qt 版本限定为 6.12.x；采用更新次版本前须重新检查平台支持，
+  因为 Qt 6.12 是最后支持 Windows 10 的 Qt 版本。
+- Windows 7 和 Linux 均仅保留未来可能支持，当前不开发、不测试。
+- 正式平台声明与实际验证范围分开记录，不能据此认定所有系统版本已经测试通过。
 
 ## 构建
 
-准备支持 C++20 的编译器、与编译器 ABI 匹配的 Qt 5.15 开发套件，以及 CMake。
-在仓库根目录执行，例如使用 Ninja：
+复用现有 vcpkg，以及官方 Qt 6.12 MSVC x64 SDK。
+在当前 PowerShell 会话中，将 `VCPKG_ROOT` 指向现有 vcpkg 根目录，
+将 `QT_ROOT` 指向 Qt 套件安装前缀，然后在仓库根目录执行：
 
-```sh
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_PREFIX_PATH="<qt-kit-prefix>"
-cmake --build build
+```powershell
+cmake --preset windows-msvc-qt-sdk
+cmake --build --preset windows-msvc-qt-sdk-release
 ```
 
-将占位符替换为本机 Qt 套件安装前缀，而不是其 `bin` 目录。
-本机路径只用于本地配置，不应提交。多配置生成器可使用
-`cmake --build build --config Debug` 选择配置。
-Windows 上运行程序需要可用的 Qt DLL 和平台插件；本轮不提供打包或部署流程。
+可移植预设显式加载 `$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake`，
+使用 `x64-windows` triplet。Qt 实际来自 `QT_ROOT` 指定的官方 SDK，
+并非来自 vcpkg 的 Qt 包。预设关闭 manifest 自动安装及 vcpkg 的 app-local 复制，
+避免配置时触发 Qt 源码构建。不新建另一套 vcpkg，不提交本机绝对路径。
 
-实际验证结果见[初始化验证记录](docs/initial-validation.md)。配置检查或编译器探针
-通过，不代表 Qt 应用构建通过，也不代表目标系统兼容性通过。
+配置、运行时 DLL/插件设置及实际 toolchain 加载核验方法见
+[Windows 构建说明](docs/build-windows.md)。
+[原始初始化验证记录](docs/initial-validation.md) 完整保留为历史，其中的
+Qt 5 和 Windows 7 要求已由本轮基线取代。
 
 ## 许可证
 
