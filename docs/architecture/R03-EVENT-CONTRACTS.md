@@ -50,7 +50,7 @@ Allowlisted actions: capture, query-status, list-profiles, select-profile,
 submit-event, import-catalog. Unknown fields/actions/versions are rejected.
 There is no shell, external program, instrument or command-transmission action.
 
-Create the server with the current user SID ACL and PIPE_REJECT_REMOTE_CLIENTS;
+Create the server with the current interactive logon SID ACL and PIPE_REJECT_REMOTE_CLIENTS;
 do not rely on the default pipe ACL, expose TCP, grant Everyone, or widen local
 privileges. Client uses only the local pipe name. A remote-client and mismatched
 user rejection need actual platform checks; absence of another account is a
@@ -60,7 +60,7 @@ the idempotency key as success. Durable receipts preserve keys across restarts.
 
 Primary references reviewed:
 [Named pipe security](https://learn.microsoft.com/en-us/windows/win32/ipc/named-pipe-security-and-access-rights),
-[CreateNamedPipe](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-createnamedpipew).
+[CreateNamedPipe](https://learn.microsoft.com/en-us/windows/win32/api/namedpipeapi/nf-namedpipeapi-createnamedpipew).
 No endpoint is started in this research goal.
 
 ## Executed checks and gates
