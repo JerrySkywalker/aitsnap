@@ -81,3 +81,9 @@ AITSnap source is licensed under [Apache-2.0](LICENSE), using the
 [official Apache license text](https://www.apache.org/licenses/LICENSE-2.0.txt).
 Qt is an external dependency and retains its own license; it is not relicensed
 by this repository. No Qt binaries or other third-party dependencies are bundled.
+
+## Architecture and development plan
+
+[Architecture index](docs/ARCHITECTURE-INDEX.md) · [AITSnap V1 Goal Train](plans/AITSNAP-V1-GOAL-TRAIN-001/PROGRAM.md) · [120-hour local execution handoff](plans/AITSNAP-V1-GOAL-TRAIN-001/OWNER-HANDOFF.md).
+
+These are planned deliverables, not implemented features or proof of native Win7 compatibility.

@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "catalogId": "CAT-SYN-001",
+  "catalogRevision": "v1",
+  "sourceSystem": "SYNTHETIC_AIT_EXECUTOR",
+  "importedAtUtc": "2026-10-31T06:00:00Z",
+  "sourceDigest": "0000000000000000000000000000000000000000000000000000000000000000",
+  "commands": [
+    {
+      "commandId": "CMD-PWR-ON",
+      "name": "Synthetic power on",
+      "parameters": [
+        {
+          "name": "channel",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "commandId": "CMD-READ-V",
+      "name": "Synthetic voltage read",
+      "parameters": [
+        {
+          "name": "channel",
+          "type": "string",
+          "unit": "none"
+        }
+      ]
+    }
+  ],
+  "sequences": [
+    {
+      "sequenceId": "SEQ-SYN-PWR",
+      "revision": "v1",
+      "name": "Synthetic EPS check",
+      "steps": [
+        {
+          "stepId": "STEP-001",
+          "order": 1,
+          "kind": "command",
+          "commandId": "CMD-PWR-ON"
+        },
+        {
+          "stepId": "STEP-002",
+          "order": 2,
+          "kind": "command",
+          "commandId": "CMD-READ-V"
+        }
+      ]
+    }
+  ]
+}

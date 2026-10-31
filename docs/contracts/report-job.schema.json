@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/JerrySkywalker/aitsnap/main/docs/contracts/report-job.schema.json",
+  "title": "ReportJob v1",
+  "description": "AITSnap v1 planning contract. Requires native implementation/acceptance before production use.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "jobId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "batchId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "createdAtUtc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updatedAtUtc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "state": {
+      "type": "string",
+      "enum": [
+        "QUEUED",
+        "RUNNING",
+        "COMMITTED",
+        "RETRYABLE",
+        "FAILED",
+        "UNCERTAIN"
+      ]
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "documentPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "create",
+            "append"
+          ]
+        },
+        "bookmark": {
+          "type": "string",
+          "minLength": 1
+        },
+        "templateId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "documentPath",
+        "mode"
+      ]
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "artifactId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "caption": {
+            "type": "string"
+          },
+          "renderAs": {
+            "type": "string",
+            "enum": [
+              "inline_image",
+              "table_cell"
+            ]
+          }
+        },
+        "required": [
+          "artifactId",
+          "renderAs"
+        ]
+      },
+      "minItems": 1
+    },
+    "attemptCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "committedMarker": {
+      "type": "string",
+      "minLength": 1
+    },
+    "errorCode": {
+      "type": "string",
+      "minLength": 1
+    },
+    "extensions": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "jobId",
+    "batchId",
+    "createdAtUtc",
+    "state",
+    "target",
+    "items",
+    "attemptCount"
+  ]
+}

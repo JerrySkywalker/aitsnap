@@ -1,0 +1,83 @@
+{
+  "schemaVersion": 1,
+  "batchId": "CAP-SYN-000123",
+  "requestId": "REQ-SYN-000123",
+  "profileId": "EPS-OVERVIEW",
+  "profileRevision": 1,
+  "createdAtUtc": "2026-10-31T06:34:12.215Z",
+  "completedAtUtc": "2026-10-31T06:34:12.800Z",
+  "context": {
+    "testId": "TEST-SYN-043",
+    "deviceId": "DUT-SYN-01",
+    "sequenceRunId": "RUN-SYN-002",
+    "stepExecutionId": "STEP-EXEC-SYN-004",
+    "commandInvocationId": "INV-SYN-008",
+    "eventId": "EVT-SYN-017"
+  },
+  "sceneRevisions": [
+    {
+      "sceneId": "SCN-EPS-OVERVIEW",
+      "revision": 1
+    }
+  ],
+  "captures": [
+    {
+      "sourceCaptureId": "SCAP-1",
+      "regionId": "R1-VOLTAGE",
+      "displayIds": [
+        "DISPLAY-SYN-1"
+      ],
+      "physicalRectPx": [
+        100,
+        100,
+        800,
+        600
+      ],
+      "acquiredAtUtc": "2026-10-31T06:34:12.300Z",
+      "outcome": "SUCCEEDED"
+    },
+    {
+      "sourceCaptureId": "SCAP-2",
+      "regionId": "R2-CURRENT",
+      "displayIds": [
+        "DISPLAY-SYN-2"
+      ],
+      "physicalRectPx": [
+        -1000,
+        100,
+        800,
+        600
+      ],
+      "acquiredAtUtc": "2026-10-31T06:34:12.335Z",
+      "outcome": "SUCCEEDED"
+    }
+  ],
+  "artifacts": [
+    {
+      "artifactId": "ART-SYN-R1",
+      "kind": "ORIGINAL",
+      "regionId": "R1-VOLTAGE",
+      "relativePath": "captures/CAP-SYN-000123/R1.png",
+      "saveStatus": "SAVED"
+    },
+    {
+      "artifactId": "ART-SYN-R2",
+      "kind": "ORIGINAL",
+      "regionId": "R2-CURRENT",
+      "relativePath": "captures/CAP-SYN-000123/R2.png",
+      "saveStatus": "SAVED"
+    },
+    {
+      "artifactId": "ART-SYN-COMPOSITE",
+      "kind": "COMPOSITE",
+      "sceneId": "SCN-EPS-OVERVIEW",
+      "sceneRevision": 1,
+      "relativePath": "captures/CAP-SYN-000123/combined.png",
+      "saveStatus": "SAVED"
+    }
+  ],
+  "reportJobIds": [
+    "RJOB-SYN-000123"
+  ],
+  "status": "CAPTURED"
+}

@@ -1,0 +1,259 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/JerrySkywalker/aitsnap/main/docs/contracts/capture-batch.schema.json",
+  "title": "CaptureBatch v1",
+  "description": "AITSnap v1 planning contract. Requires native implementation/acceptance before production use.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "batchId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "requestId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "profileId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "profileRevision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "createdAtUtc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "completedAtUtc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "context": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "testId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "deviceId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "stationId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "operatorId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sequenceRunId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "stepExecutionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "commandInvocationId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "eventId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": []
+    },
+    "sceneRevisions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "sceneId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "sceneId",
+          "revision"
+        ]
+      },
+      "minItems": 0
+    },
+    "captures": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "sourceCaptureId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "regionId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "displayIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "minItems": 1
+          },
+          "physicalRectPx": {
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "integer",
+                "minimum": -2147483648
+              },
+              {
+                "type": "integer",
+                "minimum": -2147483648
+              },
+              {
+                "type": "integer",
+                "minimum": 1
+              },
+              {
+                "type": "integer",
+                "minimum": 1
+              }
+            ],
+            "items": false,
+            "minItems": 4,
+            "maxItems": 4
+          },
+          "acquiredAtUtc": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "monotonicAcquiredNs": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "SUCCEEDED",
+              "FAILED"
+            ]
+          },
+          "errorCode": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "sourceCaptureId",
+          "regionId",
+          "displayIds",
+          "physicalRectPx",
+          "outcome"
+        ]
+      },
+      "minItems": 0
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "artifactId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "ORIGINAL",
+              "COMPOSITE",
+              "WORD_DISPLAY_COPY"
+            ]
+          },
+          "regionId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sceneId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sceneRevision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "relativePath": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-fA-F0-9]{64}$"
+          },
+          "saveStatus": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "SAVED",
+              "FAILED"
+            ]
+          }
+        },
+        "required": [
+          "artifactId",
+          "kind",
+          "saveStatus"
+        ]
+      },
+      "minItems": 0
+    },
+    "reportJobIds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 0
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "CAPTURED",
+        "PARTIAL",
+        "FAILED"
+      ]
+    },
+    "extensions": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "batchId",
+    "requestId",
+    "profileId",
+    "profileRevision",
+    "createdAtUtc",
+    "captures",
+    "artifacts",
+    "status"
+  ]
+}

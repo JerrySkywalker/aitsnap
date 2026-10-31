@@ -1,0 +1,156 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/JerrySkywalker/aitsnap/main/docs/contracts/capture-request.schema.json",
+  "title": "CaptureRequest v1",
+  "description": "AITSnap v1 planning contract. Requires native implementation/acceptance before production use.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "requestId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "issuedAtUtc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "profileId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "profileRevision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "regionIds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 1
+    },
+    "sceneIds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 0
+    },
+    "trigger": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "hotkey",
+            "manual",
+            "cli",
+            "ait_event"
+          ]
+        },
+        "bindingId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "eventId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "kind"
+      ]
+    },
+    "context": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "testId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "deviceId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "stationId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "operatorId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sequenceRunId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "stepExecutionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "commandInvocationId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "eventId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": []
+    },
+    "outputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "saveOriginals": {
+          "type": "boolean"
+        },
+        "saveComposites": {
+          "type": "boolean"
+        },
+        "clipboard": {
+          "type": "string",
+          "enum": [
+            "none",
+            "selected_region",
+            "primary_scene"
+          ]
+        },
+        "selectedRegionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reportTemplateId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "saveOriginals",
+        "saveComposites",
+        "clipboard"
+      ]
+    },
+    "extensions": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "requestId",
+    "issuedAtUtc",
+    "profileId",
+    "profileRevision",
+    "regionIds",
+    "trigger",
+    "outputs"
+  ]
+}
