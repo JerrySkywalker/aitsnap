@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 cmake_minimum_required(VERSION 3.24)
 
-project(AITSnap VERSION 0.1.0 LANGUAGES CXX)
+project(AITSnap VERSION 0.5.0 LANGUAGES CXX)
 
 if(NOT WIN32)
     message(FATAL_ERROR "The current AITSnap build baseline requires Windows.")
@@ -72,7 +72,7 @@ add_library(aitsnap-adapters STATIC
 target_link_libraries(aitsnap-adapters PUBLIC aitsnap-capture aitsnap-scene aitsnap-context Qt${AITSNAP_QT_MAJOR}::Widgets PRIVATE gdi32 user32 dwmapi wtsapi32 advapi32)
 target_include_directories(aitsnap-adapters PUBLIC src)
 add_executable(aitsnap-word-bridge src/adapters/word_bridge_main.cpp)
-target_link_libraries(aitsnap-word-bridge PRIVATE aitsnap-adapters ole32 oleaut32)
+target_link_libraries(aitsnap-word-bridge PRIVATE aitsnap-adapters ole32 oleaut32 psapi)
 add_executable(aitsnap-cli src/cli_main.cpp)
 target_link_libraries(aitsnap-cli PRIVATE aitsnap-adapters)
 add_executable(aitsnap WIN32
@@ -83,7 +83,7 @@ add_executable(aitsnap WIN32
     src/compat/qt_widgets_compat.h
 )
 
-target_link_libraries(aitsnap PRIVATE aitsnap-adapters)
+target_link_libraries(aitsnap PRIVATE aitsnap-adapters psapi)
 set(aitsnap_targets aitsnap aitsnap-adapters aitsnap-word-bridge aitsnap-cli)
 if(BUILD_TESTING)
     add_executable(aitsnap-desktop-tests tests/desktop_tests.cpp src/main_window.cpp src/desktop/host_controller.cpp)
@@ -114,6 +114,10 @@ if(BUILD_TESTING)
     target_link_libraries(aitsnap-ipc-capture-tests PRIVATE aitsnap-adapters dwmapi)
     add_dependencies(aitsnap-ipc-capture-tests aitsnap-cli aitsnap-word-bridge)
     list(APPEND aitsnap_targets aitsnap-ipc-capture-tests)
+    add_executable(aitsnap-benchmark EXCLUDE_FROM_ALL probes/performance_probe.cpp)
+    target_link_libraries(aitsnap-benchmark PRIVATE aitsnap-adapters psapi dwmapi)
+    add_dependencies(aitsnap-benchmark aitsnap-word-bridge)
+    list(APPEND aitsnap_targets aitsnap-benchmark)
 endif()
 if(AITSNAP_BUILD_RESEARCH_PROBE)
     add_executable(aitsnap-word-probe probes/word_native_probe.cpp)
@@ -133,6 +137,7 @@ if(AITSNAP_BUILD_COMPAT_PROBE)
 endif()
 
 foreach(target IN LISTS aitsnap_targets)
+    target_compile_definitions(${target} PRIVATE AITSNAP_VERSION="${PROJECT_VERSION}-preview")
     target_link_libraries(${target} PRIVATE Qt${AITSNAP_QT_MAJOR}::Widgets)
     if(AITSNAP_QT_MAJOR STREQUAL "5")
         # Header API floor only; this does not qualify compiler/CRT dependencies.
