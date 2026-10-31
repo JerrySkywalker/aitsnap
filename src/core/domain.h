@@ -23,6 +23,7 @@ struct Context {
     int attempt{};
     std::string correlationStatus{"UNLINKED"};
     std::string testId, deviceId, stationId, operatorId;
+    friend bool operator==(const Context&, const Context&) = default;
 };
 struct CaptureRequest {
     std::string requestId, issuedAtUtc;
@@ -71,6 +72,9 @@ struct ExecutionEvent {
     std::string sequenceDefinitionId, sequenceRevision, stepId, commandDefinitionId;
     std::int64_t sourceSequenceNo{};
     Context context;
+    std::vector<std::string> stepPath;
+    std::string commandStatus, contentDigest;
+    friend bool operator==(const ExecutionEvent&, const ExecutionEvent&) = default;
 };
 enum class ReportState { Queued, Running, Committed, Retryable, Failed, Uncertain };
 struct ReportItem { std::string artifactPath, caption; };
