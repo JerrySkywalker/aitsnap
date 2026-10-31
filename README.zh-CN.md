@@ -63,3 +63,7 @@ Qt 5 Legacy x64 候选通过 `QT5_ROOT` 指定 Qt 5.15 MSVC x64 套件，使用
 
 项目源码使用 [Apache-2.0](LICENSE)。Qt 作为外部依赖保留其自身许可证，
 本仓库不附带 Qt 二进制或其他第三方依赖。
+
+## 架构与开发计划
+
+参见[架构文档索引](docs/ARCHITECTURE-INDEX.md)、[AITSnap V1 Goal Train](plans/AITSNAP-V1-GOAL-TRAIN-001/PROGRAM.md)和[本地执行交接](plans/AITSNAP-V1-GOAL-TRAIN-001/OWNER-HANDOFF.md)。这些文件仅代表批准的实施计划，不代表产品功能已实现或 Windows 7 已通过原生验收。

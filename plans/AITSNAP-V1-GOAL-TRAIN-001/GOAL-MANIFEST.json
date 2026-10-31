@@ -1,0 +1,194 @@
+{
+  "schemaVersion": 1,
+  "programId": "AITSNAP-V1-GOAL-TRAIN-001",
+  "asOf": "2026-10-31",
+  "repo": "JerrySkywalker/aitsnap",
+  "originMainSha": "56804c50f8b1ebeabefce7f977633ac16897a4ad",
+  "totalBudgetHours": 120,
+  "goalCount": 16,
+  "budgetInterpretation": "maximum cumulative elapsed local execution time, including waits, validation and recoveries; not guaranteed completion",
+  "goalStatuses": [
+    "NOT_STARTED",
+    "ACTIVE",
+    "PASS",
+    "PARTIAL",
+    "BLOCKED",
+    "OWNER_HOLD"
+  ],
+  "milestones": {
+    "M1": "D01",
+    "M2": "D03",
+    "M3": "D04",
+    "M4": "D06",
+    "M5": "D07+L02+owner"
+  },
+  "goals": [
+    {
+      "id": "R00",
+      "title": "Requirements and reusable architecture",
+      "budgetHours": 3,
+      "dependencies": [],
+      "train": "Research",
+      "path": "plans/AITSNAP-V1-GOAL-TRAIN-001/goals/R00.md"
+    },
+    {
+      "id": "R01",
+      "title": "Multi-monitor capture and canvas feasibility",
+      "budgetHours": 5,
+      "dependencies": [
+        "R00"
+      ],
+      "train": "Research",
+      "path": "plans/AITSNAP-V1-GOAL-TRAIN-001/goals/R01.md"
+    },
+    {
+      "id": "R02",
+      "title": "Word COM and report-job feasibility",
+      "budgetHours": 4,
+      "dependencies": [
+        "R00"
+      ],
+      "train": "Research",
+      "path": "plans/AITSNAP-V1-GOAL-TRAIN-001/goals/R02.md"
+    },
+    {
+      "id": "R03",
+      "title": "AIT sequence, event and IPC contracts",
+      "budgetHours": 5,
+      "dependencies": [
+        "R00"
+      ],
+      "train": "Research",
+      "path": "plans/AITSNAP-V1-GOAL-TRAIN-001/goals/R03.md"
+    },
+    {
+      "id": "R04",
+      "title": "Architecture freeze and review",
+      "budgetHours": 3,
+      "dependencies": [
+        "R01",
+        "R02",
+        "R03"
+      ],
+      "train": "Research",
+      "path": "plans/AITSNAP-V1-GOAL-TRAIN-001/goals/R04.md"
+    },
+    {
+      "id": "D00",
+      "title": "Qt-neutral reusable domain and tests",
+      "budgetHours": 6,
+      "dependencies": [
+        "R00"
+      ],
+      "train": "Development",
+      "path": "plans/AITSNAP-V1-GOAL-TRAIN-001/goals/D00.md"
+    },
+    {
+      "id": "D01",
+      "title": "Working multi-region capture, hotkeys and tray",
+      "budgetHours": 15,
+      "dependencies": [
+        "D00",
+        "R01"
+      ],
+      "train": "Development",
+      "path": "plans/AITSNAP-V1-GOAL-TRAIN-001/goals/D01.md"
+    },
+    {
+      "id": "D02",
+      "title": "Multi-monitor region editor",
+      "budgetHours": 8,
+      "dependencies": [
+        "D01"
+      ],
+      "train": "Development",
+      "path": "plans/AITSNAP-V1-GOAL-TRAIN-001/goals/D02.md"
+    },
+    {
+      "id": "D03",
+      "title": "OBS-style scene editor and composition",
+      "budgetHours": 16,
+      "dependencies": [
+        "D02",
+        "R04"
+      ],
+      "train": "Development",
+      "path": "plans/AITSNAP-V1-GOAL-TRAIN-001/goals/D03.md"
+    },
+    {
+      "id": "D04",
+      "title": "Word COM reporting and durable queue",
+      "budgetHours": 13,
+      "dependencies": [
+        "D03",
+        "R02"
+      ],
+      "train": "Development",
+      "path": "plans/AITSNAP-V1-GOAL-TRAIN-001/goals/D04.md"
+    },
+    {
+      "id": "D05",
+      "title": "Static catalog import and runtime event correlation",
+      "budgetHours": 8,
+      "dependencies": [
+        "D00",
+        "R03"
+      ],
+      "train": "Development",
+      "path": "plans/AITSNAP-V1-GOAL-TRAIN-001/goals/D05.md"
+    },
+    {
+      "id": "D06",
+      "title": "Local CLI/IPC reusable host integration",
+      "budgetHours": 8,
+      "dependencies": [
+        "D01",
+        "D05"
+      ],
+      "train": "Development",
+      "path": "plans/AITSNAP-V1-GOAL-TRAIN-001/goals/D06.md"
+    },
+    {
+      "id": "D07",
+      "title": "Performance, installer and product consolidation",
+      "budgetHours": 8,
+      "dependencies": [
+        "D04",
+        "D06"
+      ],
+      "train": "Development",
+      "path": "plans/AITSNAP-V1-GOAL-TRAIN-001/goals/D07.md"
+    },
+    {
+      "id": "L00",
+      "title": "Win7 native compiler/SDK/CRT/VM qualification",
+      "budgetHours": 6,
+      "dependencies": [],
+      "train": "Legacy",
+      "path": "plans/AITSNAP-V1-GOAL-TRAIN-001/goals/L00.md"
+    },
+    {
+      "id": "L01",
+      "title": "Win7 native screenshot and tray qualification",
+      "budgetHours": 5,
+      "dependencies": [
+        "L00",
+        "D01",
+        "D02"
+      ],
+      "train": "Legacy",
+      "path": "plans/AITSNAP-V1-GOAL-TRAIN-001/goals/L01.md"
+    },
+    {
+      "id": "L02",
+      "title": "Win7 full scene/Word/IPC and release acceptance",
+      "budgetHours": 7,
+      "dependencies": [
+        "L01",
+        "D07"
+      ],
+      "train": "Legacy",
+      "path": "plans/AITSNAP-V1-GOAL-TRAIN-001/goals/L02.md"
+    }
+  ]
+}

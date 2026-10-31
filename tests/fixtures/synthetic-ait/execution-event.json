@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "eventId": "EVT-SYN-017",
+  "sourceSystem": "SYNTHETIC_AIT_EXECUTOR",
+  "sourceSequenceNo": 1027,
+  "sourceTimeUtc": "2026-10-31T06:34:12.183Z",
+  "receivedAtUtc": "2026-10-31T06:34:12.210Z",
+  "eventType": "COMMAND_ACKNOWLEDGED",
+  "testContext": {
+    "testId": "TEST-SYN-043",
+    "deviceId": "DUT-SYN-01",
+    "subsystem": "EPS"
+  },
+  "sequence": {
+    "definitionId": "SEQ-SYN-PWR",
+    "definitionRevision": "v1",
+    "runId": "RUN-SYN-002",
+    "stepId": "STEP-002",
+    "stepExecutionId": "STEP-EXEC-SYN-004",
+    "stepPath": [
+      "2"
+    ]
+  },
+  "command": {
+    "definitionId": "CMD-READ-V",
+    "invocationId": "INV-SYN-008",
+    "attempt": 2,
+    "status": "ACK_RECEIVED",
+    "parameters": {
+      "channel": "BUS-A"
+    }
+  },
+  "correlationStatus": "EXACT"
+}

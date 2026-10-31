@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "jobId": "RJOB-SYN-000123",
+  "batchId": "CAP-SYN-000123",
+  "createdAtUtc": "2026-10-31T06:34:13.000Z",
+  "state": "QUEUED",
+  "target": {
+    "documentPath": "reports/synthetic-eps-test.docx",
+    "mode": "append"
+  },
+  "items": [
+    {
+      "artifactId": "ART-SYN-COMPOSITE",
+      "caption": "Synthetic power monitor - run 002 step 002",
+      "renderAs": "inline_image"
+    }
+  ],
+  "attemptCount": 0
+}

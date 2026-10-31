@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "requestId": "REQ-SYN-000123",
+  "issuedAtUtc": "2026-10-31T06:34:12.215Z",
+  "profileId": "EPS-OVERVIEW",
+  "profileRevision": 1,
+  "regionIds": [
+    "R1-VOLTAGE",
+    "R2-CURRENT"
+  ],
+  "sceneIds": [
+    "SCN-EPS-OVERVIEW"
+  ],
+  "trigger": {
+    "kind": "ait_event",
+    "eventId": "EVT-SYN-017"
+  },
+  "context": {
+    "testId": "TEST-SYN-043",
+    "deviceId": "DUT-SYN-01",
+    "sequenceRunId": "RUN-SYN-002",
+    "stepExecutionId": "STEP-EXEC-SYN-004",
+    "commandInvocationId": "INV-SYN-008",
+    "eventId": "EVT-SYN-017"
+  },
+  "outputs": {
+    "saveOriginals": true,
+    "saveComposites": true,
+    "clipboard": "primary_scene",
+    "reportTemplateId": "RPT-SYN-001"
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "sceneId": "SCN-EPS-OVERVIEW",
+  "revision": 1,
+  "name": "Synthetic EPS overview",
+  "canvas": {
+    "widthPx": 1600,
+    "heightPx": 900,
+    "background": "#20252C"
+  },
+  "layers": [
+    {
+      "layerId": "LYR-1",
+      "sourceRegionId": "R1-VOLTAGE",
+      "zIndex": 0,
+      "visible": true,
+      "locked": false,
+      "destination": {
+        "x": 20,
+        "y": 20,
+        "width": 760,
+        "height": 650
+      },
+      "missingSourcePolicy": "fail"
+    },
+    {
+      "layerId": "LYR-2",
+      "sourceRegionId": "R2-CURRENT",
+      "zIndex": 1,
+      "visible": true,
+      "destination": {
+        "x": 800,
+        "y": 20,
+        "width": 760,
+        "height": 650
+      },
+      "missingSourcePolicy": "fail"
+    }
+  ]
+}
