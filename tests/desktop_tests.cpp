@@ -44,7 +44,7 @@ int main(int argc, char** argv)
         profile.regions.push_back({"one", "One", {0, 0, 16, 16}, true}); settings.profiles.push_back(profile);
         const auto path = temp.filePath("settings.json"); check(saveSettings(path, settings, error), "save settings");
         Settings loaded; check(loadSettings(path, loaded, error) && loaded.profiles[0].regions[0].rect == profile.regions[0].rect, "restart persistence");
-        QFile corrupt(temp.filePath("future.json")); check(corrupt.open(QIODevice::WriteOnly), "future settings file"); corrupt.write("{\"schemaVersion\":2}"); corrupt.close();
+        QFile corrupt(temp.filePath("future.json")); check(corrupt.open(QIODevice::WriteOnly), "future settings file"); corrupt.write("{\"schemaVersion\":99}"); corrupt.close();
         check(!loadSettings(corrupt.fileName(), loaded, error), "future version rejected"); error.clear();
         QImage source(16, 16, QImage::Format_ARGB32); source.fill(Qt::red);
         for (const auto& format : {"PNG", "JPEG", "BMP"}) {
@@ -71,7 +71,22 @@ int main(int argc, char** argv)
             check(triggered == 0, "native hotkey event dispatch");
         }
         std::cout << "ADAPTER_PASS settings/migration, PNG/JPEG/BMP, no-overwrite, disk failure, filename, hotkey collision/pause/dispatch\n";
+        if (app.arguments().contains("--check-lock-guard")) {
+            const auto evidence = app.arguments().indexOf("--evidence");
+            if (evidence >= 0 && evidence + 1 < app.arguments().size()) settings.outputDirectory = app.arguments()[evidence + 1];
+            const auto status = interactiveDesktopStatus();
+            if (status.code != "SESSION_LOCKED") { std::cout << "LOCK_GUARD_NOT_RUN expected locked test session\n"; return 2; }
+            WinCaptureBackend backend; auto displays = backend.displays(); check(!displays.empty(), "lock guard display inventory");
+            const auto frame = backend.acquire(displays.front()); check(frame.error.code == "SESSION_LOCKED" && !frame.image.valid() && frame.acquiredAtUtc.empty(), "locked session cannot create a captured frame");
+            auto lockedProfile = profile; lockedProfile.calibratedDisplays = displays; lockedProfile.regions[0].rect = {displays.front().rect.x + 20, displays.front().rect.y + 20, 16, 16};
+            core::CaptureRequest blocked; blocked.requestId = "locked-" + QString::number(QDateTime::currentMSecsSinceEpoch()).toStdString(); blocked.profile = lockedProfile; blocked.issuedAtUtc = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs).toStdString();
+            const auto outcome = captureToFiles(backend, settings, blocked, true); const auto json = batchJson(outcome.batch);
+            check(json["status"].toString() == "FAILED" && outcome.batch.captures[0].error.code == "SESSION_LOCKED", "locked batch accurately failed");
+            check(writeBatchManifest(outcome, error), "locked failure receipt");
+            std::cout << "LOCK_GUARD_PASS SESSION_LOCKED no_frame no_false_acquisition manifest=" << outcome.directory.toStdString() << "/batch.json\n"; return 0;
+        }
         if (app.arguments().contains("--native")) {
+            if (const auto status = interactiveDesktopStatus(); status) { std::cout << "NATIVE_HOLD " << status.code << ' ' << status.message << '\n'; return 2; }
             WinCaptureBackend backend; profile.calibratedDisplays = backend.displays(); check(!profile.calibratedDisplays.empty(), "native displays");
             WNDCLASSW wc{}; wc.lpfnWndProc = paint; wc.hInstance = GetModuleHandleW(nullptr); wc.lpszClassName = L"AITSnapDesktopTest";
             check(RegisterClassW(&wc) != 0, "native pattern class");
@@ -104,6 +119,7 @@ int main(int argc, char** argv)
             for (const auto& capture : outcome->batch.captures) {
                 check(!capture.error && capture.image.valid(), "native region acquired");
                 const auto image = toQImage(capture.image); const int i = std::stoi(capture.region.id.substr(1));
+                if (image.pixelColor(4, 4) != QColor(i % 2 ? Qt::green : Qt::red)) std::cerr << "PIXEL_MISMATCH region=" << capture.region.id << " argb=" << image.pixelColor(4, 4).name(QColor::HexArgb).toStdString() << " expected=" << (i % 2 ? "green" : "red") << '\n';
                 check(image.pixelColor(4, 4) == QColor(i % 2 ? Qt::green : Qt::red), "native exact region pixel");
             }
             for (const auto& output : outcome->batch.outputs) {

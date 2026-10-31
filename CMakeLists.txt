@@ -25,6 +25,9 @@ target_link_libraries(aitsnap-report PUBLIC aitsnap-domain)
 add_library(aitsnap-context STATIC src/core/context.cpp)
 set_target_properties(aitsnap-context PROPERTIES AUTOMOC OFF)
 target_link_libraries(aitsnap-context PUBLIC aitsnap-domain)
+add_library(aitsnap-scene STATIC src/core/scene_geometry.cpp)
+set_target_properties(aitsnap-scene PROPERTIES AUTOMOC OFF)
+target_link_libraries(aitsnap-scene PUBLIC aitsnap-domain)
 # Scene value models live in domain until their services justify targets.
 if(BUILD_TESTING)
     add_executable(aitsnap-core-tests tests/core_tests.cpp)
@@ -59,8 +62,10 @@ add_library(aitsnap-adapters STATIC
     src/adapters/hotkeys.cpp
     src/adapters/capture_files.cpp
     src/desktop/region_editor.cpp
+    src/adapters/scene_render.cpp
+    src/desktop/scene_editor.cpp
 )
-target_link_libraries(aitsnap-adapters PUBLIC aitsnap-capture Qt${AITSNAP_QT_MAJOR}::Widgets PRIVATE gdi32 user32 dwmapi)
+target_link_libraries(aitsnap-adapters PUBLIC aitsnap-capture aitsnap-scene Qt${AITSNAP_QT_MAJOR}::Widgets PRIVATE gdi32 user32 dwmapi wtsapi32)
 target_include_directories(aitsnap-adapters PUBLIC src)
 add_executable(aitsnap WIN32
     src/main.cpp
@@ -76,6 +81,10 @@ if(BUILD_TESTING)
     target_link_libraries(aitsnap-desktop-tests PRIVATE aitsnap-adapters dwmapi)
     add_test(NAME desktop-adapters COMMAND aitsnap-desktop-tests)
     list(APPEND aitsnap_targets aitsnap-desktop-tests)
+    add_executable(aitsnap-scene-tests tests/scene_tests.cpp)
+    target_link_libraries(aitsnap-scene-tests PRIVATE aitsnap-adapters)
+    add_test(NAME scene COMMAND aitsnap-scene-tests)
+    list(APPEND aitsnap_targets aitsnap-scene-tests)
 endif()
 if(AITSNAP_BUILD_RESEARCH_PROBE)
     add_executable(aitsnap-word-probe probes/word_native_probe.cpp)
@@ -84,7 +93,7 @@ if(AITSNAP_BUILD_RESEARCH_PROBE)
     list(APPEND aitsnap_targets aitsnap-word-probe)
     add_executable(aitsnap-capture-scene-probe probes/capture_scene_probe.cpp)
     target_include_directories(aitsnap-capture-scene-probe PRIVATE src)
-    target_link_libraries(aitsnap-capture-scene-probe PRIVATE gdi32 user32 dwmapi)
+    target_link_libraries(aitsnap-capture-scene-probe PRIVATE aitsnap-adapters gdi32 user32 dwmapi wtsapi32)
     list(APPEND aitsnap_targets aitsnap-capture-scene-probe)
 endif()
 if(AITSNAP_BUILD_COMPAT_PROBE)

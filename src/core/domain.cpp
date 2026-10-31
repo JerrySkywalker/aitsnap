@@ -33,16 +33,22 @@ Error validateProfile(const CaptureProfile& p)
 }
 Error validateScene(const SceneTemplate& s)
 {
-    if (s.id.empty() || s.revision < 1 || s.width <= 0 || s.height <= 0 ||
+    if (s.id.empty() || s.name.empty() || s.revision < 1 || s.width <= 0 || s.height <= 0 ||
         std::int64_t(s.width) * s.height > 100000000) return {"SCENE", "Invalid scene identity or canvas size"};
+    if ((s.background.size() != 7 && s.background.size() != 9) || s.background.front() != '#' ||
+        !std::all_of(s.background.begin() + 1, s.background.end(), [](unsigned char c) { return std::isxdigit(c) != 0; }))
+        return {"SCENE_COLOUR", "Use #RRGGBB or #RRGGBBAA"};
     std::set<std::string> ids;
     for (const auto& l : s.layers) {
         const auto& d = l.destination;
         if (l.id.empty() || !ids.insert(l.id).second || l.sourceRegionId.empty() ||
             !std::isfinite(d.x) || !std::isfinite(d.y) || !std::isfinite(d.width) ||
             !std::isfinite(d.height) || !std::isfinite(d.rotationDeg) || d.width <= 0 || d.height <= 0 ||
+            std::abs(d.x) > 1000000 || std::abs(d.y) > 1000000 || d.width > 1000000 || d.height > 1000000 ||
             (l.missingSourcePolicy != "fail" && l.missingSourcePolicy != "skip" && l.missingSourcePolicy != "placeholder"))
             return {"LAYER", "Invalid layer identity, transform or missing-source policy"};
+        const bool noCrop = l.crop == Rect{};
+        if (!noCrop && (!l.crop.valid() || l.crop.x < 0 || l.crop.y < 0)) return {"SOURCE_CROP", "Source-local crop must have nonnegative origin and positive size"};
     }
     return {};
 }
