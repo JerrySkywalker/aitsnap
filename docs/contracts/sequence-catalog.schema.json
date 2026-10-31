@@ -139,6 +139,10 @@
                   "type": "string",
                   "minLength": 1
                 },
+                "subsequenceRevision": {
+                  "type": "string",
+                  "minLength": 1
+                },
                 "description": {
                   "type": "string"
                 },
@@ -146,6 +150,10 @@
                   "type": "object"
                 }
               },
+              "allOf": [
+                { "if": { "properties": { "kind": { "const": "command" } }, "required": ["kind"] }, "then": { "required": ["commandId"] } },
+                { "if": { "properties": { "kind": { "const": "subsequence" } }, "required": ["kind"] }, "then": { "required": ["subsequenceId", "subsequenceRevision"] } }
+              ],
               "required": [
                 "stepId",
                 "order",
