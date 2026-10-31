@@ -22,6 +22,7 @@ struct Context {
     std::string sourceSystem, eventId, sequenceRunId, stepExecutionId, commandInvocationId;
     int attempt{};
     std::string correlationStatus{"UNLINKED"};
+    std::string testId, deviceId, stationId, operatorId;
 };
 struct CaptureRequest {
     std::string requestId, issuedAtUtc;
@@ -42,7 +43,7 @@ struct DisplayFrame {
     Error error;
 };
 struct SourceCapture { Region region; Image image; std::vector<std::string> displayIds; Error error; };
-struct OutputResult { std::string kind, path, status{"NOT_REQUESTED"}; Error error; };
+struct OutputResult { std::string kind, path, status{"NOT_REQUESTED"}; Error error; std::string regionId, sha256; };
 struct CaptureBatch {
     std::string batchId;
     CaptureRequest request;

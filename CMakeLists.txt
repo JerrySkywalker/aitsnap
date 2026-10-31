@@ -46,6 +46,14 @@ else()
     message(FATAL_ERROR "AITSNAP_QT_MAJOR must be 5 or 6; no automatic fallback is used.")
 endif()
 
+add_library(aitsnap-adapters STATIC
+    src/adapters/win_capture.cpp
+    src/adapters/json_store.cpp
+    src/adapters/hotkeys.cpp
+    src/adapters/capture_files.cpp
+)
+target_link_libraries(aitsnap-adapters PUBLIC aitsnap-capture Qt${AITSNAP_QT_MAJOR}::Widgets PRIVATE gdi32 user32)
+target_include_directories(aitsnap-adapters PUBLIC src)
 add_executable(aitsnap WIN32
     src/main.cpp
     src/main_window.cpp
@@ -53,7 +61,14 @@ add_executable(aitsnap WIN32
     src/compat/qt_widgets_compat.h
 )
 
-set(aitsnap_targets aitsnap)
+target_link_libraries(aitsnap PRIVATE aitsnap-adapters)
+set(aitsnap_targets aitsnap aitsnap-adapters)
+if(BUILD_TESTING)
+    add_executable(aitsnap-desktop-tests tests/desktop_tests.cpp src/main_window.cpp)
+    target_link_libraries(aitsnap-desktop-tests PRIVATE aitsnap-adapters dwmapi)
+    add_test(NAME desktop-adapters COMMAND aitsnap-desktop-tests)
+    list(APPEND aitsnap_targets aitsnap-desktop-tests)
+endif()
 if(AITSNAP_BUILD_RESEARCH_PROBE)
     add_executable(aitsnap-capture-scene-probe probes/capture_scene_probe.cpp)
     target_include_directories(aitsnap-capture-scene-probe PRIVATE src)
