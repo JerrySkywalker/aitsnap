@@ -12,6 +12,7 @@ public:
     explicit ContextStore(QString directory);
     bool importCatalog(const QString& sourcePath, QString& error);
     core::EventResult ingest(QJsonObject event);
+    core::EventResult preview(QJsonObject event) const;
     QList<QJsonObject> catalogs() const { return catalogs_; }
     QList<QJsonObject> events() const;
     QJsonObject snapshot(const QString& source, const QString& eventId, bool redacted = true) const;

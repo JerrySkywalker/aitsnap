@@ -4,6 +4,7 @@
 #pragma once
 
 #include <QMainWindow>
+#include <QJsonArray>
 #include "adapters/capture_files.h"
 #include "adapters/hotkeys.h"
 #include <functional>
@@ -15,11 +16,12 @@ class QMenu; class QSystemTrayIcon; class QTableWidget; class QListWidget;
 namespace aitsnap {
 class ReportQueue;
 class ContextStore;
+class LocalPipeServer;
 
 class MainWindow final : public QMainWindow
 {
 public:
-    explicit MainWindow(QWidget* parent = nullptr, QString configurationPath = {});
+    explicit MainWindow(QWidget* parent = nullptr, QString configurationPath = {}, QString pipeName = {});
     ~MainWindow() override;
     void triggerCapture(int mode);
     bool startInTray() const { return settings_.startInTray; }
@@ -49,6 +51,10 @@ private:
     core::Context selectedContext_;
     QJsonObject selectedContextSnapshot_;
     QLabel* contextStatus_{};
+    std::unique_ptr<LocalPipeServer> localHost_;
+    QJsonArray eventRules_;
+    QLabel* hostStatus_{};
+    QString currentRequestId_;
     std::shared_ptr<CaptureOutcome> lastOutcome_;
     QLabel *status_{}, *preview_{};
     bool busy_{}, paused_{}, configurationBlocked_{}, editingRegions_{}, editingScene_{};
@@ -62,6 +68,11 @@ private:
     void completeCapture(const std::shared_ptr<CaptureOutcome>&, const Settings&, int mode);
     void showReportQueue(); void refreshReportStatus();
     void showContextStore();
+    QString startCapture(int mode, const QJsonObject& options = {}, const QJsonObject& eventSnapshot = {});
+    void startHost(QString pipeName); void editEventRules();
+    QJsonObject hostRequest(const QString&, const QJsonObject&, bool preflight);
+    bool validateHostOptions(const QJsonObject&, QString& error) const;
+    bool validateEventRule(const QJsonObject&, QString& error) const;
 };
 
 } // namespace aitsnap

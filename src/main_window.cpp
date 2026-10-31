@@ -6,6 +6,7 @@
 #include "adapters/win_capture.h"
 #include "adapters/report_queue.h"
 #include "adapters/context_store.h"
+#include "adapters/local_host.h"
 #include "desktop/region_editor.h"
 #include "desktop/scene_editor.h"
 #include "core/scene_geometry.h"
@@ -58,7 +59,7 @@ static QIcon appIcon()
     p.drawRoundedRect(2, 2, 60, 60, 13, 13); p.setPen(QPen(Qt::white, 4)); p.setBrush(Qt::NoBrush);
     p.drawRoundedRect(14, 18, 36, 28, 4, 4); p.drawEllipse(25, 25, 14, 14); return QIcon(pixmap);
 }
-MainWindow::MainWindow(QWidget* parent, QString path) : QMainWindow(parent), configurationPath_(path.isEmpty() ? settingsPath() : path)
+MainWindow::MainWindow(QWidget* parent, QString path, QString pipeName) : QMainWindow(parent), configurationPath_(path.isEmpty() ? settingsPath() : path)
 {
     setWindowTitle(QStringLiteral("AITSnap · 多屏截图")); resize(1120, 780); setWindowIcon(appIcon());
     settings_ = defaultSettings(); QString loadError;
@@ -84,8 +85,16 @@ MainWindow::MainWindow(QWidget* parent, QString path) : QMainWindow(parent), con
     if (!hotkeys_.configure({settings_.saveHotkey, settings_.copyHotkey, settings_.bothHotkey}, e)) setStatus(e, true);
     else setStatus(QStringLiteral("就绪 · %1 保存，%2 复制，%3 保存并复制").arg(settings_.saveHotkey, settings_.copyHotkey, settings_.bothHotkey));
     if (!loadError.isEmpty()) setStatus(QStringLiteral("配置未载入，原文件保留：") + loadError + QStringLiteral("。核对后应用配置。"), true);
+    startHost(std::move(pipeName));
 }
-MainWindow::~MainWindow() { QThreadPool::globalInstance()->waitForDone(); }
+MainWindow::~MainWindow()
+{
+    localHost_.reset(); // stop admission before tearing down desktop state
+    captureFinished = {};
+    QThreadPool::globalInstance()->waitForDone();
+    QCoreApplication::sendPostedEvents(this, QEvent::MetaCall); // finish saved-batch receipts before receiver destruction
+    if (reportQueue_) { reportQueue_->changed = {}; delete reportQueue_; reportQueue_ = nullptr; }
+}
 void MainWindow::buildUi()
 {
     auto* central = new QWidget(this); auto* outer = new QVBoxLayout(central); outer->setContentsMargins(24, 20, 24, 16); outer->setSpacing(14);
@@ -120,6 +129,8 @@ void MainWindow::buildUi()
     auto* contextButton = new QPushButton(QStringLiteral("静态目录 / 执行事件 / 选择截图上下文")); contextButton->setObjectName("openContextStore"); l->addWidget(contextButton);
     contextStatus_ = new QLabel(QStringLiteral("截图上下文：未关联。事件到达不会自动切换当前上下文。")); contextStatus_->setWordWrap(true); l->addWidget(contextStatus_);
     connect(contextButton, &QPushButton::clicked, this, [this] { showContextStore(); });
+    auto* rules = new QPushButton(QStringLiteral("事件截图规则（默认无自动规则）")); l->addWidget(rules); connect(rules, &QPushButton::clicked, this, [this] { editEventRules(); });
+    hostStatus_ = new QLabel; hostStatus_->setWordWrap(true); l->addWidget(hostStatus_);
     connect(newScene, &QPushButton::clicked, this, [this] { editScene(true); });
     connect(editSceneButton, &QPushButton::clicked, this, [this] { editScene(false); });
     connect(history, &QPushButton::clicked, this, [this] { editScene(false, true); });
@@ -280,24 +291,37 @@ void MainWindow::setStatus(const QString& text, bool error)
 }
 void MainWindow::triggerCapture(int mode)
 {
-    if (editingScene_) { setStatus(QStringLiteral("拼图编辑中，截图热键暂停；保存或取消后恢复。"), true); return; }
-    if (editingRegions_) { setStatus(QStringLiteral("区域编辑中，截图未接受；请完成或取消框选。"), true); return; }
-    if (configurationBlocked_) { setStatus(QStringLiteral("原配置无法读取。核对并应用配置后才能截图。"), true); return; }
-    if (paused_) { setStatus(QStringLiteral("截图已暂停，请从托盘恢复"), true); return; }
-    if (busy_) { setStatus(QStringLiteral("上一批截图尚未完成，本次请求未接受"), true); return; }
+    startCapture(mode);
+}
+QString MainWindow::startCapture(int mode, const QJsonObject& options, const QJsonObject& eventSnapshot)
+{
+    if (editingScene_) { setStatus(QStringLiteral("拼图编辑中，截图热键暂停；保存或取消后恢复。"), true); return {}; }
+    if (editingRegions_) { setStatus(QStringLiteral("区域编辑中，截图未接受；请完成或取消框选。"), true); return {}; }
+    if (configurationBlocked_) { setStatus(QStringLiteral("原配置无法读取。核对并应用配置后才能截图。"), true); return {}; }
+    if (paused_) { setStatus(QStringLiteral("截图已暂停，请从托盘恢复"), true); return {}; }
+    if (busy_) { setStatus(QStringLiteral("上一批截图尚未完成，本次请求未接受"), true); return {}; }
     QString e; Settings snapshot = settings_; ++snapshot.sequence;
-    if (!saveSettings(configurationPath_, snapshot, e)) { setStatus(QStringLiteral("序号未持久化：") + e, true); return; }
+    if (options.contains("profileId")) {
+        const auto chosen = options["profileId"].toString().toStdString(); const auto found = std::find_if(snapshot.profiles.begin(), snapshot.profiles.end(), [&](const auto& p) { return p.id == chosen; });
+        if (found == snapshot.profiles.end()) return {}; snapshot.activeProfile = int(found - snapshot.profiles.begin()); snapshot.outputMode = qs(found->outputMode); snapshot.clipboardRegion = qs(found->clipboardSelection); snapshot.selectedSceneIds.clear(); for (const auto& scene : found->sceneIds) snapshot.selectedSceneIds.append(qs(scene));
+    }
+    if (options.contains("sceneIds")) { snapshot.selectedSceneIds.clear(); for (const auto& scene : options["sceneIds"].toArray()) snapshot.selectedSceneIds.append(scene.toString()); snapshot.outputMode = snapshot.selectedSceneIds.empty() ? "originals" : "both"; if (!snapshot.selectedSceneIds.empty()) snapshot.clipboardRegion = "scene:" + snapshot.selectedSceneIds.front(); else snapshot.clipboardRegion.clear(); }
+    auto persistent = settings_; persistent.sequence = snapshot.sequence;
+    if (!saveSettings(configurationPath_, persistent, e)) { setStatus(QStringLiteral("序号未持久化：") + e, true); return {}; }
     settings_.sequence = snapshot.sequence; core::CaptureRequest request;
     request.requestId = QDateTime::currentDateTimeUtc().toString("yyyyMMdd-HHmmss-zzz").toStdString() + "-" + id();
     request.issuedAtUtc = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs).toStdString(); request.profile = snapshot.profiles[std::size_t(snapshot.activeProfile)];
     request.context.testId = snapshot.testId.toStdString(); request.context.deviceId = snapshot.device.toStdString();
     request.context.stationId = snapshot.station.toStdString(); request.context.operatorId = snapshot.operatorName.toStdString();
     if (!selectedContextSnapshot_.isEmpty()) { request.context = selectedContext_; request.context.stationId = snapshot.station.toStdString(); request.context.operatorId = snapshot.operatorName.toStdString(); request.contextSnapshotJson = QJsonDocument(selectedContextSnapshot_).toJson(QJsonDocument::Compact).toStdString(); }
+    if (!eventSnapshot.isEmpty()) { const auto event = eventSnapshot["event"].toObject(); request.context = contextStore_->context(event["sourceSystem"].toString(), event["eventId"].toString()); request.context.stationId = snapshot.station.toStdString(); request.context.operatorId = snapshot.operatorName.toStdString(); request.contextSnapshotJson = QJsonDocument(eventSnapshot).toJson(QJsonDocument::Compact).toStdString(); }
+    currentRequestId_ = qs(request.requestId);
     busy_ = true; setStatus(QStringLiteral("正在后台采集 %1 个源区域…").arg(request.profile.regions.size())); QPointer<MainWindow> self(this);
     QThreadPool::globalInstance()->start(QRunnable::create([self, snapshot, request, mode] {
         WinCaptureBackend backend; auto result = std::make_shared<CaptureOutcome>(captureToFiles(backend, snapshot, request, mode != 1, mode != 0));
         if (self) QMetaObject::invokeMethod(self, [self, result, snapshot, mode] { if (self) self->completeCapture(result, snapshot, mode); }, Qt::QueuedConnection);
     }));
+    return currentRequestId_;
 }
 void MainWindow::completeCapture(const std::shared_ptr<CaptureOutcome>& result, const Settings& snapshot, int mode)
 {
