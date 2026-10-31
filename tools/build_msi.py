@@ -60,7 +60,7 @@ def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--package',type=Path,required=True)
     p.add_argument('--destination',type=Path,required=True)
-    p.add_argument('--version',default='0.6.1')
+    p.add_argument('--version',default='0.6.2')
     a=p.parse_args(); package=a.package.resolve(); output=a.destination.resolve()
     if output.exists(): p.error('Choose a new destination directory')
     manifest=json.loads((package/'package-manifest.json').read_text(encoding='utf-8'))

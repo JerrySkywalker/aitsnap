@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 cmake_minimum_required(VERSION 3.24)
 
-project(AITSnap VERSION 0.6.1 LANGUAGES CXX)
+project(AITSnap VERSION 0.6.2 LANGUAGES CXX)
 
 if(NOT WIN32)
     message(FATAL_ERROR "The current AITSnap build baseline requires Windows.")
