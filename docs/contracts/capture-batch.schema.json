@@ -114,7 +114,7 @@
               "type": "string",
               "minLength": 1
             },
-            "minItems": 1
+            "minItems": 0
           },
           "physicalRectPx": {
             "type": "array",
@@ -160,6 +160,12 @@
             "minLength": 1
           }
         },
+        "allOf": [
+          {
+            "if": { "properties": { "outcome": { "const": "SUCCEEDED" } }, "required": ["outcome"] },
+            "then": { "properties": { "displayIds": { "minItems": 1 } } }
+          }
+        ],
         "required": [
           "sourceCaptureId",
           "regionId",
