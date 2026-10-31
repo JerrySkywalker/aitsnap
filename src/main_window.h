@@ -36,11 +36,12 @@ private:
     QCheckBox* startTray_{};
     QTableWidget* regions_{};
     QLabel *status_{}, *preview_{};
-    bool busy_{}, paused_{}, configurationBlocked_{};
+    bool busy_{}, paused_{}, configurationBlocked_{}, editingRegions_{};
     void buildUi(); void setupTray(); void loadProfile();
     bool collectSettings(Settings&, QString& error);
     bool applySettings(); void addRegion(); void rebuildProfileMenu();
     void setStatus(const QString&, bool error = false);
+    void editRegions();
     void completeCapture(const std::shared_ptr<CaptureOutcome>&, const Settings&, int mode);
 };
 

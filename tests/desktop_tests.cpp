@@ -7,11 +7,14 @@
 #include "compat/qt_widgets_compat.h"
 #include <QApplication>
 #include <QClipboard>
+#include <QComboBox>
 #include <QDateTime>
 #include <QDir>
 #include <QEventLoop>
 #include <QFile>
 #include <QJsonDocument>
+#include <QKeyEvent>
+#include <QPushButton>
 #include <QTemporaryDir>
 #include <QTimer>
 #include <algorithm>
@@ -83,6 +86,7 @@ int main(int argc, char** argv)
                 profile.regions.push_back({"r" + std::to_string(i), "Synthetic " + std::to_string(i), {display.rect.x + 90 + (i % 2) * 110, display.rect.y + 90 + i * 10, 16, 16}, true});
             }
             settings = defaultSettings(); settings.outputDirectory = temp.filePath("captures"); settings.profiles = {profile}; settings.clipboardRegion = "r1";
+            auto secondary = profile; secondary.id = "secondary"; secondary.name = "Secondary"; secondary.regions.resize(1); settings.profiles.push_back(secondary);
             settings.saveHotkey = "Ctrl+Alt+Shift+F20"; settings.copyHotkey = "Ctrl+Alt+Shift+F21"; settings.bothHotkey = "Ctrl+Alt+Shift+F22";
             check(saveSettings(path, settings, error), "synthetic main settings");
             const auto evidence = app.arguments().indexOf("--evidence");
@@ -111,6 +115,30 @@ int main(int argc, char** argv)
             check(QFile::exists(QDir(outcome->directory).filePath("batch.json")), "batch manifest saved");
             Settings restarted; check(loadSettings(path, restarted, error) && restarted.sequence == 1, "persistent capture sequence");
             std::cout << "NATIVE_M1_AUTOMATED_PASS displays=" << profile.calibratedDisplays.size() << " regions=5 saved=5 clipboard=1 focus=preserved elapsed_ms=" << outcome->elapsedMs << " manifest=" << outcome->directory.toStdString() << "/batch.json\n";
+            if (app.arguments().contains("--editor")) {
+                const auto before = outcome;
+                auto* edit = host.findChild<QPushButton*>("editRegions"); check(edit != nullptr, "editor entry");
+                edit->click();
+                QEventLoop editing; QTimer::singleShot(500, &editing, &QEventLoop::quit); editing.exec();
+                std::vector<QWidget*> overlays;
+                for (auto* widget : QApplication::topLevelWidgets()) if (widget->isVisible() && widget->windowTitle().startsWith(QStringLiteral("AITSnap · 屏幕区域编辑"))) overlays.push_back(widget);
+                check(overlays.size() == profile.calibratedDisplays.size(), "per-display editor windows");
+                host.triggerCapture(0); // Must reject while overlays exist, not acquire editor pixels.
+                QKeyEvent cancel(QEvent::KeyPress, Qt::Key_Escape, Qt::NoModifier); QApplication::sendEvent(overlays.front(), &cancel);
+                QEventLoop closing; QTimer::singleShot(450, &closing, &QEventLoop::quit); closing.exec();
+                check(outcome == before, "overlay capture request rejected");
+                Settings cancelled; check(loadSettings(path, cancelled, error), "cancelled settings readable");
+                check(cancelled.profiles[0].regions.size() == profile.regions.size() && cancelled.profiles[0].regions[0].rect == profile.regions[0].rect, "cancel preserves physical regions");
+                for (auto* widget : QApplication::topLevelWidgets()) check(!widget->isVisible() || !widget->windowTitle().startsWith(QStringLiteral("AITSnap · 屏幕区域编辑")), "overlays removed before capture resumes");
+                edit->click(); QEventLoop accepting; QTimer::singleShot(500, &accepting, &QEventLoop::quit); accepting.exec();
+                overlays.clear(); for (auto* widget : QApplication::topLevelWidgets()) if (widget->isVisible() && widget->windowTitle().startsWith(QStringLiteral("AITSnap · 屏幕区域编辑"))) overlays.push_back(widget);
+                check(!overlays.empty(), "second editor session");
+                host.findChild<QComboBox*>("profiles")->setCurrentIndex(1);
+                QKeyEvent accept(QEvent::KeyPress, Qt::Key_Return, Qt::NoModifier); QApplication::sendEvent(overlays.front(), &accept);
+                QEventLoop accepted; QTimer::singleShot(450, &accepted, &QEventLoop::quit); accepted.exec();
+                Settings switched; check(loadSettings(path, switched, error) && switched.activeProfile == 1 && switched.profiles[0].id == profile.id && switched.profiles[0].regions.size() == 5 && switched.profiles[1].id == "secondary" && switched.profiles[1].regions.size() == 1, "editor commits to stable profile id despite active switch");
+                std::cout << "REGION_EDITOR_NATIVE_PASS windows=" << overlays.size() << " capture_guard=PASS cancel_roundtrip=PASS stable_profile_accept=PASS\n";
+            }
             if (app.arguments().contains("--benchmark")) {
                 std::vector<double> elapsed, skews;
                 core::CaptureRequest bench = outcome->batch.request;
