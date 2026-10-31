@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 cmake_minimum_required(VERSION 3.24)
 
-project(AITSnap VERSION 0.5.0 LANGUAGES CXX)
+project(AITSnap VERSION 0.6.0 LANGUAGES CXX)
 
 if(NOT WIN32)
     message(FATAL_ERROR "The current AITSnap build baseline requires Windows.")
@@ -102,6 +102,10 @@ if(BUILD_TESTING)
     add_executable(aitsnap-word-bridge-tests tests/word_bridge_tests.cpp)
     target_link_libraries(aitsnap-word-bridge-tests PRIVATE aitsnap-adapters ole32 oleaut32)
     list(APPEND aitsnap_targets aitsnap-word-bridge-tests)
+    add_executable(aitsnap-word-document-tests tests/word_document_tests.cpp)
+    target_link_libraries(aitsnap-word-document-tests PRIVATE aitsnap-adapters ole32 oleaut32)
+    add_dependencies(aitsnap-word-document-tests aitsnap-word-bridge)
+    list(APPEND aitsnap_targets aitsnap-word-document-tests)
     add_executable(aitsnap-context-store-tests tests/context_store_tests.cpp)
     target_link_libraries(aitsnap-context-store-tests PRIVATE aitsnap-adapters)
     add_test(NAME context-store COMMAND aitsnap-context-store-tests "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/synthetic-ait")

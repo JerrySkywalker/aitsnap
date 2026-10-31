@@ -34,6 +34,8 @@ def main():
     for name in ['LICENSE', 'README.md']:
         shutil.copy2(ROOT / name, target / name)
     shutil.copytree(ROOT / 'docs/preview', target / 'docs')
+    shutil.copytree(ROOT / 'docs/architecture', target / 'docs/architecture')
+    shutil.copytree(ROOT / 'docs/contracts', target / 'docs/contracts')
     shutil.copytree(ROOT / 'tests/fixtures/synthetic-ait', target / 'synthetic-demo')
     shutil.copy2(ROOT / 'examples/metadata_host.py', target / 'synthetic-demo/metadata_host.py')
     shutil.copytree(ROOT / 'third_party/licenses/qt', target / 'licenses')
@@ -53,7 +55,7 @@ def main():
         sourceCommit=subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
         sourceStatus=subprocess.check_output(['git', 'status', '--porcelain'], cwd=ROOT, text=True),
         sourceFileSha256=sources, dlls=provenance,
-        qualification='Win11 local preview only; Win10/Win7/Word2010/human acceptance HOLD'), indent=2) + '\n', encoding='utf-8')
+        qualification='Windows10 1809+ x64 / Win11 candidate; native Win10, Win7, Word2010 and Owner acceptance HOLD'), indent=2) + '\n', encoding='utf-8')
     manifest = dict(product='AITSnap modern local preview', files=[dict(path=x.relative_to(target).as_posix(), sha256=sha(x)) for x in sorted(target.rglob('*')) if x.is_file()])
     (target / 'package-manifest.json').write_text(json.dumps(manifest, indent=2) + '\n', encoding='utf-8')
     print(f'PACKAGE_CREATED {target} files={len(manifest["files"])}')

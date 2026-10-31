@@ -1,5 +1,6 @@
 $ErrorActionPreference = 'Stop'
 $targetRoot = [IO.Path]::GetFullPath($PSScriptRoot)
+if (Test-Path -LiteralPath (Join-Path $targetRoot 'msi-install.json')) { throw 'This directory is managed by Windows Installer. Uninstall AITSnap Preview through Windows Apps/Programs; do not remove its files with the portable script.' }
 $manifestPath = Join-Path $targetRoot 'package-manifest.json'
 $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
 if ($manifest.product -ne 'AITSnap modern local preview') { throw 'Unrecognized installation manifest' }

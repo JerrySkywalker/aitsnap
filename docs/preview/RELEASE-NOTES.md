@@ -1,4 +1,8 @@
-# 0.5.0-preview — limited local Windows preview
+# Preview release notes
+
+Current candidate: [0.6.0 M3 recovery and Windows Installer](RELEASE-0.6.0.md).
+
+## 0.5.0-preview — historical limited local Windows preview
 
 The shared application implements multi-region capture, tray/hotkeys, physical region editing, versioned free scene composition, immutable source evidence, durable Word jobs, static sequence import, read-only runtime correlation and a current-logon local CLI/pipe host.
 

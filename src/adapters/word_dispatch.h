@@ -25,6 +25,7 @@ public:
     explicit Value(int n) : Value() { value.vt = VT_I4; value.lVal = n; }
     explicit Value(double n) : Value() { value.vt = VT_R8; value.dblVal = n; }
     explicit Value(bool b) : Value() { value.vt = VT_BOOL; value.boolVal = b ? VARIANT_TRUE : VARIANT_FALSE; }
+    Value(const char*) = delete; // Require QStringLiteral/QString; a pointer must not silently become VT_BOOL.
     explicit Value(const QString& s) : Value() { value.vt = VT_BSTR; value.bstrVal = SysAllocStringLen(reinterpret_cast<const OLECHAR*>(s.utf16()), UINT(s.size())); }
     explicit Value(IDispatch* p) : Value() { value.vt = VT_DISPATCH; value.pdispVal = p; if (p) p->AddRef(); }
     Value(const Value& other) : Value() { require(VariantCopy(&value, const_cast<VARIANT*>(&other.value)), "VariantCopy"); }

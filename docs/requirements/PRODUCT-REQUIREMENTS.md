@@ -1,6 +1,6 @@
 # AITSnap product requirements (PRD v1)
 
-Status: APPROVED-DIRECTION / implementation NOT STARTED. Date: 2026-10-31. Baseline: main@56804c50.
+Status: APPROVED-DIRECTION / modern implementation delivered through M3 automated evidence, Windows10 installer candidate in consolidation. Date: 2026-10-31. Original baseline: main@56804c50; current execution status is in the program receipts. Native Win10/Win7/Word2010 and Owner acceptance remain HOLD.
 
 ## Mission
 Open-source Apache-2.0 Windows desktop tool for satellite AIT operators: predefined screen regions across multiple displays, one-key capture and save/copy, reusable composition scenes, Word report append, and read-only association to command/sequence execution. Standalone tray application first; reusable libraries and local host APIs thereafter.

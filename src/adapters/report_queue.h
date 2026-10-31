@@ -24,6 +24,7 @@ public:
     ~ReportQueue() override;
     bool enqueue(const CaptureOutcome&, const ReportOptions&, QString& error);
     bool inspectMarker(const QString& jobId, QString& error);
+    bool retryFailed(const QString& jobId, QString& error);
     QList<QJsonObject> jobs() const;
     QString diagnostic() const { return diagnostic_; }
     std::function<void()> changed;

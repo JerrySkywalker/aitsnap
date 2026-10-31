@@ -38,16 +38,30 @@ int main(int argc, char** argv)
         outcome.batch.request.issuedAtUtc = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs).toStdString(); outcome.batch.request.context.testId = "PUBLIC-SYNTHETIC";
         for (int i = 0; i < 2; ++i) {
             QImage image(i ? 120 : 1600, i ? 1200 : 400, QImage::Format_RGB32); image.fill(i ? Qt::green : Qt::blue);
-            const auto path = root + QString("/synthetic source %1.png").arg(i); check(saveImageNew(image, path, "PNG", error), "native source PNG");
+            const auto path = root + QStringLiteral("/合成 synthetic source %1.png").arg(i); check(saveImageNew(image, path, "PNG", error), "native source PNG");
             core::OutputResult output{i ? "COMPOSITE" : "ORIGINAL", path.toStdString(), "SAVED", {}}; output.sha256 = hash(path).toStdString();
             if (i) { output.sceneId = "row"; output.sceneRevision = 1; } else output.regionId = "r0";
             outcome.batch.outputs.push_back(output);
         }
-        ReportOptions options; options.documentPath = root + "/synthetic report with spaces.docx";
+        ReportOptions options; options.documentPath = root + QStringLiteral("/合成 synthetic report with spaces.docx");
         const auto helper = QCoreApplication::applicationDirPath() + "/aitsnap-word-bridge.exe";
+        QString retryId;
+        {
+            ReportQueue unavailable(root + "/queue", root + "/missing-helper.exe");
+            check(unavailable.enqueue(outcome, options, error), "native recovery first job queued without helper");
+            for (int attempt = 1; attempt <= 3; ++attempt) {
+                const auto end = QDateTime::currentMSecsSinceEpoch() + 10000;
+                while (QDateTime::currentMSecsSinceEpoch() < end) { QCoreApplication::processEvents(); const auto candidate = unavailable.jobs()[0]; if (candidate["attemptCount"].toInt() == attempt && candidate["state"] != "RUNNING") break; QThread::msleep(10); }
+                auto failed = unavailable.jobs()[0]; check(failed["attemptCount"].toInt() == attempt, "native bounded unavailable attempts");
+                auto ext = failed["extensions"].toObject(); ext.remove("nextAttemptUtc"); failed["extensions"] = ext;
+                check(storeReportJob(root + "/queue/" + failed["jobId"].toString() + ".json", failed, error), "advance native test retry clock"); if (attempt < 3) unavailable.pump();
+            }
+            check(unavailable.jobs()[0]["state"] == "FAILED", "native exhausted before any Word mutation"); retryId = unavailable.jobs()[0]["jobId"].toString();
+            options.layout = "table"; check(unavailable.enqueue(outcome, options, error), "native successor waits behind failed creation"); unavailable.pump();
+            check(unavailable.jobs()[1]["attemptCount"] == 0, "native failed create blocks append");
+        }
         ReportQueue queue(root + "/queue", helper);
-        check(queue.enqueue(outcome, options, error), "native inline create queued"); options.layout = "table";
-        check(queue.enqueue(outcome, options, error), "native table append queued before creation finishes");
+        check(queue.retryFailed(retryId, error), "native restart operator recovery keeps same job id");
         const auto deadline = QDateTime::currentMSecsSinceEpoch() + 130000;
         bool committed = false;
         while (QDateTime::currentMSecsSinceEpoch() < deadline) {
