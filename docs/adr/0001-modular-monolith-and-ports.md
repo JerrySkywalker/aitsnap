@@ -1,5 +1,5 @@
 # ADR-0001: Modular monolith with Ports and Adapters
-Status: Accepted for planning · 2026-10-31
+Status: Accepted for source implementation at R04; product gates separate · 2026-10-31
 
 ## Context
 Standalone screenshot tool now; future AIT systems should reuse capture/scene/report/context without inheriting desktop UI or process lifecycle.

@@ -35,6 +35,7 @@
         },
         "background": {
           "type": "string",
+          "description": "sRGB #RRGGBB or #RRGGBBAA (trailing alpha, not Qt AARRGGBB).",
           "pattern": "^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$"
         }
       },
@@ -72,16 +73,24 @@
           "locked": {
             "type": "boolean"
           },
+          "groupId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "preserveAspect": {
+            "type": "boolean",
+            "default": true
+          },
           "sourceCropPx": {
             "type": "array",
             "prefixItems": [
               {
                 "type": "integer",
-                "minimum": -2147483648
+                "minimum": 0
               },
               {
                 "type": "integer",
-                "minimum": -2147483648
+                "minimum": 0
               },
               {
                 "type": "integer",
