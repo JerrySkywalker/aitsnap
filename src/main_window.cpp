@@ -32,6 +32,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QMenu>
+#include <QMap>
 #include <QPainter>
 #include <QPointer>
 #include <QPushButton>
@@ -393,15 +394,21 @@ void MainWindow::showContextStore()
 void MainWindow::showReportQueue()
 {
     QDialog dialog(this); dialog.setWindowTitle(QStringLiteral("Word 报告任务")); dialog.resize(980, 500); auto* layout = new QVBoxLayout(&dialog);
-    auto* note = new QLabel(QStringLiteral("截图与 Word 独立。待核对任务不会自动重新插入；“核对标记”只检查目标文档中的提交记录。新建报告的未发布 pending.docx 会保留供核对。")); note->setWordWrap(true); layout->addWidget(note);
-    auto* table = new QTableWidget(0, 5); table->setHorizontalHeaderLabels({QStringLiteral("任务"), QStringLiteral("报告"), QStringLiteral("状态"), QStringLiteral("尝试"), QStringLiteral("错误 / 原因")}); table->setSelectionBehavior(QAbstractItemView::SelectRows); table->setEditTriggers(QAbstractItemView::NoEditTriggers); table->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents); table->horizontalHeader()->setStretchLastSection(true); layout->addWidget(table);
+    auto* note = new QLabel(QStringLiteral("截图与 Word 独立。失败或待核对会暂停同一报告的后续任务。排除原因后，仅修改前失败的任务可重试；UNCERTAIN 必须核对标记，不会盲目重插。未发布 pending.docx 保留供核对。")); note->setWordWrap(true); layout->addWidget(note);
+    auto* table = new QTableWidget(0, 5); table->setObjectName("reportJobs"); table->setHorizontalHeaderLabels({QStringLiteral("任务"), QStringLiteral("报告"), QStringLiteral("状态"), QStringLiteral("尝试"), QStringLiteral("错误 / 原因")}); table->setSelectionBehavior(QAbstractItemView::SelectRows); table->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    table->setTextElideMode(Qt::ElideMiddle); table->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
+    table->setColumnWidth(0, 120); table->setColumnWidth(1, 270); table->setColumnWidth(2, 110); table->setColumnWidth(3, 50); table->horizontalHeader()->setStretchLastSection(true); layout->addWidget(table);
     auto refresh = [this, table] { const auto selected = table->currentRow() >= 0 && table->item(table->currentRow(), 0) ? table->item(table->currentRow(), 0)->text() : QString{}; table->setRowCount(0);
         for (const auto& job : reportQueue_->jobs()) { const int row = table->rowCount(); table->insertRow(row); const auto ext = job["extensions"].toObject();
-            const QStringList values{job["jobId"].toString(), job["target"].toObject()["documentPath"].toString(), job["state"].toString(), QString::number(job["attemptCount"].toInt()), job["errorCode"].toString() + " " + ext["lastResult"].toObject()["message"].toString()};
-            for (int col = 0; col < values.size(); ++col) table->setItem(row, col, new QTableWidgetItem(values[col])); if (values[0] == selected) table->selectRow(row); }
+            static const QMap<QString, QString> labels{{"QUEUED", QStringLiteral("排队中")}, {"RUNNING", QStringLiteral("正在写入")}, {"COMMITTED", QStringLiteral("已保存提交")}, {"RETRYABLE", QStringLiteral("等待重试")}, {"FAILED", QStringLiteral("失败")}, {"UNCERTAIN", QStringLiteral("待核对")}};
+            const auto state = job["state"].toString();
+            const QStringList values{job["jobId"].toString(), job["target"].toObject()["documentPath"].toString(), labels.value(state, state), QString::number(job["attemptCount"].toInt()), job["errorCode"].toString() + " " + ext["lastResult"].toObject()["message"].toString()};
+            for (int col = 0; col < values.size(); ++col) { auto* cell = new QTableWidgetItem(values[col]); cell->setToolTip(col == 2 ? state : values[col]); table->setItem(row, col, cell); } if (values[0] == selected) table->selectRow(row); }
     }; refresh();
     auto* inspect = new QPushButton(QStringLiteral("核对所选待核对任务的文档标记")); layout->addWidget(inspect);
     connect(inspect, &QPushButton::clicked, &dialog, [this, table, note, refresh] { if (table->currentRow() < 0) return; QString error; if (!reportQueue_->inspectMarker(table->item(table->currentRow(), 0)->text(), error)) note->setText(error); refresh(); });
+    auto* retry = new QPushButton(QStringLiteral("已排除原因：重试所选修改前失败任务")); retry->setObjectName("retryFailedReport"); layout->addWidget(retry);
+    connect(retry, &QPushButton::clicked, &dialog, [this, table, note, refresh] { if (table->currentRow() < 0) return; QString error; note->setText(reportQueue_->retryFailed(table->item(table->currentRow(), 0)->text(), error) ? QStringLiteral("原任务已重新排队，保留顺序与重试历史。") : error); refresh(); });
     QTimer timer; connect(&timer, &QTimer::timeout, &dialog, refresh); timer.start(1000); auto* close = new QDialogButtonBox(QDialogButtonBox::Close); connect(close, &QDialogButtonBox::rejected, &dialog, &QDialog::reject); layout->addWidget(close); dialog.exec();
 }
 void MainWindow::rebuildScenes()

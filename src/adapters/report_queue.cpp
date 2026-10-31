@@ -137,7 +137,7 @@ bool ReportQueue::enqueue(const CaptureOutcome& outcome, const ReportOptions& op
     double sequence = 1;
     for (const auto& job : jobs()) {
         sequence = std::max(sequence, job["extensions"].toObject()["enqueueSequence"].toDouble() + 1);
-        if (job["state"] != "FAILED" && job["state"] != "COMMITTED" && job["target"].toObject()["documentPath"].toString().compare(canonicalTarget, Qt::CaseInsensitive) == 0) mode = "append";
+        if (job["state"] != "COMMITTED" && job["target"].toObject()["documentPath"].toString().compare(canonicalTarget, Qt::CaseInsensitive) == 0) mode = "append";
     }
     auto job = makeReportJob(outcome, options, mode, error); if (job.isEmpty()) return false;
     auto ext = job["extensions"].toObject(); ext["enqueueSequence"] = sequence; job["extensions"] = ext;
@@ -155,6 +155,7 @@ void ReportQueue::pump()
         const auto state = job["state"].toString();
         const auto target = job["target"].toObject()["documentPath"].toString();
         if (std::any_of(all.begin(), all.end(), [&](const auto& other) { return other["state"] == "UNCERTAIN" && other["target"].toObject()["documentPath"].toString().compare(target, Qt::CaseInsensitive) == 0; })) continue;
+        if (state == "FAILED") { pendingTargets.insert(target.toCaseFolded()); continue; }
         if ((state == "QUEUED" || state == "RETRYABLE") && !pendingTargets.insert(target.toCaseFolded()).second) continue;
         const auto next = QDateTime::fromString(job["extensions"].toObject()["nextAttemptUtc"].toString(), Qt::ISODateWithMs);
         if ((state == "QUEUED" || state == "RETRYABLE") && job["attemptCount"].toInt() < 3 && (!next.isValid() || next <= QDateTime::currentDateTimeUtc())) {
@@ -167,6 +168,23 @@ bool ReportQueue::inspectMarker(const QString& id, QString& error)
     if (!ready_ || !currentPath_.isEmpty()) { error = "Report worker is unavailable or busy"; return false; }
     for (auto job : jobs()) if (job["jobId"] == id && job["state"] == "UNCERTAIN") { launch(QDir(directory_).filePath(id + ".json"), job, true); return !currentPath_.isEmpty(); }
     error = "Select an UNCERTAIN job for marker-only inspection"; return false;
+}
+bool ReportQueue::retryFailed(const QString& id, QString& error)
+{
+    if (!ready_ || !currentPath_.isEmpty()) { error = "Report worker is unavailable or busy"; return false; }
+    for (auto job : jobs()) if (job["jobId"] == id) {
+        auto ext = job["extensions"].toObject();
+        if (job["state"] != "FAILED" || !job["committedMarker"].toString().isEmpty() ||
+            (ext["lastResult"].toObject()["state"] != "RETRYABLE" && job["errorCode"] != "RETRY_LIMIT_HELPER_UNAVAILABLE")) {
+            error = "Only a FAILED job with confirmed pre-mutation failure may retry; UNCERTAIN requires marker inspection"; return false;
+        }
+        auto history = ext["manualRetryHistory"].toArray(); history.append(QJsonObject{{"atUtc", utc()}, {"previousAttemptCount", job["attemptCount"]}, {"previousErrorCode", job["errorCode"]}, {"previousDispatchId", ext["dispatchId"]}});
+        ext["manualRetryHistory"] = history; ext.remove("nextAttemptUtc");
+        job["extensions"] = ext; job["state"] = "QUEUED"; job["attemptCount"] = 0; job.remove("errorCode");
+        if (!persist(job, QDir(directory_).filePath(id + ".json"))) { error = diagnostic_; return false; }
+        QTimer::singleShot(0, this, [this] { pump(); }); return true;
+    }
+    error = "Report job not found"; return false;
 }
 void ReportQueue::launch(const QString& path, QJsonObject job, bool inspect)
 {

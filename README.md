@@ -7,11 +7,11 @@ and associating them with test execution records.
 
 ## Status
 
-The 0.5.0 local preview implements capture, tray/hotkeys, region/scene editors,
+The 0.6.0 candidate implements capture, tray/hotkeys, region/scene editors,
 durable Word jobs and read-only execution-context integration. See the
 [operator manual](docs/preview/OPERATOR-MANUAL.zh-CN.md) and
 [release notes](docs/preview/RELEASE-NOTES.md). Local Win11 automated evidence
-does not qualify Win10, native Win7, Word2010 or human acceptance.
+does not qualify native Win10, native Win7, Word2010 or human acceptance.
 
 ## Product direction
 

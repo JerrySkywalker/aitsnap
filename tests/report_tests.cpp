@@ -81,6 +81,9 @@ int main(int argc, char** argv)
                 check(storeReportJob(queueRoot + "/" + retry["jobId"].toString() + ".json", retry, error), "advance test retry clock"); queue.pump();
             }
             check(queue.jobs()[0]["state"] == "FAILED", "retry limit three");
+            check(queue.retryFailed(queue.jobs()[0]["jobId"].toString(), error), "explicit retry after unavailable helper limit");
+            check(queue.jobs()[0]["state"] == "QUEUED" && queue.jobs()[0]["attemptCount"] == 0, "retry resets bounded dispatch attempts only");
+            check(queue.jobs()[0]["extensions"].toObject()["manualRetryHistory"].toArray().size() == 1, "retry preserves audited history");
         }
         {
             const auto queueRoot = root + "/fifo"; ReportQueue queue(queueRoot, app.applicationFilePath());
@@ -93,9 +96,26 @@ int main(int argc, char** argv)
             check(await([&] { return queue.jobs()[2]["state"] == "COMMITTED"; }), "other document progresses during retry delay");
         }
         {
+            const auto queueRoot = root + "/failed-order"; check(QDir().mkpath(queueRoot), "failed FIFO directory");
+            auto failed = makeReportJob(outcome, options, "create", error); auto ext = failed["extensions"].toObject();
+            ext["lastResult"] = QJsonObject{{"state", "RETRYABLE"}}; failed["extensions"] = ext; failed["state"] = "FAILED"; failed["attemptCount"] = 3; failed["errorCode"] = "RETRY_LIMIT_FAKE_PREMUTATION";
+            const auto id = failed["jobId"].toString(), fingerprint = ext["fingerprint"].toString();
+            check(storeReportJob(queueRoot + "/" + id + ".json", failed, error), "persist exhausted pre-mutation failure");
+            ReportQueue queue(queueRoot, app.applicationFilePath()); check(queue.enqueue(outcome, options, error), "enqueue after failed create");
+            check(queue.jobs()[1]["target"].toObject()["mode"] == "append", "failed creation still precedes append"); queue.pump();
+            check(queue.jobs()[1]["attemptCount"] == 0, "failed predecessor prevents later append overtaking");
+            auto other = options; other.documentPath = root + "/other-after-failure.docx"; check(queue.enqueue(outcome, other, error), "independent target after failure");
+            check(await([&] { return queue.jobs()[2]["state"] == "COMMITTED"; }), "failed target does not block independent document");
+            check(queue.retryFailed(id, error), "explicit confirmed pre-mutation retry");
+            check(queue.jobs()[0]["extensions"].toObject()["fingerprint"] == fingerprint, "manual retry retains immutable job identity and source instructions");
+            check(await([&] { return queue.jobs()[0]["state"] == "COMMITTED" && queue.jobs()[1]["state"] == "COMMITTED"; }), "same-target FIFO progresses after explicit recovery");
+            check(!queue.retryFailed(id, error), "committed job cannot be reinserted by retry button"); error.clear();
+        }
+        {
             const auto queueRoot = root + "/restart"; check(QDir().mkpath(queueRoot), "restart directory");
             job["state"] = "RUNNING"; check(storeReportJob(queueRoot + "/" + job["jobId"].toString() + ".json", job, error), "simulate persisted running");
             ReportQueue queue(queueRoot, app.applicationFilePath()); check(queue.jobs()[0]["state"] == "UNCERTAIN", "restart does not blindly reinsert");
+            check(!queue.retryFailed(job["jobId"].toString(), error), "UNCERTAIN cannot use failed retry path"); error.clear();
             check(queue.inspectMarker(job["jobId"].toString(), error), "explicit marker inspection");
             check(await([&] { return queue.jobs()[0]["state"] == "COMMITTED"; }), "inspection can acknowledge committed marker");
         }
