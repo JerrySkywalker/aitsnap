@@ -5,6 +5,7 @@
 #include <QJsonObject>
 #include <QProcess>
 #include <QTimer>
+#include <QElapsedTimer>
 #include <QLockFile>
 #include <functional>
 #include <memory>
@@ -33,6 +34,7 @@ private:
     QJsonObject current_;
     QProcess process_;
     QTimer tick_, deadline_;
+    QElapsedTimer workerClock_;
     std::unique_ptr<QLockFile> lock_;
     bool ready_{}, inspecting_{};
     int timeoutMs_;

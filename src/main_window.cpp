@@ -63,6 +63,7 @@ MainWindow::MainWindow(QWidget* parent, QString path, QString pipeName) : QMainW
 {
     setWindowTitle(QStringLiteral("AITSnap · 多屏截图")); resize(1120, 780); setWindowIcon(appIcon());
     settings_ = defaultSettings(); QString loadError;
+    settings_.outputDirectory = QFileInfo(configurationPath_).absolutePath() + "/captures";
     if (QFile::exists(configurationPath_)) loadSettings(configurationPath_, settings_, loadError);
     if (settings_.profiles.empty()) {
         WinCaptureBackend backend; core::CaptureProfile p; p.id = id(); p.name = "默认多屏";

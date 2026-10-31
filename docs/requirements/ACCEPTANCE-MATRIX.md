@@ -12,7 +12,7 @@ Do not conflate source-only PASS, desktop launch PASS, visual acceptance, and na
 | M5 / D07 + L02 | Offline install/uninstall, DLL origin, DPI, multi-screen, 24-hour operational observation or justified reduced evidence, Word 2010 and native Win7 x64/x86 results separately | release owner | Win7 lack of native evidence blocks full v1 |
 
 ## Platform matrix
-- Windows 11 Qt 6.12 x64: current *skeleton* build/hidden launch PASS; product behavior UNTESTED.
+- Windows 11 Qt 6.12 x64: native synthetic capture/scene/Word16/IPC and local offline deployment PASS within the recorded scopes; human M1–M5 acceptance HOLD. See the D01–D07 receipts and preview matrix.
 - Windows 10 1809+ Qt 6.12 x64: requirement, actual deployment UNTESTED.
 - Win7 SP1 Qt 5.15 x64/x86: requirement; v143 host-preview Qt5 builds PASS on Win11, v142 absent, native Win7 NOT TESTED. WOW64 is not x86 OS evidence.
 - Linux: no release requirement.

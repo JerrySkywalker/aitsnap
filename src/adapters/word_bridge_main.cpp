@@ -9,6 +9,8 @@
 #include <QImageReader>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QElapsedTimer>
+#include <psapi.h>
 #include <iostream>
 using namespace aitsnap;
 using namespace aitsnap::word;
@@ -141,6 +143,12 @@ QJsonObject execute(const QJsonObject& job, bool recovery)
             }
         }
         stage = "save-committed"; setMarker(session.document, marker, "COMMITTED:" + fingerprint); session.document.call(L"Save");
+        if (session.ownsApp) { // process peak, not an attribution to other user documents
+            try { DWORD pid{}; GetWindowThreadProcessId(reinterpret_cast<HWND>(quintptr(quint32(session.document.get(L"ActiveWindow").object().get(L"Hwnd").integer()))), &pid);
+                HANDLE process = pid ? OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pid) : nullptr;
+                if (process) { PROCESS_MEMORY_COUNTERS memory{}; memory.cb = sizeof(memory); if (GetProcessMemoryInfo(process, &memory, sizeof(memory))) result["wordProcessPeakWorkingSetBytes"] = qint64(memory.PeakWorkingSetSize); CloseHandle(process); }
+            } catch (...) { result["wordMemoryStatus"] = "NOT_MEASURED"; } // optional measurement never changes insertion outcome
+        }
         if (create) { session.closeDocument(); if (!QFile::rename(staging, path)) throw std::runtime_error("Cannot publish new document without overwriting target; staging retained"); }
         result["state"] = "COMMITTED"; result["errorCode"] = ""; result["marker"] = marker; result["itemsInserted"] = items.size(); return result;
     } catch (const std::exception& error) {
@@ -158,7 +166,8 @@ int main(int argc, char** argv)
     if (!readReportJob(args[jobIndex + 1], job, error)) { std::cerr << error.toStdString() << '\n'; return 2; }
     if (!args.contains("--recover") && job["state"] != "RUNNING") { std::cerr << "Only a durably RUNNING job may insert\n"; return 2; }
     const auto hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED); if (FAILED(hr)) return 3;
-    const auto result = execute(job, args.contains("--recover")); CoUninitialize();
+    QElapsedTimer clock; clock.start(); auto result = execute(job, args.contains("--recover")); result["wordExecutionMonotonicMs"] = double(clock.nsecsElapsed()) / 1000000.0;
+    PROCESS_MEMORY_COUNTERS memory{}; memory.cb = sizeof(memory); if (GetProcessMemoryInfo(GetCurrentProcess(), &memory, sizeof(memory))) result["helperPeakWorkingSetBytes"] = qint64(memory.PeakWorkingSetSize); CoUninitialize();
     if (!saveBytesNew(QJsonDocument(result).toJson(), args[resultIndex + 1], error)) { std::cerr << error.toStdString() << '\n'; return 4; }
     std::cout << QJsonDocument(result).toJson(QJsonDocument::Compact).toStdString() << '\n'; return 0;
 }

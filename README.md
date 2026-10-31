@@ -7,9 +7,11 @@ and associating them with test execution records.
 
 ## Status
 
-Software skeleton only. The source contains a minimal Qt Widgets window;
-the product capabilities below are planned and are not implemented. There is no
-release, installer, or validated platform support yet.
+The 0.5.0 local preview implements capture, tray/hotkeys, region/scene editors,
+durable Word jobs and read-only execution-context integration. See the
+[operator manual](docs/preview/OPERATOR-MANUAL.zh-CN.md) and
+[release notes](docs/preview/RELEASE-NOTES.md). Local Win11 automated evidence
+does not qualify Win10, native Win7, Word2010 or human acceptance.
 
 ## Product direction
 
@@ -20,8 +22,8 @@ release, installer, or validated platform support yet.
 - Provide a Windows system tray entry point.
 - Develop reusable components with boundaries between UI and future capabilities.
 
-This repository contains only the software skeleton. It contains no test data,
-command files, or organization-specific materials.
+This repository contains public synthetic fixtures; it contains no real AIT
+command payloads or organization-specific test materials.
 
 ## Technology and target systems
 

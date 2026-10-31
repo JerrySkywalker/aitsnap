@@ -176,7 +176,7 @@ void ReportQueue::launch(const QString& path, QJsonObject job, bool inspect)
     current_ = job; currentPath_ = path; inspecting_ = inspect;
     resultPath_ = QDir(directory_).filePath(job["jobId"].toString() + ".result." + dispatch + ".json");
     QStringList arguments{"--job", path, "--result", resultPath_}; if (inspect) arguments.append("--recover");
-    process_.setProgram(helper_); process_.setArguments(arguments); process_.start(); deadline_.start(timeoutMs_);
+    process_.setProgram(helper_); process_.setArguments(arguments); workerClock_.start(); process_.start(); deadline_.start(timeoutMs_);
 }
 void ReportQueue::finish(bool failedToStart)
 {
@@ -195,7 +195,7 @@ void ReportQueue::finish(bool failedToStart)
     }
     if (state == "RETRYABLE" && current_["attemptCount"].toInt() >= 3) { state = "FAILED"; code = "RETRY_LIMIT_" + code; }
     current_["state"] = state; if (code.isEmpty()) current_.remove("errorCode"); else current_["errorCode"] = code;
-    auto ext = current_["extensions"].toObject(); ext["nextAttemptUtc"] = QDateTime::currentDateTimeUtc().addSecs(5).toString(Qt::ISODateWithMs); current_["extensions"] = ext;
+    auto ext = current_["extensions"].toObject(); ext["workerMonotonicMs"] = workerClock_.isValid() ? double(workerClock_.nsecsElapsed()) / 1000000.0 : 0; ext["nextAttemptUtc"] = QDateTime::currentDateTimeUtc().addSecs(5).toString(Qt::ISODateWithMs); current_["extensions"] = ext;
     persist(current_, currentPath_); currentPath_.clear(); current_ = {}; resultPath_.clear();
 }
 } // namespace aitsnap
