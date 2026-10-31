@@ -1,4 +1,4 @@
-"""Validate the program DAG, local document links and six public schema fixtures."""
+"""Validate the program DAG, local links and all versioned public schema fixtures."""
 import json
 from pathlib import Path
 import re

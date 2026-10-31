@@ -1,0 +1,6 @@
+schemaVersion,catalogId,catalogRevision,sourceSystem,recordType,commandId,commandName,sequenceId,sequenceRevision,sequenceName,stepId,order,kind,subsequenceId,subsequenceRevision
+1,CAT-SYN-CSV,v1,SYNTHETIC_CSV_EXECUTOR,command,CMD-CSV-READ,Synthetic CSV read,,,,,,,,
+1,CAT-SYN-CSV,v1,SYNTHETIC_CSV_EXECUTOR,sequence,,,SEQ-PARENT,v1,Synthetic parent,,,,,
+1,CAT-SYN-CSV,v1,SYNTHETIC_CSV_EXECUTOR,sequence,,,SEQ-CHILD,v1,Synthetic child,,,,,
+1,CAT-SYN-CSV,v1,SYNTHETIC_CSV_EXECUTOR,step,,,SEQ-PARENT,v1,,nested,1,subsequence,SEQ-CHILD,v1
+1,CAT-SYN-CSV,v1,SYNTHETIC_CSV_EXECUTOR,step,CMD-CSV-READ,,SEQ-CHILD,v1,,read,1,command,,

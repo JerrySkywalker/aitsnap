@@ -33,6 +33,7 @@ struct CaptureRequest {
     CaptureProfile profile;
     Context context;
     std::vector<std::pair<std::string, int>> sceneRevisions;
+    std::string contextSnapshotJson;
 };
 // Owned immutable packed BGRA8, top-to-bottom, alpha 255. No Qt/platform type.
 struct Image {
