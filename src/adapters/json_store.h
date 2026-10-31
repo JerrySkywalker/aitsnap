@@ -4,6 +4,7 @@
 #include <QImage>
 #include <QJsonObject>
 #include <QString>
+#include <QStringList>
 namespace aitsnap {
 struct Settings {
     std::vector<core::CaptureProfile> profiles;
@@ -13,6 +14,9 @@ struct Settings {
     QString clipboardRegion, testId, device, station, operatorName;
     qint64 sequence{};
     bool startInTray{};
+    std::vector<core::SceneTemplate> scenes;
+    QStringList selectedSceneIds;
+    QString outputMode{"originals"};
 };
 QString settingsPath();
 Settings defaultSettings();

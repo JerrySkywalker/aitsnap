@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "json_store.h"
+#include "scene_render.h"
+#include <QUuid>
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
@@ -34,10 +36,12 @@ Settings defaultSettings()
 }
 QJsonObject profileJson(const core::CaptureProfile& p)
 {
-    QJsonArray regions, displays;
+    QJsonArray regions, displays, scenes;
     for (const auto& r : p.regions) regions.append(QJsonObject{{"id", qs(r.id)}, {"name", qs(r.name)}, {"rect", rectJson(r.rect)}, {"enabled", r.enabled}});
     for (const auto& d : p.calibratedDisplays) displays.append(QJsonObject{{"id", qs(d.id)}, {"rect", rectJson(d.rect)}, {"rotation", d.rotation}});
-    return {{"id", qs(p.id)}, {"name", qs(p.name)}, {"revision", p.revision}, {"regions", regions}, {"displays", displays}};
+    for (const auto& id : p.sceneIds) scenes.append(qs(id));
+    return {{"id", qs(p.id)}, {"name", qs(p.name)}, {"revision", p.revision}, {"regions", regions}, {"displays", displays},
+        {"sceneIds", scenes}, {"outputMode", qs(p.outputMode)}, {"clipboardSelection", qs(p.clipboardSelection)}};
 }
 bool profileFromJson(const QJsonObject& o, core::CaptureProfile& p, QString& error)
 {
@@ -58,6 +62,8 @@ bool profileFromJson(const QJsonObject& o, core::CaptureProfile& p, QString& err
     }
     const auto e = core::validateProfile(p);
     if (e) { error = qs(e.message); return false; }
+    p.sceneIds.clear(); for (const auto& value : o["sceneIds"].toArray()) p.sceneIds.push_back(value.toString().toStdString());
+    p.outputMode = o["outputMode"].toString("originals").toStdString(); p.clipboardSelection = o["clipboardSelection"].toString().toStdString();
     return true;
 }
 bool loadSettings(const QString& path, Settings& s, QString& error)
@@ -67,7 +73,10 @@ bool loadSettings(const QString& path, Settings& s, QString& error)
     QJsonParseError parse; const auto doc = QJsonDocument::fromJson(f.readAll(), &parse);
     if (parse.error || !doc.isObject()) { error = "Invalid settings JSON; original file preserved"; return false; }
     const auto o = doc.object();
-    if (core::validateVersion(o["schemaVersion"].toInt())) { error = "Unsupported settings version; file preserved"; return false; }
+    const int settingsVersion = o["schemaVersion"].toInt();
+    if (settingsVersion != 1 && settingsVersion != 2) { error = "Unsupported settings version; file preserved"; return false; }
+    const QStringList known{"schemaVersion", "profiles", "activeProfile", "outputDirectory", "format", "filenameTemplate", "saveHotkey", "copyHotkey", "bothHotkey", "clipboardRegion", "testId", "device", "station", "operator", "sequence", "startInTray", "scenes", "selectedSceneIds", "outputMode"};
+    for (auto it = o.begin(); it != o.end(); ++it) if (!known.contains(it.key())) { error = "Unknown settings field; file preserved: " + it.key(); return false; }
     Settings candidate = defaultSettings();
     for (const auto& value : o["profiles"].toArray()) {
         core::CaptureProfile profile;
@@ -89,18 +98,47 @@ bool loadSettings(const QString& path, Settings& s, QString& error)
     candidate.testId = o["testId"].toString(); candidate.device = o["device"].toString();
     candidate.station = o["station"].toString(); candidate.operatorName = o["operator"].toString();
     candidate.sequence = qint64(o["sequence"].toDouble()); candidate.startInTray = o["startInTray"].toBool();
+    for (const auto& value : o["scenes"].toArray()) {
+        core::SceneTemplate scene;
+        if (!sceneFromJson(value.toObject(), scene, error)) return false;
+        if (std::any_of(candidate.scenes.begin(), candidate.scenes.end(), [&](const auto& s) { return s.id == scene.id; })) { error = "Duplicate scene id"; return false; }
+        candidate.scenes.push_back(scene);
+    }
+    candidate.outputMode = o["outputMode"].toString("originals");
+    if (candidate.outputMode != "originals" && candidate.outputMode != "composites" && candidate.outputMode != "both") { error = "Unknown output mode"; return false; }
+    for (const auto& value : o["selectedSceneIds"].toArray()) {
+        const auto selected = value.toString();
+        if (std::none_of(candidate.scenes.begin(), candidate.scenes.end(), [&](const auto& s) { return QString::fromStdString(s.id) == selected; })) { error = "Selected scene missing"; return false; }
+        if (!candidate.selectedSceneIds.contains(selected)) candidate.selectedSceneIds.append(selected);
+    }
+    auto& active = candidate.profiles[std::size_t(candidate.activeProfile)];
+    active.outputMode = candidate.outputMode.toStdString(); active.sceneIds.clear();
+    for (const auto& scene : candidate.selectedSceneIds) active.sceneIds.push_back(scene.toStdString()); active.clipboardSelection = candidate.clipboardRegion.toStdString();
     s = candidate; return true;
 }
 bool saveSettings(const QString& path, const Settings& s, QString& error)
 {
     QJsonArray profiles;
-    for (const auto& p : s.profiles) profiles.append(profileJson(p));
-    QJsonObject o{{"schemaVersion", 1}, {"profiles", profiles}, {"activeProfile", s.activeProfile},
+    for (std::size_t i = 0; i < s.profiles.size(); ++i) {
+        auto profile = s.profiles[i];
+        if (int(i) == s.activeProfile) { profile.outputMode = s.outputMode.toStdString(); profile.sceneIds.clear(); for (const auto& id : s.selectedSceneIds) profile.sceneIds.push_back(id.toStdString()); profile.clipboardSelection = s.clipboardRegion.toStdString(); }
+        profiles.append(profileJson(profile));
+    }
+    QJsonArray scenes, selected;
+    for (const auto& scene : s.scenes) scenes.append(sceneJson(scene));
+    for (const auto& scene : s.selectedSceneIds) selected.append(scene);
+    QJsonObject o{{"schemaVersion", 2}, {"profiles", profiles}, {"activeProfile", s.activeProfile},
         {"outputDirectory", s.outputDirectory}, {"format", s.format}, {"filenameTemplate", s.filenameTemplate},
         {"saveHotkey", s.saveHotkey}, {"copyHotkey", s.copyHotkey}, {"bothHotkey", s.bothHotkey},
         {"clipboardRegion", s.clipboardRegion}, {"testId", s.testId}, {"device", s.device},
-        {"station", s.station}, {"operator", s.operatorName}, {"sequence", double(s.sequence)}, {"startInTray", s.startInTray}};
+        {"station", s.station}, {"operator", s.operatorName}, {"sequence", double(s.sequence)}, {"startInTray", s.startInTray},
+        {"scenes", scenes}, {"selectedSceneIds", selected}, {"outputMode", s.outputMode}};
     if (!QDir().mkpath(QFileInfo(path).absolutePath())) { error = "Cannot create settings directory"; return false; }
+    QFile previous(path); int previousVersion = 0;
+    if (previous.open(QIODevice::ReadOnly)) { previousVersion = QJsonDocument::fromJson(previous.readAll()).object()["schemaVersion"].toInt(); previous.close(); }
+    if (previousVersion == 1) {
+        if (!QFile::copy(path, path + ".v1-preserved-" + QUuid::createUuid().toString(QUuid::WithoutBraces))) { error = "Cannot preserve v1 settings before migration"; return false; }
+    }
     QSaveFile file(path);
     if (!file.open(QIODevice::WriteOnly) || file.write(QJsonDocument(o).toJson()) < 0 || !file.commit()) { error = file.errorString(); return false; }
     return true;
@@ -159,7 +197,7 @@ QJsonObject batchJson(const core::CaptureBatch& b)
             {"physicalRectPx", rectJson(c.region.rect)}, {"displayIds", ids}, {"outcome", c.error ? "FAILED" : "SUCCEEDED"},
             {"errorCode", c.error ? qs(c.error.code) : QStringLiteral("NONE")}};
         for (const auto& frame : b.displayFrames) {
-            if (std::find(c.displayIds.begin(), c.displayIds.end(), frame.display.id) != c.displayIds.end()) { source["acquiredAtUtc"] = qs(frame.acquiredAtUtc); break; }
+            if (!frame.acquiredAtUtc.empty() && std::find(c.displayIds.begin(), c.displayIds.end(), frame.display.id) != c.displayIds.end()) { source["acquiredAtUtc"] = qs(frame.acquiredAtUtc); break; }
         }
         captures.append(source);
         if (c.error) ++failures; else ++successes;
@@ -170,10 +208,11 @@ QJsonObject batchJson(const core::CaptureBatch& b)
         outputs.append(QJsonObject{{"kind", qs(o.kind)}, {"path", qs(o.path)}, {"status", qs(o.status)},
             {"errorCode", qs(o.error.code)}, {"error", qs(o.error.message)}});
         if (o.error) ++failures;
-        if (o.kind == "ORIGINAL") {
-            QJsonObject artifact{{"artifactId", qs(b.batchId + ":" + o.regionId)}, {"kind", "ORIGINAL"},
-                {"regionId", qs(o.regionId)}, {"saveStatus", qs(o.status)}};
-            if (!o.path.empty()) artifact["relativePath"] = QFileInfo(qs(o.path)).fileName();
+        if (o.kind == "ORIGINAL" || o.kind == "COMPOSITE") {
+            QJsonObject artifact{{"artifactId", qs(b.batchId + (o.kind == "ORIGINAL" ? ":original:" + o.regionId : ":scene:" + o.sceneId))}, {"kind", qs(o.kind)}, {"saveStatus", qs(o.status)}};
+            if (!o.regionId.empty()) artifact["regionId"] = qs(o.regionId);
+            if (!o.sceneId.empty()) { artifact["sceneId"] = qs(o.sceneId); artifact["sceneRevision"] = o.sceneRevision; }
+            if (!o.path.empty()) artifact["relativePath"] = o.relativePath.empty() ? QFileInfo(qs(o.path)).fileName() : qs(o.relativePath);
             if (!o.sha256.empty()) artifact["sha256"] = qs(o.sha256);
             artifacts.append(artifact);
         }
@@ -185,7 +224,9 @@ QJsonObject batchJson(const core::CaptureBatch& b)
         {"stepExecutionId", c.stepExecutionId}, {"commandInvocationId", c.commandInvocationId}, {"eventId", c.eventId}};
     for (const auto& field : fields) if (!field.second.empty()) context[field.first] = qs(field.second);
     // Runtime v1 manifest extensions preserve full profile snapshot and output diagnostics.
-    return {{"schemaVersion", 1}, {"batchId", qs(b.batchId)}, {"requestId", qs(b.request.requestId)},
+    QJsonArray sceneRevisions;
+    for (const auto& revision : b.request.sceneRevisions) sceneRevisions.append(QJsonObject{{"sceneId", qs(revision.first)}, {"revision", revision.second}});
+    return {{"schemaVersion", 1}, {"batchId", qs(b.batchId)}, {"requestId", qs(b.request.requestId)}, {"sceneRevisions", sceneRevisions},
         {"profileId", qs(b.request.profile.id)}, {"profileRevision", b.request.profile.revision},
         {"createdAtUtc", qs(b.request.issuedAtUtc)}, {"completedAtUtc", QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)},
         {"context", context}, {"captures", captures}, {"artifacts", artifacts}, {"status", successes == 0 ? "FAILED" : failures ? "PARTIAL" : "CAPTURED"},

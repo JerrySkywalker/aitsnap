@@ -44,6 +44,7 @@ def main():
     data['lastTickUtc'] = t.isoformat()
     if a.action == 'start':
         data['active'] = True
+        data['lastResumeUtc'] = t.isoformat()
     if a.action == 'goal':
         if a.goal not in data['goals']:
             p.error('Unknown goal')
@@ -56,6 +57,7 @@ def main():
             record['pr'] = a.pr
         if a.merge:
             record['mergeSha'] = a.merge
+            data['lastCleanMainSha'] = a.merge
         if a.note:
             record['note'] = a.note
     if a.action == 'stop' or data['elapsedSeconds'] >= data['budgetSeconds']:

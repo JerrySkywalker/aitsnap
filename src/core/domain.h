@@ -6,6 +6,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <utility>
 
 namespace aitsnap::core {
 inline constexpr int schemaVersion = 1;
@@ -17,6 +18,8 @@ struct CaptureProfile {
     int revision{1};
     std::vector<Region> regions;
     std::vector<Display> calibratedDisplays;
+    std::vector<std::string> sceneIds;
+    std::string outputMode{"originals"}, clipboardSelection;
 };
 struct Context {
     std::string sourceSystem, eventId, sequenceRunId, stepExecutionId, commandInvocationId;
@@ -29,6 +32,7 @@ struct CaptureRequest {
     std::string requestId, issuedAtUtc;
     CaptureProfile profile;
     Context context;
+    std::vector<std::pair<std::string, int>> sceneRevisions;
 };
 // Owned immutable packed BGRA8, top-to-bottom, alpha 255. No Qt/platform type.
 struct Image {
@@ -44,7 +48,7 @@ struct DisplayFrame {
     Error error;
 };
 struct SourceCapture { Region region; Image image; std::vector<std::string> displayIds; Error error; };
-struct OutputResult { std::string kind, path, status{"NOT_REQUESTED"}; Error error; std::string regionId, sha256; };
+struct OutputResult { std::string kind, path, status{"NOT_REQUESTED"}; Error error; std::string regionId, sha256, sceneId; int sceneRevision{}; std::string relativePath; };
 struct CaptureBatch {
     std::string batchId;
     CaptureRequest request;
@@ -60,12 +64,15 @@ struct Layer {
     Rect crop; // nonpositive width/height means entire source
     Destination destination;
     std::string missingSourcePolicy{"fail"};
+    std::string groupId, sourceArtifactId;
+    bool preserveAspect{true};
 };
 struct SceneTemplate {
     std::string id, name;
     int revision{1}, width{1600}, height{900};
     std::string background{"#20252C"};
     std::vector<Layer> layers;
+    std::string revisionCreatedAtUtc, extensionsJson;
 };
 struct ExecutionEvent {
     std::string sourceSystem, eventId, eventType, sourceTimeUtc, receivedAtUtc;

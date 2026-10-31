@@ -38,7 +38,7 @@ int main()
         check(safeSegment("../x:y") == ".._x_y" && safeSegment("CON.txt") == "_CON.txt" && safeSegment("..") == "unnamed", "safe segments");
         check(canTransition(ReportState::Running, ReportState::Uncertain) &&
               !canTransition(ReportState::Committed, ReportState::Running), "report transition guards");
-        SceneTemplate scene; scene.id = "s"; scene.layers.push_back({"l", "span"});
+        SceneTemplate scene; scene.id = "s"; scene.name = "Synthetic scene"; scene.layers.push_back({"l", "span"});
         check(!validateScene(scene), "scene valid");
         scene.layers[0].destination.width = 0;
         check(bool(validateScene(scene)), "invalid transform rejected");

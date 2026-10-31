@@ -5,6 +5,8 @@
 #include "main_window.h"
 #include "adapters/win_capture.h"
 #include "desktop/region_editor.h"
+#include "desktop/scene_editor.h"
+#include "core/scene_geometry.h"
 #include <QAction>
 #include <QApplication>
 #include <QCheckBox>
@@ -19,6 +21,8 @@
 #include <QFormLayout>
 #include <QHeaderView>
 #include <QInputDialog>
+#include <QJsonDocument>
+#include <QListWidget>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMenu>
@@ -74,7 +78,7 @@ void MainWindow::buildUi()
 {
     auto* central = new QWidget(this); auto* outer = new QVBoxLayout(central); outer->setContentsMargins(24, 20, 24, 16); outer->setSpacing(14);
     auto* title = new QLabel(QStringLiteral("AITSnap  多屏证据截图")); title->setStyleSheet("font-size:24px; font-weight:600;"); outer->addWidget(title);
-    outer->addWidget(new QLabel(QStringLiteral("选定区域 → 后台一键截图 → 保存原图 / 复制单图。关闭窗口后继续驻留托盘。")));
+    outer->addWidget(new QLabel(QStringLiteral("区域与场景独立 · 修改后应用配置 · 后台一键保存/复制 · 关闭窗口后驻留托盘")));
     auto* row = new QHBoxLayout; profiles_ = new QComboBox; profiles_->setObjectName("profiles");
     for (const auto& p : settings_.profiles) profiles_->addItem(qs(p.name));
     profiles_->setCurrentIndex(settings_.activeProfile); row->addWidget(new QLabel(QStringLiteral("截图配置"))); row->addWidget(profiles_, 1);
@@ -90,6 +94,21 @@ void MainWindow::buildUi()
     auto* visual = new QPushButton(QStringLiteral("屏幕框选 / 拖动")); visual->setObjectName("editRegions");
     auto* visualRow = new QHBoxLayout; visualRow->addWidget(visual); visualRow->addStretch(); l->addLayout(visualRow);
     buttons->addWidget(add); buttons->addWidget(remove); buttons->addWidget(calibrate); l->addLayout(buttons); split->addWidget(left);
+    l->addWidget(new QLabel(QStringLiteral("拼图场景 · 可勾选多个，同一批源图分别渲染")));
+    scenes_ = new QListWidget; scenes_->setObjectName("enabledScenes"); scenes_->setMaximumHeight(105); l->addWidget(scenes_);
+    auto* sceneActions = new QHBoxLayout;
+    auto* newScene = new QPushButton(QStringLiteral("新建拼图")); newScene->setObjectName("newScene");
+    auto* editSceneButton = new QPushButton(QStringLiteral("编辑拼图")); editSceneButton->setObjectName("editScene");
+    auto* history = new QPushButton(QStringLiteral("重排历史批次")); history->setObjectName("openHistoricalBatch");
+    auto* import = new QPushButton(QStringLiteral("导入场景")); auto* exportTemplate = new QPushButton(QStringLiteral("导出场景"));
+    sceneActions->addWidget(newScene); sceneActions->addWidget(editSceneButton); sceneActions->addWidget(history); sceneActions->addWidget(import); sceneActions->addWidget(exportTemplate); l->addLayout(sceneActions);
+    outputMode_ = new QComboBox; outputMode_->setObjectName("outputMode");
+    outputMode_->addItem(QStringLiteral("保存原图"), "originals"); outputMode_->addItem(QStringLiteral("保存拼图（源图存入证据子目录）"), "composites"); outputMode_->addItem(QStringLiteral("原图 + 选中拼图"), "both");
+    l->addWidget(outputMode_);
+    connect(newScene, &QPushButton::clicked, this, [this] { editScene(true); });
+    connect(editSceneButton, &QPushButton::clicked, this, [this] { editScene(false); });
+    connect(history, &QPushButton::clicked, this, [this] { editScene(false, true); });
+    connect(import, &QPushButton::clicked, this, [this] { importScene(); }); connect(exportTemplate, &QPushButton::clicked, this, [this] { exportScene(); });
     auto* right = new QWidget; auto* form = new QFormLayout(right); form->setContentsMargins(10, 0, 0, 0);
     profileName_ = new QLineEdit; form->addRow(QStringLiteral("配置名称"), profileName_);
     directory_ = new QLineEdit(settings_.outputDirectory); directory_->setObjectName("outputDirectory");
@@ -105,7 +124,7 @@ void MainWindow::buildUi()
     startTray_ = new QCheckBox(QStringLiteral("启动时直接进入托盘")); startTray_->setChecked(settings_.startInTray); form->addRow(startTray_);
     preview_ = new QLabel(QStringLiteral("最近一次截图预览")); preview_->setAlignment(Qt::AlignCenter); preview_->setMinimumSize(240, 130); preview_->setStyleSheet("background:#eef2f7; color:#3f4f65; border:1px solid #d8e0ea; border-radius:6px;"); form->addRow(preview_);
     split->addWidget(right); split->setSizes({650, 400});
-    auto* actions = new QHBoxLayout; auto* save = new QPushButton(QStringLiteral("截图并保存")); auto* copy = new QPushButton(QStringLiteral("复制选中原图")); auto* both = new QPushButton(QStringLiteral("保存并复制")); auto* folder = new QPushButton(QStringLiteral("打开输出目录"));
+    auto* actions = new QHBoxLayout; auto* save = new QPushButton(QStringLiteral("截图并保存")); auto* copy = new QPushButton(QStringLiteral("复制选中图片")); auto* both = new QPushButton(QStringLiteral("保存并复制")); auto* folder = new QPushButton(QStringLiteral("打开输出目录"));
     save->setObjectName("captureSave"); save->setStyleSheet("background:#1967d2; color:white; padding:9px 18px; border-radius:5px;");
     actions->addWidget(save); actions->addWidget(copy); actions->addWidget(both); actions->addStretch(); actions->addWidget(folder); outer->addLayout(actions);
     status_ = new QLabel; status_->setObjectName("captureStatus"); status_->setWordWrap(true); status_->setTextInteractionFlags(Qt::TextSelectableByMouse); outer->addWidget(status_); setCentralWidget(central);
@@ -144,9 +163,11 @@ void MainWindow::setupTray()
     tray_ = new QSystemTrayIcon(windowIcon(), this); auto* menu = new QMenu(this);
     auto* show = menu->addAction(QStringLiteral("打开区域与输出设置")); connect(show, &QAction::triggered, this, [this] { showNormal(); raise(); activateWindow(); });
     auto* edit = menu->addAction(QStringLiteral("屏幕框选 / 编辑区域")); connect(edit, &QAction::triggered, this, [this] { QTimer::singleShot(180, this, [this] { editRegions(); }); });
-    const QStringList labels{QStringLiteral("截图并保存"), QStringLiteral("复制选中原图"), QStringLiteral("保存并复制")};
+    const QStringList labels{QStringLiteral("截图并保存"), QStringLiteral("复制选中图片"), QStringLiteral("保存并复制")};
     for (int i = 0; i < 3; ++i) { auto* action = menu->addAction(labels[i]); connect(action, &QAction::triggered, this, [this, i] { QTimer::singleShot(180, this, [this, i] { triggerCapture(i); }); }); }
     profileMenu_ = menu->addMenu(QStringLiteral("切换截图配置")); rebuildProfileMenu();
+    sceneMenu_ = menu->addMenu(QStringLiteral("拼图场景 / 启用切换")); rebuildSceneMenu();
+    auto* sceneEdit = menu->addAction(QStringLiteral("打开自由拼图")); connect(sceneEdit, &QAction::triggered, this, [this] { QTimer::singleShot(180, this, [this] { editScene(false); }); });
     auto* pause = menu->addAction(QStringLiteral("暂停截图热键")); pause->setCheckable(true);
     connect(pause, &QAction::toggled, this, [this, pause](bool checked) {
         QString e; if (hotkeys_.pause(checked, e)) { paused_ = checked; setStatus(checked ? QStringLiteral("截图已暂停") : QStringLiteral("截图已恢复")); }
@@ -169,6 +190,8 @@ void MainWindow::rebuildProfileMenu()
 void MainWindow::loadProfile()
 {
     const auto& p = settings_.profiles[std::size_t(settings_.activeProfile)]; profileName_->setText(qs(p.name)); regions_->setRowCount(0); clipboard_->clear();
+    settings_.selectedSceneIds.clear(); for (const auto& id : p.sceneIds) settings_.selectedSceneIds.append(qs(id)); settings_.outputMode = qs(p.outputMode);
+    const auto wantedClipboard = p.clipboardSelection.empty() ? settings_.clipboardRegion : qs(p.clipboardSelection);
     for (const auto& r : p.regions) {
         int row = regions_->rowCount(); regions_->insertRow(row);
         auto* enabled = new QTableWidgetItem; enabled->setCheckState(r.enabled ? Qt::Checked : Qt::Unchecked); regions_->setItem(row, 0, enabled);
@@ -177,8 +200,10 @@ void MainWindow::loadProfile()
         for (int i = 0; i < 4; ++i) regions_->setItem(row, i + 2, new QTableWidgetItem(QString::number(values[i])));
         if (r.enabled) clipboard_->addItem(qs(r.name), qs(r.id));
     }
-    int index = clipboard_->findData(settings_.clipboardRegion); if (index >= 0) clipboard_->setCurrentIndex(index);
+    for (const auto& scene : settings_.scenes) clipboard_->addItem(QStringLiteral("拼图：") + qs(scene.name), "scene:" + qs(scene.id));
+    int index = clipboard_->findData(wantedClipboard); if (index >= 0) clipboard_->setCurrentIndex(index);
     settings_.clipboardRegion = clipboard_->currentData().toString();
+    outputMode_->setCurrentIndex(std::max(0, outputMode_->findData(settings_.outputMode))); rebuildScenes(); rebuildSceneMenu();
 }
 void MainWindow::addRegion()
 {
@@ -200,6 +225,9 @@ bool MainWindow::collectSettings(Settings& c, QString& e)
     ++p.revision; c.outputDirectory = QDir(directory_->text().trimmed()).absolutePath(); c.format = format_->currentText(); c.filenameTemplate = filename_->text();
     c.saveHotkey = saveKey_->text(); c.copyHotkey = copyKey_->text(); c.bothHotkey = bothKey_->text(); c.clipboardRegion = clipboard_->currentData().toString();
     c.testId = testId_->text(); c.device = device_->text(); c.station = station_->text(); c.operatorName = operator_->text(); c.startInTray = startTray_->isChecked();
+    c.outputMode = outputMode_->currentData().toString(); c.selectedSceneIds.clear();
+    for (int i = 0; i < scenes_->count(); ++i) if (scenes_->item(i)->checkState() == Qt::Checked) c.selectedSceneIds.append(scenes_->item(i)->data(Qt::UserRole).toString());
+    p.outputMode = c.outputMode.toStdString(); p.sceneIds.clear(); for (const auto& id : c.selectedSceneIds) p.sceneIds.push_back(id.toStdString()); p.clipboardSelection = c.clipboardRegion.toStdString();
     core::CaptureRequest sample; sample.issuedAtUtc = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs).toStdString(); sample.profile = p;
     expandFilename(c, sample, p.regions.front(), e); return e.isEmpty();
 }
@@ -223,6 +251,7 @@ void MainWindow::setStatus(const QString& text, bool error)
 }
 void MainWindow::triggerCapture(int mode)
 {
+    if (editingScene_) { setStatus(QStringLiteral("拼图编辑中，截图热键暂停；保存或取消后恢复。"), true); return; }
     if (editingRegions_) { setStatus(QStringLiteral("区域编辑中，截图未接受；请完成或取消框选。"), true); return; }
     if (configurationBlocked_) { setStatus(QStringLiteral("原配置无法读取。核对并应用配置后才能截图。"), true); return; }
     if (paused_) { setStatus(QStringLiteral("截图已暂停，请从托盘恢复"), true); return; }
@@ -236,18 +265,23 @@ void MainWindow::triggerCapture(int mode)
     request.context.stationId = snapshot.station.toStdString(); request.context.operatorId = snapshot.operatorName.toStdString();
     busy_ = true; setStatus(QStringLiteral("正在后台采集 %1 个源区域…").arg(request.profile.regions.size())); QPointer<MainWindow> self(this);
     QThreadPool::globalInstance()->start(QRunnable::create([self, snapshot, request, mode] {
-        WinCaptureBackend backend; auto result = std::make_shared<CaptureOutcome>(captureToFiles(backend, snapshot, request, mode != 1));
+        WinCaptureBackend backend; auto result = std::make_shared<CaptureOutcome>(captureToFiles(backend, snapshot, request, mode != 1, mode != 0));
         if (self) QMetaObject::invokeMethod(self, [self, result, snapshot, mode] { if (self) self->completeCapture(result, snapshot, mode); }, Qt::QueuedConnection);
     }));
 }
 void MainWindow::completeCapture(const std::shared_ptr<CaptureOutcome>& result, const Settings& snapshot, int mode)
 {
     if (mode != 0) {
-        const auto& list = result->batch.captures;
-        const auto it = std::find_if(list.begin(), list.end(), [&](const auto& c) { return snapshot.clipboardRegion.isEmpty() ? c.image.valid() : qs(c.region.id) == snapshot.clipboardRegion; });
         core::OutputResult output{"clipboard", "", "FAILED", {"CLIPBOARD_SOURCE", "Selected region unavailable"}};
-        if (it != list.end() && it->image.valid()) {
-            auto image = toQImage(it->image); auto previous = GetClipboardSequenceNumber(); QApplication::clipboard()->setImage(image);
+        QImage image;
+        if (snapshot.clipboardRegion.startsWith("scene:")) { const auto scene = result->composites.find(snapshot.clipboardRegion.mid(6).toStdString()); if (scene != result->composites.end()) image = scene->second; }
+        else {
+            const auto& list = result->batch.captures;
+            const auto it = std::find_if(list.begin(), list.end(), [&](const auto& c) { return snapshot.clipboardRegion.isEmpty() ? c.image.valid() : qs(c.region.id) == snapshot.clipboardRegion; });
+            if (it != list.end() && it->image.valid()) image = toQImage(it->image);
+        }
+        if (!image.isNull()) {
+            auto previous = GetClipboardSequenceNumber(); QApplication::clipboard()->setImage(image);
             if (GetClipboardSequenceNumber() != previous && QApplication::clipboard()->image() == image) { output.status = "COPIED"; output.error = {}; } else output.error = {"CLIPBOARD", "Clipboard readback failed"};
         }
         result->batch.outputs.push_back(output);
@@ -258,15 +292,106 @@ void MainWindow::completeCapture(const std::shared_ptr<CaptureOutcome>& result, 
     for (const auto& o : result->batch.outputs) { if (o.status == "SAVED") ++saved; if (o.error) { ++failed; detail = qs(o.error.code + ": " + o.error.message); } }
     setStatus(QStringLiteral("已采集 %1 张 · 已保存 %2 张 · %3 ms%4").arg(captured).arg(saved).arg(result->elapsedMs, 0, 'f', 1).arg(failed ? " · " + detail : QStringLiteral(" · 完成")), failed > 0);
     for (const auto& c : result->batch.captures) if (c.image.valid()) { preview_->setPixmap(QPixmap::fromImage(toQImage(c.image)).scaled(320, 160, Qt::KeepAspectRatio, Qt::SmoothTransformation)); break; }
-    busy_ = false; if (captureFinished) captureFinished(result);
+    busy_ = false; lastOutcome_ = result; if (captureFinished) captureFinished(result);
 }
 void MainWindow::closeEvent(QCloseEvent* e)
 {
     if (QSystemTrayIcon::isSystemTrayAvailable()) { hide(); e->ignore(); } else e->accept();
 }
+void MainWindow::rebuildScenes()
+{
+    const auto current = scenes_->currentItem() ? scenes_->currentItem()->data(Qt::UserRole).toString() : QString{};
+    scenes_->clear(); const auto& profile = settings_.profiles[std::size_t(settings_.activeProfile)];
+    for (const auto& scene : settings_.scenes) {
+        const bool compatible = std::all_of(scene.layers.begin(), scene.layers.end(), [&](const auto& l) { return std::any_of(profile.regions.begin(), profile.regions.end(), [&](const auto& r) { return r.id == l.sourceRegionId; }); });
+        auto* item = new QListWidgetItem(qs(scene.name) + QString(" · r%1").arg(scene.revision) + (compatible ? "" : QStringLiteral(" · 源待匹配")), scenes_);
+        item->setData(Qt::UserRole, qs(scene.id)); item->setFlags(item->flags() | Qt::ItemIsUserCheckable); item->setCheckState(settings_.selectedSceneIds.contains(qs(scene.id)) ? Qt::Checked : Qt::Unchecked);
+        if (qs(scene.id) == current) scenes_->setCurrentItem(item);
+    }
+    if (!scenes_->currentItem() && scenes_->count()) scenes_->setCurrentRow(0);
+}
+void MainWindow::rebuildSceneMenu()
+{
+    if (!sceneMenu_) return; sceneMenu_->clear();
+    if (settings_.scenes.empty()) { auto* empty = sceneMenu_->addAction(QStringLiteral("尚无场景，请先新建拼图")); empty->setEnabled(false); return; }
+    for (const auto& scene : settings_.scenes) {
+        const auto sceneId = qs(scene.id); auto* action = sceneMenu_->addAction(qs(scene.name)); action->setCheckable(true); action->setChecked(settings_.selectedSceneIds.contains(sceneId));
+        connect(action, &QAction::toggled, this, [this, sceneId](bool checked) {
+            auto candidate = settings_;
+            if (checked && !candidate.selectedSceneIds.contains(sceneId)) candidate.selectedSceneIds.append(sceneId);
+            if (!checked) candidate.selectedSceneIds.removeAll(sceneId);
+            candidate.outputMode = candidate.selectedSceneIds.empty() ? "originals" : "both";
+            auto& profile = candidate.profiles[std::size_t(candidate.activeProfile)]; profile.sceneIds.clear();
+            for (const auto& id : candidate.selectedSceneIds) profile.sceneIds.push_back(id.toStdString()); profile.outputMode = candidate.outputMode.toStdString();
+            QString error;
+            if (saveSettings(configurationPath_, candidate, error)) { settings_ = candidate; loadProfile(); setStatus(candidate.selectedSceneIds.empty() ? QStringLiteral("未启用拼图，当前仅保存原图。") : QStringLiteral("已更新当前配置的拼图输出。")); }
+            else setStatus(error, true);
+        });
+    }
+}
+void MainWindow::editScene(bool createNew, bool historical)
+{
+    if (busy_ || editingRegions_ || editingScene_) { setStatus(QStringLiteral("请等待当前截图或编辑完成。"), true); return; }
+    if (!applySettings()) return;
+    auto profile = settings_.profiles[std::size_t(settings_.activeProfile)]; SceneSources sources;
+    if (historical) {
+        const auto manifest = QFileDialog::getOpenFileName(this, QStringLiteral("打开已保存批次的 batch.json"), settings_.outputDirectory, "Batch (batch.json);;JSON (*.json)");
+        if (manifest.isEmpty()) return; QString error;
+        if (!loadHistoricalSources(manifest, sources, profile, error)) { setStatus(error, true); return; }
+    } else if (lastOutcome_ && lastOutcome_->batch.request.profile.id == profile.id) sources = batchSources(lastOutcome_->batch);
+    core::SceneTemplate model; bool existing = false;
+    if (!createNew && scenes_->currentItem()) {
+        const auto chosen = scenes_->currentItem()->data(Qt::UserRole).toString().toStdString();
+        const auto found = std::find_if(settings_.scenes.begin(), settings_.scenes.end(), [&](const auto& scene) { return scene.id == chosen; });
+        if (found != settings_.scenes.end()) { model = *found; existing = true; }
+    }
+    if (historical && existing && !std::all_of(model.layers.begin(), model.layers.end(), [&](const auto& layer) { return sources.count(layer.sourceRegionId) > 0; })) existing = false;
+    if (!existing) model = core::presetScene(profile, id(), historical ? "历史重排" : "拼图 " + std::to_string(settings_.scenes.size() + 1), 1600, 900, core::LayoutPreset::Grid);
+    editingScene_ = true;
+    SceneEditor dialog(model, profile, sources, this);
+    const auto accepted = dialog.exec() == QDialog::Accepted; editingScene_ = false;
+    if (!accepted) { setStatus(QStringLiteral("已取消场景编辑，截图已恢复。")); return; }
+    const auto saved = dialog.sceneTemplate(); auto candidate = settings_;
+    const auto found = std::find_if(candidate.scenes.begin(), candidate.scenes.end(), [&](const auto& scene) { return scene.id == saved.id; });
+    if (found == candidate.scenes.end()) candidate.scenes.push_back(saved); else *found = saved;
+    auto& currentProfile = candidate.profiles[std::size_t(candidate.activeProfile)];
+    const bool compatible = std::all_of(saved.layers.begin(), saved.layers.end(), [&](const auto& layer) { return std::any_of(currentProfile.regions.begin(), currentProfile.regions.end(), [&](const auto& region) { return region.id == layer.sourceRegionId; }); });
+    if (compatible) {
+        if (!candidate.selectedSceneIds.contains(qs(saved.id))) candidate.selectedSceneIds.append(qs(saved.id));
+        candidate.outputMode = "both"; candidate.clipboardRegion = "scene:" + qs(saved.id); currentProfile.sceneIds.clear();
+        for (const auto& scene : candidate.selectedSceneIds) currentProfile.sceneIds.push_back(scene.toStdString());
+        currentProfile.outputMode = "both"; currentProfile.clipboardSelection = candidate.clipboardRegion.toStdString();
+    }
+    QString error;
+    if (!saveSettings(configurationPath_, candidate, error)) { setStatus(error, true); return; }
+    settings_ = candidate; loadProfile();
+    setStatus(compatible ? QStringLiteral("场景已保存并启用；后续截图保存原图和拼图，复制所选拼图。") : QStringLiteral("历史场景已保存；源与当前配置不同，未自动启用。可在编辑器导出派生图。"));
+}
+void MainWindow::importScene()
+{
+    if (busy_ || editingRegions_ || editingScene_ || !applySettings()) return;
+    const auto path = QFileDialog::getOpenFileName(this, QStringLiteral("导入独立场景模板"), {}, "Scene (*.json)"); if (path.isEmpty()) return;
+    QFile file(path); if (!file.open(QIODevice::ReadOnly)) { setStatus(file.errorString(), true); return; }
+    if (file.size() > 8 * 1024 * 1024) { setStatus(QStringLiteral("场景文件超过 8 MiB。"), true); return; }
+    QJsonParseError parse; const auto document = QJsonDocument::fromJson(file.readAll(), &parse); QString error; core::SceneTemplate scene;
+    if (parse.error || !document.isObject() || !sceneFromJson(document.object(), scene, error)) { setStatus(error.isEmpty() ? QStringLiteral("场景 JSON 无效，原文件未改动。") : error, true); return; }
+    auto candidate = settings_;
+    if (std::any_of(candidate.scenes.begin(), candidate.scenes.end(), [&](const auto& s) { return s.id == scene.id; })) { scene.id = id(); scene.revision = 1; scene.name += "（导入副本）"; }
+    candidate.scenes.push_back(scene);
+    if (!saveSettings(configurationPath_, candidate, error)) { setStatus(error, true); return; }
+    settings_ = candidate; loadProfile(); setStatus(QStringLiteral("场景已导入。请编辑确认源映射，再勾选输出并应用配置。"));
+}
+void MainWindow::exportScene()
+{
+    if (!scenes_->currentItem()) { setStatus(QStringLiteral("请先选择一个场景。"), true); return; }
+    const auto chosen = scenes_->currentItem()->data(Qt::UserRole).toString().toStdString();
+    const auto found = std::find_if(settings_.scenes.begin(), settings_.scenes.end(), [&](const auto& scene) { return scene.id == chosen; }); if (found == settings_.scenes.end()) return;
+    const auto path = QFileDialog::getSaveFileName(this, QStringLiteral("导出为新的场景文件（不覆盖）"), {}, "Scene (*.json)", nullptr, QFileDialog::DontConfirmOverwrite); if (path.isEmpty()) return;
+    QString error; if (saveBytesNew(QJsonDocument(sceneJson(*found)).toJson(), path, error)) setStatus(QStringLiteral("独立场景模板已导出。")); else setStatus(error, true);
+}
 void MainWindow::editRegions()
 {
-    if (busy_ || editingRegions_) { setStatus(QStringLiteral("请等待当前采集或区域编辑完成。"), true); return; }
+    if (busy_ || editingRegions_ || editingScene_) { setStatus(QStringLiteral("请等待当前采集或编辑完成。"), true); return; }
     if (!applySettings()) return;
     const bool restore = isVisible(); hide(); editingRegions_ = true;
     // Let the compositor remove the host before taking editor-only background frames.

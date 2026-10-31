@@ -10,7 +10,7 @@
 #include <memory>
 
 class QCheckBox; class QComboBox; class QLabel; class QLineEdit;
-class QMenu; class QSystemTrayIcon; class QTableWidget;
+class QMenu; class QSystemTrayIcon; class QTableWidget; class QListWidget;
 
 namespace aitsnap {
 
@@ -30,18 +30,24 @@ private:
     Hotkeys hotkeys_;
     QSystemTrayIcon* tray_{};
     QMenu* profileMenu_{};
+    QMenu* sceneMenu_{};
     QComboBox *profiles_{}, *format_{}, *clipboard_{};
     QLineEdit *profileName_{}, *directory_{}, *filename_{}, *saveKey_{}, *copyKey_{}, *bothKey_{};
     QLineEdit *testId_{}, *device_{}, *station_{}, *operator_{};
     QCheckBox* startTray_{};
     QTableWidget* regions_{};
+    QListWidget* scenes_{};
+    QComboBox* outputMode_{};
+    std::shared_ptr<CaptureOutcome> lastOutcome_;
     QLabel *status_{}, *preview_{};
-    bool busy_{}, paused_{}, configurationBlocked_{}, editingRegions_{};
+    bool busy_{}, paused_{}, configurationBlocked_{}, editingRegions_{}, editingScene_{};
     void buildUi(); void setupTray(); void loadProfile();
     bool collectSettings(Settings&, QString& error);
     bool applySettings(); void addRegion(); void rebuildProfileMenu();
     void setStatus(const QString&, bool error = false);
     void editRegions();
+    void editScene(bool createNew, bool historical = false);
+    void rebuildScenes(); void rebuildSceneMenu(); void importScene(); void exportScene();
     void completeCapture(const std::shared_ptr<CaptureOutcome>&, const Settings&, int mode);
 };
 

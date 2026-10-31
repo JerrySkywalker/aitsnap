@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #define NOMINMAX
 #include <windows.h>
+#include <wtsapi32.h>
 #include "win_capture.h"
 #include <chrono>
 #include <cstdio>
@@ -9,6 +10,35 @@
 #include <stdexcept>
 
 namespace aitsnap {
+core::Error interactiveDesktopStatus()
+{
+    HDESK input = OpenInputDesktop(0, FALSE, DESKTOP_READOBJECTS);
+    wchar_t inputName[256]{}, threadName[256]{}; DWORD needed{};
+    const bool sameDesktop = input &&
+        GetUserObjectInformationW(input, UOI_NAME, inputName, sizeof(inputName), &needed) &&
+        GetUserObjectInformationW(GetThreadDesktop(GetCurrentThreadId()), UOI_NAME, threadName, sizeof(threadName), &needed) &&
+        std::wcscmp(inputName, threadName) == 0;
+    if (input) CloseDesktop(input);
+    if (!sameDesktop) return {"DESKTOP_UNAVAILABLE", "Input desktop is secure or unavailable"};
+    // LockApp can cover Default without changing the desktop name. Query the
+    // actual modern session lock flag; do not mistake its background for evidence.
+    using NativeVersion = LONG(WINAPI*)(OSVERSIONINFOW*);
+    const auto nativeVersion = reinterpret_cast<NativeVersion>(GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "RtlGetVersion"));
+    OSVERSIONINFOW version{}; version.dwOSVersionInfoSize = sizeof(version);
+    const bool modernFlags = nativeVersion && nativeVersion(&version) == 0 &&
+        (version.dwMajorVersion > 6 || (version.dwMajorVersion == 6 && version.dwMinorVersion >= 2));
+    LPWSTR buffer{}; DWORD bytes{}; int state = -1; LONG flags = -1;
+    if (WTSQuerySessionInformationW(WTS_CURRENT_SERVER_HANDLE, WTS_CURRENT_SESSION, WTSSessionInfoEx, &buffer, &bytes)) {
+        if (bytes >= sizeof(WTSINFOEXW)) { const auto* info = reinterpret_cast<const WTSINFOEXW*>(buffer);
+            if (info->Level == 1) { state = int(info->Data.WTSInfoExLevel1.SessionState); flags = info->Data.WTSInfoExLevel1.SessionFlags; } }
+        WTSFreeMemory(buffer);
+    }
+    if (state >= 0 && state != WTSActive) return {"SESSION_INACTIVE", "Interactive session is disconnected or inactive"};
+    // Windows 7 flags have different historical behavior; its native gate stays
+    // separate and retains the secure-desktop check above.
+    if (modernFlags && flags == WTS_SESSIONSTATE_LOCK) return {"SESSION_LOCKED", "Windows session is locked; capture was not performed"};
+    return {};
+}
 static std::string utf8(const wchar_t* value)
 {
     const int n = WideCharToMultiByte(CP_UTF8, 0, value, -1, nullptr, 0, nullptr, nullptr);
@@ -40,14 +70,7 @@ std::vector<core::Display> WinCaptureBackend::displays()
 core::DisplayFrame WinCaptureBackend::acquire(const core::Display& d)
 {
     core::DisplayFrame frame; frame.display = d;
-    HDESK input = OpenInputDesktop(0, FALSE, DESKTOP_READOBJECTS);
-    wchar_t inputName[256]{}, threadName[256]{}; DWORD needed{};
-    const bool visibleDesktop = input &&
-        GetUserObjectInformationW(input, UOI_NAME, inputName, sizeof(inputName), &needed) &&
-        GetUserObjectInformationW(GetThreadDesktop(GetCurrentThreadId()), UOI_NAME, threadName, sizeof(threadName), &needed) &&
-        std::wcscmp(inputName, threadName) == 0;
-    if (input) CloseDesktop(input);
-    if (!visibleDesktop) { frame.error = {"DESKTOP_UNAVAILABLE", "Input desktop is locked, secure or unavailable"}; return frame; }
+    if (const auto status = interactiveDesktopStatus(); status) { frame.error = status; return frame; }
     if (!d.rect.valid() || std::int64_t(d.rect.width) * d.rect.height > 100000000) {
         frame.error = {"DISPLAY_SIZE", "Invalid/oversized display"}; return frame;
     }
