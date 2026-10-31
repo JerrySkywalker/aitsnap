@@ -4,6 +4,7 @@
 #include <cctype>
 #include <cmath>
 #include <set>
+#include <limits>
 
 namespace aitsnap::core {
 bool Image::valid() const
@@ -22,6 +23,8 @@ Error validateProfile(const CaptureProfile& p)
     bool enabled = false;
     for (const auto& r : p.regions) {
         if (r.id.empty() || r.name.empty() || !ids.insert(r.id).second || !r.rect.valid()) return {"REGION", "Unique region ids, names and positive physical sizes required"};
+        if (std::int64_t(r.rect.x) + r.rect.width > std::numeric_limits<int>::max() ||
+            std::int64_t(r.rect.y) + r.rect.height > std::numeric_limits<int>::max()) return {"REGION_COORDINATES", "Region extent exceeds physical coordinate range"};
         if (r.rect.width > 32768 || r.rect.height > 32768 ||
             std::int64_t(r.rect.width) * r.rect.height > 100000000) return {"REGION_SIZE", "Region exceeds preview memory limit"};
         enabled = enabled || r.enabled;

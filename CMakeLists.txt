@@ -13,7 +13,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_AUTOMOC ON)
 include(CTest)
 
-add_library(aitsnap-domain STATIC src/core/domain.cpp)
+add_library(aitsnap-domain STATIC src/core/domain.cpp src/core/region_edit.cpp)
 set_target_properties(aitsnap-domain PROPERTIES AUTOMOC OFF)
 target_include_directories(aitsnap-domain PUBLIC src)
 add_library(aitsnap-capture STATIC src/core/capture_service.cpp)
@@ -51,8 +51,9 @@ add_library(aitsnap-adapters STATIC
     src/adapters/json_store.cpp
     src/adapters/hotkeys.cpp
     src/adapters/capture_files.cpp
+    src/desktop/region_editor.cpp
 )
-target_link_libraries(aitsnap-adapters PUBLIC aitsnap-capture Qt${AITSNAP_QT_MAJOR}::Widgets PRIVATE gdi32 user32)
+target_link_libraries(aitsnap-adapters PUBLIC aitsnap-capture Qt${AITSNAP_QT_MAJOR}::Widgets PRIVATE gdi32 user32 dwmapi)
 target_include_directories(aitsnap-adapters PUBLIC src)
 add_executable(aitsnap WIN32
     src/main.cpp

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "core/capture_service.h"
+#include "core/region_edit.h"
 #include <iostream>
 #include <stdexcept>
 using namespace aitsnap::core;
@@ -42,6 +43,10 @@ int main()
         scene.layers[0].destination.width = 0;
         check(bool(validateScene(scene)), "invalid transform rejected");
         check((*image.bgra)[0] == 10, "retained immutable source");
+        check(draggedRect({}, {50, 40}, {-50, -40}, RegionDrag::Create) == Rect{-50, -40, 100, 80}, "reverse physical selection across origins");
+        check(draggedRect({-100, -100, 200, 200}, {-50, -50}, {50, 50}, RegionDrag::Move) == Rect{0, 0, 200, 200}, "physical drag delta");
+        check(draggedRect({-10, -10, 20, 20}, {10, 10}, {30, 50}, RegionDrag::BottomRight) == Rect{-10, -10, 40, 60}, "resize handle physical dimensions");
+        check(draggedRect({0, 0, 20, 20}, {0, 0}, {30, 40}, RegionDrag::TopLeft) == Rect{20, 20, 10, 20}, "resize through opposite corner");
         std::cout << "CORE_PASS physical spanning pixels, topology/gap, snapshots, ids, versions, names, scenes, report transitions\n";
     } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
 }

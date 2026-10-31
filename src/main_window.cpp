@@ -4,6 +4,7 @@
 #include <windows.h>
 #include "main_window.h"
 #include "adapters/win_capture.h"
+#include "desktop/region_editor.h"
 #include <QAction>
 #include <QApplication>
 #include <QCheckBox>
@@ -86,6 +87,8 @@ void MainWindow::buildUi()
     regions_->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch); regions_->setSelectionBehavior(QAbstractItemView::SelectRows);
     l->addWidget(new QLabel(QStringLiteral("源区域 · 原生桌面物理像素（可为负坐标）"))); l->addWidget(regions_, 1);
     auto* buttons = new QHBoxLayout; auto* add = new QPushButton(QStringLiteral("添加区域")); auto* remove = new QPushButton(QStringLiteral("删除选中")); auto* calibrate = new QPushButton(QStringLiteral("确认当前屏幕布局"));
+    auto* visual = new QPushButton(QStringLiteral("屏幕框选 / 拖动")); visual->setObjectName("editRegions");
+    auto* visualRow = new QHBoxLayout; visualRow->addWidget(visual); visualRow->addStretch(); l->addLayout(visualRow);
     buttons->addWidget(add); buttons->addWidget(remove); buttons->addWidget(calibrate); l->addLayout(buttons); split->addWidget(left);
     auto* right = new QWidget; auto* form = new QFormLayout(right); form->setContentsMargins(10, 0, 0, 0);
     profileName_ = new QLineEdit; form->addRow(QStringLiteral("配置名称"), profileName_);
@@ -108,6 +111,7 @@ void MainWindow::buildUi()
     status_ = new QLabel; status_->setObjectName("captureStatus"); status_->setWordWrap(true); status_->setTextInteractionFlags(Qt::TextSelectableByMouse); outer->addWidget(status_); setCentralWidget(central);
     connect(apply, &QPushButton::clicked, this, [this] { applySettings(); });
     connect(add, &QPushButton::clicked, this, [this] { addRegion(); });
+    connect(visual, &QPushButton::clicked, this, [this] { editRegions(); });
     connect(remove, &QPushButton::clicked, this, [this] { if (regions_->currentRow() >= 0) regions_->removeRow(regions_->currentRow()); });
     connect(browse, &QPushButton::clicked, this, [this] { auto p = QFileDialog::getExistingDirectory(this, QStringLiteral("选择截图保存目录"), directory_->text()); if (!p.isEmpty()) directory_->setText(p); });
     connect(folder, &QPushButton::clicked, this, [this] { QDesktopServices::openUrl(QUrl::fromLocalFile(directory_->text())); });
@@ -139,6 +143,7 @@ void MainWindow::setupTray()
 {
     tray_ = new QSystemTrayIcon(windowIcon(), this); auto* menu = new QMenu(this);
     auto* show = menu->addAction(QStringLiteral("打开区域与输出设置")); connect(show, &QAction::triggered, this, [this] { showNormal(); raise(); activateWindow(); });
+    auto* edit = menu->addAction(QStringLiteral("屏幕框选 / 编辑区域")); connect(edit, &QAction::triggered, this, [this] { QTimer::singleShot(180, this, [this] { editRegions(); }); });
     const QStringList labels{QStringLiteral("截图并保存"), QStringLiteral("复制选中原图"), QStringLiteral("保存并复制")};
     for (int i = 0; i < 3; ++i) { auto* action = menu->addAction(labels[i]); connect(action, &QAction::triggered, this, [this, i] { QTimer::singleShot(180, this, [this, i] { triggerCapture(i); }); }); }
     profileMenu_ = menu->addMenu(QStringLiteral("切换截图配置")); rebuildProfileMenu();
@@ -218,6 +223,7 @@ void MainWindow::setStatus(const QString& text, bool error)
 }
 void MainWindow::triggerCapture(int mode)
 {
+    if (editingRegions_) { setStatus(QStringLiteral("区域编辑中，截图未接受；请完成或取消框选。"), true); return; }
     if (configurationBlocked_) { setStatus(QStringLiteral("原配置无法读取。核对并应用配置后才能截图。"), true); return; }
     if (paused_) { setStatus(QStringLiteral("截图已暂停，请从托盘恢复"), true); return; }
     if (busy_) { setStatus(QStringLiteral("上一批截图尚未完成，本次请求未接受"), true); return; }
@@ -257,6 +263,28 @@ void MainWindow::completeCapture(const std::shared_ptr<CaptureOutcome>& result, 
 void MainWindow::closeEvent(QCloseEvent* e)
 {
     if (QSystemTrayIcon::isSystemTrayAvailable()) { hide(); e->ignore(); } else e->accept();
+}
+void MainWindow::editRegions()
+{
+    if (busy_ || editingRegions_) { setStatus(QStringLiteral("请等待当前采集或区域编辑完成。"), true); return; }
+    if (!applySettings()) return;
+    const bool restore = isVisible(); hide(); editingRegions_ = true;
+    // Let the compositor remove the host before taking editor-only background frames.
+    QTimer::singleShot(180, this, [this, restore] {
+        try {
+            openRegionEditor(this, settings_.profiles[std::size_t(settings_.activeProfile)], [this, restore](bool accepted, core::CaptureProfile profile) {
+                if (accepted) {
+                    auto candidate = settings_;
+                    const auto target = std::find_if(candidate.profiles.begin(), candidate.profiles.end(), [&](const auto& p) { return p.id == profile.id; });
+                    if (target == candidate.profiles.end()) { editingRegions_ = false; setStatus(QStringLiteral("编辑配置已不存在，未改写其他配置。"), true); if (restore) showNormal(); return; }
+                    *target = std::move(profile); QString error;
+                    if (saveSettings(configurationPath_, candidate, error)) { settings_ = candidate; loadProfile(); setStatus(QStringLiteral("区域已保存，截图已恢复。")); }
+                    else setStatus(error, true);
+                } else setStatus(QStringLiteral("已取消框选，区域未改动。"));
+                editingRegions_ = false; if (restore) { showNormal(); raise(); activateWindow(); }
+            });
+        } catch (const std::exception& e) { editingRegions_ = false; setStatus(QString::fromUtf8(e.what()), true); if (restore) showNormal(); }
+    });
 }
 
 } // namespace aitsnap
