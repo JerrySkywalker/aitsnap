@@ -17,6 +17,7 @@
 | Word2010 / Win10 / clean machine | No qualified target used | HOLD, not tested |
 | Mixed-DPI/replug/rotation, two4K, physical keyboard, Explorer restart | Pure geometry/dispatch/lifecycle evidence only for relevant cases | Native/manual cases NOT_RUN |
 | Owner M1–M5 visual and Word layout | Review pack prepared; user-input guard prevented prior app control | OWNER_HOLD |
+| Later agent UI sample | Actual current preview window, isolated capture output path, scene editor open, layer pointer drag86.618/66.441 and undo16/16 | PASS for this small interaction sample; Owner acceptance still HOLD |
 
 Performance context: Intel Core Ultra X7 358H, 16 logical processors; local NVMe SSD / NTFS. The measured monitor topology had four displays; no claim that it meets the unavailable two4K/mixed-DPI fixtures. UTC strings describe wall-clock labeling; stage durations use monotonic timers and do not prove synchronized cross-screen exposure or UTC accuracy.
 
