@@ -25,9 +25,9 @@ def author_ui(db, main_file):
                   d, name, kind, x, y, w, h, attrs, prop, text, next, None)
     def event(d, button, kind, argument, condition='1', order=1):
         db.insert('ControlEvent', 'Dialog_ Control_ Event Argument Condition Ordering', d, button, kind, argument, condition, order)
-    def heading(d, title, body):
+    def heading(d, title, body, body_height=110):
         control(d, 'Heading', 'Text', 24, 22, 392, 32, '{\\Heading}'+title)
-        control(d, 'Body', 'Text', 24, 67, 392, 110, body)
+        control(d, 'Body', 'Text', 24, 67, 392, body_height, body)
         control(d, 'Line', 'Line', 20, 252, 400, 0)
     def button(d, name, text, x, next=None):
         control(d, name, 'PushButton', x, 267, 84, 22, text, next=next)
@@ -43,7 +43,7 @@ def author_ui(db, main_file):
     event('WelcomeDlg', 'Next', 'NewDialog', 'MaintenanceDlg', 'Installed')
 
     dialog('FolderDlg', 'Path', 'Next')
-    heading('FolderDlg', '选择安装路径', '选择程序文件的安装目录。截图、配置和报告保存在独立位置。\n\n可直接输入完整路径，或点击“浏览”。')
+    heading('FolderDlg', '选择安装路径', '选择程序文件的安装目录。截图、配置和报告保存在独立位置。\n\n可直接输入完整路径，或点击“浏览”。', body_height=70)
     control('FolderDlg', 'Path', 'PathEdit', 24, 150, 302, 22, prop='INSTALLDIR', next='Browse')
     control('FolderDlg', 'Browse', 'PushButton', 336, 150, 80, 22, '浏览…', next='Back')
     event('FolderDlg', 'Browse', 'SpawnDialog', 'BrowseDlg')
@@ -76,7 +76,7 @@ def author_ui(db, main_file):
     event('MaintenanceDlg', 'Remove', 'EndDialog', 'Return', order=2)
 
     dialog('ProgressDlg', 'Cancel', 'Cancel', 'Cancel', attributes=1)
-    heading('ProgressDlg', '正在应用更改', 'Windows Installer 正在安装、修复或卸载 AITSnap。\n请等待完成提示。')
+    heading('ProgressDlg', '正在应用更改', 'Windows Installer 正在安装、修复或卸载 AITSnap。\n请等待完成提示。', body_height=80)
     control('ProgressDlg', 'Action', 'Text', 24, 170, 392, 28, '正在准备…')
     control('ProgressDlg', 'Progress', 'ProgressBar', 24, 210, 392, 16)
     control('ProgressDlg', 'Cancel', 'PushButton', 332, 267, 84, 22, '取消', next='Cancel')

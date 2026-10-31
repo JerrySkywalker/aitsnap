@@ -29,7 +29,7 @@ def rows(table, columns):
     finally: close(view)
     return result
 try:
-    controls = rows('Control', ['Dialog_','Control','Type','Text','Control_Next'])
+    controls = rows('Control', ['Dialog_','Control','Type','Text','Control_Next','X','Y','Width','Height'])
     dialogs = rows('Dialog', ['Dialog','Control_First','Control_Default','Control_Cancel'])
     for dialog, first, default, cancel in dialogs:
         own = {r[1]:r for r in controls if r[0] == dialog}
@@ -42,7 +42,15 @@ try:
         assert cursor == start and seen == set(links), 'Broken tab cycle: '+dialog
         assert {k for k,r in own.items() if r[2] in ['PushButton','CheckBox','PathEdit','DirectoryList','DirectoryCombo']} <= seen, dialog
     properties = dict(rows('Property',['Property','Value']))
-    assert properties['ProductVersion'] == '0.6.1'
+    # Text rectangles must not cover interactive controls on the first paint.
+    for text in [r for r in controls if r[2]=='Text']:
+        tx,ty,tw,th = map(int,text[5:9])
+        for target in [r for r in controls if r[0]==text[0] and r[2] in ['PathEdit','PushButton','CheckBox','DirectoryList','DirectoryCombo','ProgressBar']]:
+            x,y,w,h = map(int,target[5:9])
+            assert not (tx<x+w and tx+tw>x and ty<y+h and ty+th>y), 'Overlapping text/input: '+text[0]+'/'+text[1]+' and '+target[1]
+    progress = {r[1]:r for r in controls if r[0]=='ProgressDlg'}
+    assert int(progress['Body'][6])+int(progress['Body'][8]) <= int(progress['Action'][6]), 'Progress body obscures action text'
+    assert properties['ProductVersion'] in ['0.6.1','0.6.2']
     assert any(r[0]=='WelcomeDlg' and '[ProductVersion]' in r[3] and '多屏截图' in r[3] for r in controls)
     assert any(r[0]=='ExitDlg' and '立即启动 AITSnap' in r[3] for r in controls)
     sequence = {r[0]:r[1] for r in rows('InstallUISequence',['Action','Sequence'])}
