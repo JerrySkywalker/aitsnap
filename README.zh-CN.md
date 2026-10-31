@@ -4,7 +4,7 @@
 
 AITSnap 是面向截图整理与试验执行记录关联的开源桌面软件项目。
 当前仍为软件骨架：源码只有一个 Qt Widgets 占位窗口，尚无可用产品功能或安装包。
-实际构建与启动检查的范围见[本轮验证记录](docs/qt6-baseline-validation.md)，
+实际构建与启动检查的范围见[本轮预验证记录](docs/win7-prevalidation.md)，
 不代表全部目标系统或人工视觉验收通过。
 
 ## 已确定的产品方向
@@ -21,17 +21,20 @@ AITSnap 是面向截图整理与试验执行记录关联的开源桌面软件项
 
 ## 技术与系统边界
 
-- 正式平台基线：Windows 10（1809 或更高版本）/ Windows 11，x64。
-- 技术栈：C++20、Qt 6.12 Widgets、CMake 3.24 或更高版本；链接 `Qt6::Widgets`。
-- 首选编译器：MSVC 2022（v143）x64，配套相同 ABI 的 Qt SDK。
-- Qt 版本限定为 6.12.x；采用更新次版本前须重新检查平台支持，
-  因为 Qt 6.12 是最后支持 Windows 10 的 Qt 版本。
-- Windows 7 和 Linux 均仅保留未来可能支持，当前不开发、不测试。
-- 正式平台声明与实际验证范围分开记录，不能据此认定所有系统版本已经测试通过。
+- Windows 7 SP1 恢复为**必需支持平台**，采用 Qt 5.15 Legacy 构建候选；
+  x64、x86 均未完成 Win7 原生运行验收。
+- Windows 10（1809+）/ Windows 11 x64 保留 Qt 6.12 + MSVC 2022 主构建。
+- 保留 C++20、CMake 3.24+、单仓库及共用源码。
+  `AITSNAP_QT_MAJOR=5|6` 显式选择 Qt，不自动回退。
+- 后续业务核心与 Qt 大版本及原生平台适配层解耦；目前未开发业务功能。
+- Linux 仍为未来可能支持，不开发、不测试。
+
+详见[平台矩阵与适配边界](docs/windows-compatibility.md)。必需支持是产品要求，
+并不表示 Win7 运行验收已经通过。
 
 ## 构建
 
-复用现有 vcpkg，以及官方 Qt 6.12 MSVC x64 SDK。
+复用现有 vcpkg，以及官方 Qt 6.12 MSVC x64 SDK，主构建命令保持不变。
 在当前 PowerShell 会话中，将 `VCPKG_ROOT` 指向现有 vcpkg 根目录，
 将 `QT_ROOT` 指向 Qt 套件安装前缀，然后在仓库根目录执行：
 
@@ -40,15 +43,21 @@ cmake --preset windows-msvc-qt-sdk
 cmake --build --preset windows-msvc-qt-sdk-release
 ```
 
-可移植预设显式加载 `$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake`，
-使用 `x64-windows` triplet。Qt 实际来自 `QT_ROOT` 指定的官方 SDK，
-并非来自 vcpkg 的 Qt 包。预设关闭 manifest 自动安装及 vcpkg 的 app-local 复制，
-避免配置时触发 Qt 源码构建。不新建另一套 vcpkg，不提交本机绝对路径。
+Qt 5 Legacy x64 候选通过 `QT5_ROOT` 指定 Qt 5.15 MSVC x64 套件，使用
+`windows-qt5-legacy-x64` / `windows-qt5-legacy-x64-release` 预设。
+该候选选择 v142，本机缺少此工具集，目前不能完成该候选构建。
+另有 x86 候选，以及明确命名为 `host-preview` 的 v143 本机预验证预设；
+本机预验证二进制不能当作已验收的 Win7 发布包。
+
+所有预设均加载同一套现有 vcpkg toolchain；Qt 来自 SDK，并非 vcpkg Qt 包。
+继续关闭 manifest 自动安装及 app-local 复制，不新建 vcpkg，不编译 Qt 源码，
+不提交本机绝对路径。
 
 配置、运行时 DLL/插件设置及实际 toolchain 加载核验方法见
 [Windows 构建说明](docs/build-windows.md)。
-[原始初始化验证记录](docs/initial-validation.md) 完整保留为历史，其中的
-Qt 5 和 Windows 7 要求已由本轮基线取代。
+[原始初始化验证记录](docs/initial-validation.md) 和
+[Qt 6 基线验证记录](docs/qt6-baseline-validation.md) 均保留为历史。
+当前平台矩阵取代其中的旧平台政策，不改写历史结果。
 
 ## 许可证
 
