@@ -13,6 +13,7 @@ class QCheckBox; class QComboBox; class QLabel; class QLineEdit;
 class QMenu; class QSystemTrayIcon; class QTableWidget; class QListWidget;
 
 namespace aitsnap {
+class ReportQueue;
 
 class MainWindow final : public QMainWindow
 {
@@ -38,6 +39,11 @@ private:
     QTableWidget* regions_{};
     QListWidget* scenes_{};
     QComboBox* outputMode_{};
+    ReportQueue* reportQueue_{};
+    QCheckBox* reportEnabled_{};
+    QLineEdit* reportPath_{};
+    QComboBox *reportMode_{}, *reportLayout_{};
+    QLabel* reportStatus_{};
     std::shared_ptr<CaptureOutcome> lastOutcome_;
     QLabel *status_{}, *preview_{};
     bool busy_{}, paused_{}, configurationBlocked_{}, editingRegions_{}, editingScene_{};
@@ -49,6 +55,7 @@ private:
     void editScene(bool createNew, bool historical = false);
     void rebuildScenes(); void rebuildSceneMenu(); void importScene(); void exportScene();
     void completeCapture(const std::shared_ptr<CaptureOutcome>&, const Settings&, int mode);
+    void showReportQueue(); void refreshReportStatus();
 };
 
 } // namespace aitsnap

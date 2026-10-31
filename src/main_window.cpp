@@ -4,6 +4,7 @@
 #include <windows.h>
 #include "main_window.h"
 #include "adapters/win_capture.h"
+#include "adapters/report_queue.h"
 #include "desktop/region_editor.h"
 #include "desktop/scene_editor.h"
 #include "core/scene_geometry.h"
@@ -16,6 +17,8 @@
 #include <QDateTime>
 #include <QDesktopServices>
 #include <QDir>
+#include <QDialog>
+#include <QDialogButtonBox>
 #include <QFile>
 #include <QFileDialog>
 #include <QFormLayout>
@@ -31,6 +34,7 @@
 #include <QPushButton>
 #include <QRunnable>
 #include <QSplitter>
+#include <QScrollArea>
 #include <QSystemTrayIcon>
 #include <QTableWidget>
 #include <QThreadPool>
@@ -66,6 +70,8 @@ MainWindow::MainWindow(QWidget* parent, QString path) : QMainWindow(parent), con
     }
     configurationBlocked_ = !loadError.isEmpty();
     buildUi(); setupTray(); loadProfile(); qApp->installNativeEventFilter(&hotkeys_);
+    reportQueue_ = new ReportQueue(QFileInfo(configurationPath_).absolutePath() + "/report-jobs", QCoreApplication::applicationDirPath() + "/aitsnap-word-bridge.exe", this);
+    reportQueue_->changed = [this] { refreshReportStatus(); }; refreshReportStatus();
     hotkeys_.triggered = [this](int mode) { triggerCapture(mode); };
     hotkeys_.taskbarCreated = [this] { QTimer::singleShot(250, this, [this] { tray_->hide(); tray_->show(); }); };
     QString e;
@@ -122,8 +128,20 @@ void MainWindow::buildUi()
     testId_ = new QLineEdit(settings_.testId); device_ = new QLineEdit(settings_.device); station_ = new QLineEdit(settings_.station); operator_ = new QLineEdit(settings_.operatorName);
     form->addRow(QStringLiteral("试验标识"), testId_); form->addRow(QStringLiteral("设备标识"), device_); form->addRow(QStringLiteral("工位"), station_); form->addRow(QStringLiteral("操作员"), operator_);
     startTray_ = new QCheckBox(QStringLiteral("启动时直接进入托盘")); startTray_->setChecked(settings_.startInTray); form->addRow(startTray_);
+    reportEnabled_ = new QCheckBox(QStringLiteral("保存截图后自动追加 Word")); reportEnabled_->setChecked(settings_.report.enabled); form->addRow(reportEnabled_);
+    auto* reportPathRow = new QWidget; auto* reportPaths = new QHBoxLayout(reportPathRow); reportPaths->setContentsMargins(0, 0, 0, 0);
+    reportPath_ = new QLineEdit(settings_.report.documentPath); reportPath_->setObjectName("reportDocumentPath"); reportPaths->addWidget(reportPath_);
+    auto* reportBrowse = new QPushButton("…"); reportBrowse->setMaximumWidth(32); reportPaths->addWidget(reportBrowse); form->addRow(QStringLiteral("Word 报告"), reportPathRow);
+    connect(reportBrowse, &QPushButton::clicked, this, [this] { const auto path = QFileDialog::getSaveFileName(this, QStringLiteral("选择已有报告，或输入新 DOCX 文件名"), reportPath_->text(), "Word (*.docx)", nullptr, QFileDialog::DontConfirmOverwrite); if (!path.isEmpty()) reportPath_->setText(path); });
+    auto* reportPolicy = new QWidget; auto* policies = new QHBoxLayout(reportPolicy); policies->setContentsMargins(0, 0, 0, 0);
+    reportMode_ = new QComboBox; reportMode_->addItem(QStringLiteral("原图与拼图"), "both"); reportMode_->addItem(QStringLiteral("仅原图"), "originals"); reportMode_->addItem(QStringLiteral("仅拼图"), "composites"); reportMode_->setCurrentIndex(std::max(0, reportMode_->findData(settings_.report.itemMode))); policies->addWidget(reportMode_);
+    reportLayout_ = new QComboBox; reportLayout_->addItem(QStringLiteral("顺序图文"), "inline"); reportLayout_->addItem(QStringLiteral("两列表格"), "table"); reportLayout_->setCurrentIndex(std::max(0, reportLayout_->findData(settings_.report.layout))); policies->addWidget(reportLayout_); form->addRow(reportPolicy);
+    auto* queueButton = new QPushButton(QStringLiteral("查看 Word 任务 / 恢复核对")); form->addRow(queueButton); connect(queueButton, &QPushButton::clicked, this, [this] { showReportQueue(); });
+    auto* appendLast = new QPushButton(QStringLiteral("将最近保存批次加入报告")); form->addRow(appendLast);
+    connect(appendLast, &QPushButton::clicked, this, [this] { if (!lastOutcome_ || lastOutcome_->directory.isEmpty()) { setStatus(QStringLiteral("请先保存一批截图。"), true); return; } if (!applySettings()) return; QString error; if (!reportQueue_->enqueue(*lastOutcome_, settings_.report, error)) setStatus(error, true); else setStatus(QStringLiteral("报告任务已排队，截图可继续。")); });
+    reportStatus_ = new QLabel; reportStatus_->setWordWrap(true); form->addRow(reportStatus_);
     preview_ = new QLabel(QStringLiteral("最近一次截图预览")); preview_->setAlignment(Qt::AlignCenter); preview_->setMinimumSize(240, 130); preview_->setStyleSheet("background:#eef2f7; color:#3f4f65; border:1px solid #d8e0ea; border-radius:6px;"); form->addRow(preview_);
-    split->addWidget(right); split->setSizes({650, 400});
+    auto* rightScroll = new QScrollArea; rightScroll->setWidgetResizable(true); rightScroll->setWidget(right); split->addWidget(rightScroll); split->setSizes({650, 400});
     auto* actions = new QHBoxLayout; auto* save = new QPushButton(QStringLiteral("截图并保存")); auto* copy = new QPushButton(QStringLiteral("复制选中图片")); auto* both = new QPushButton(QStringLiteral("保存并复制")); auto* folder = new QPushButton(QStringLiteral("打开输出目录"));
     save->setObjectName("captureSave"); save->setStyleSheet("background:#1967d2; color:white; padding:9px 18px; border-radius:5px;");
     actions->addWidget(save); actions->addWidget(copy); actions->addWidget(both); actions->addStretch(); actions->addWidget(folder); outer->addLayout(actions);
@@ -228,6 +246,8 @@ bool MainWindow::collectSettings(Settings& c, QString& e)
     c.outputMode = outputMode_->currentData().toString(); c.selectedSceneIds.clear();
     for (int i = 0; i < scenes_->count(); ++i) if (scenes_->item(i)->checkState() == Qt::Checked) c.selectedSceneIds.append(scenes_->item(i)->data(Qt::UserRole).toString());
     p.outputMode = c.outputMode.toStdString(); p.sceneIds.clear(); for (const auto& id : c.selectedSceneIds) p.sceneIds.push_back(id.toStdString()); p.clipboardSelection = c.clipboardRegion.toStdString();
+    c.report.enabled = reportEnabled_->isChecked(); c.report.documentPath = reportPath_->text().trimmed(); c.report.itemMode = reportMode_->currentData().toString(); c.report.layout = reportLayout_->currentData().toString();
+    if (c.report.enabled && (!QDir::isAbsolutePath(c.report.documentPath) || QFileInfo(c.report.documentPath).suffix().compare("docx", Qt::CaseInsensitive))) { e = QStringLiteral("自动报告需要明确的 DOCX 完整路径。"); return false; }
     core::CaptureRequest sample; sample.issuedAtUtc = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs).toStdString(); sample.profile = p;
     expandFilename(c, sample, p.regions.front(), e); return e.isEmpty();
 }
@@ -293,10 +313,33 @@ void MainWindow::completeCapture(const std::shared_ptr<CaptureOutcome>& result, 
     setStatus(QStringLiteral("已采集 %1 张 · 已保存 %2 张 · %3 ms%4").arg(captured).arg(saved).arg(result->elapsedMs, 0, 'f', 1).arg(failed ? " · " + detail : QStringLiteral(" · 完成")), failed > 0);
     for (const auto& c : result->batch.captures) if (c.image.valid()) { preview_->setPixmap(QPixmap::fromImage(toQImage(c.image)).scaled(320, 160, Qt::KeepAspectRatio, Qt::SmoothTransformation)); break; }
     busy_ = false; lastOutcome_ = result; if (captureFinished) captureFinished(result);
+    if (mode != 1 && snapshot.report.enabled && !result->directory.isEmpty()) {
+        QString error; if (!reportQueue_->enqueue(*result, snapshot.report, error)) { reportStatus_->setText(QStringLiteral("截图已完成，报告未入队：") + error); }
+    }
 }
 void MainWindow::closeEvent(QCloseEvent* e)
 {
     if (QSystemTrayIcon::isSystemTrayAvailable()) { hide(); e->ignore(); } else e->accept();
+}
+void MainWindow::refreshReportStatus()
+{
+    if (!reportQueue_ || !reportStatus_) return; int committed = 0, pending = 0, uncertain = 0, failed = 0;
+    for (const auto& job : reportQueue_->jobs()) { const auto state = job["state"].toString(); if (state == "COMMITTED") ++committed; else if (state == "UNCERTAIN") ++uncertain; else if (state == "FAILED") ++failed; else ++pending; }
+    reportStatus_->setText(QStringLiteral("Word：已提交 %1 · 排队/执行 %2 · 待核对 %3 · 失败 %4").arg(committed).arg(pending).arg(uncertain).arg(failed) + (reportQueue_->diagnostic().isEmpty() ? "" : "\n" + reportQueue_->diagnostic()));
+}
+void MainWindow::showReportQueue()
+{
+    QDialog dialog(this); dialog.setWindowTitle(QStringLiteral("Word 报告任务")); dialog.resize(980, 500); auto* layout = new QVBoxLayout(&dialog);
+    auto* note = new QLabel(QStringLiteral("截图与 Word 独立。待核对任务不会自动重新插入；“核对标记”只检查目标文档中的提交记录。新建报告的未发布 pending.docx 会保留供核对。")); note->setWordWrap(true); layout->addWidget(note);
+    auto* table = new QTableWidget(0, 5); table->setHorizontalHeaderLabels({QStringLiteral("任务"), QStringLiteral("报告"), QStringLiteral("状态"), QStringLiteral("尝试"), QStringLiteral("错误 / 原因")}); table->setSelectionBehavior(QAbstractItemView::SelectRows); table->setEditTriggers(QAbstractItemView::NoEditTriggers); table->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents); table->horizontalHeader()->setStretchLastSection(true); layout->addWidget(table);
+    auto refresh = [this, table] { const auto selected = table->currentRow() >= 0 && table->item(table->currentRow(), 0) ? table->item(table->currentRow(), 0)->text() : QString{}; table->setRowCount(0);
+        for (const auto& job : reportQueue_->jobs()) { const int row = table->rowCount(); table->insertRow(row); const auto ext = job["extensions"].toObject();
+            const QStringList values{job["jobId"].toString(), job["target"].toObject()["documentPath"].toString(), job["state"].toString(), QString::number(job["attemptCount"].toInt()), job["errorCode"].toString() + " " + ext["lastResult"].toObject()["message"].toString()};
+            for (int col = 0; col < values.size(); ++col) table->setItem(row, col, new QTableWidgetItem(values[col])); if (values[0] == selected) table->selectRow(row); }
+    }; refresh();
+    auto* inspect = new QPushButton(QStringLiteral("核对所选待核对任务的文档标记")); layout->addWidget(inspect);
+    connect(inspect, &QPushButton::clicked, &dialog, [this, table, note, refresh] { if (table->currentRow() < 0) return; QString error; if (!reportQueue_->inspectMarker(table->item(table->currentRow(), 0)->text(), error)) note->setText(error); refresh(); });
+    QTimer timer; connect(&timer, &QTimer::timeout, &dialog, refresh); timer.start(1000); auto* close = new QDialogButtonBox(QDialogButtonBox::Close); connect(close, &QDialogButtonBox::rejected, &dialog, &QDialog::reject); layout->addWidget(close); dialog.exec();
 }
 void MainWindow::rebuildScenes()
 {

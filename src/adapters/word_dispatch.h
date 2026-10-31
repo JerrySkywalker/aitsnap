@@ -22,6 +22,7 @@ public:
     VARIANT value;
     Value() { VariantInit(&value); }
     explicit Value(int n) : Value() { value.vt = VT_I4; value.lVal = n; }
+    explicit Value(double n) : Value() { value.vt = VT_R8; value.dblVal = n; }
     explicit Value(bool b) : Value() { value.vt = VT_BOOL; value.boolVal = b ? VARIANT_TRUE : VARIANT_FALSE; }
     explicit Value(const QString& s) : Value() { value.vt = VT_BSTR; value.bstrVal = SysAllocStringLen(reinterpret_cast<const OLECHAR*>(s.utf16()), UINT(s.size())); }
     explicit Value(IDispatch* p) : Value() { value.vt = VT_DISPATCH; value.pdispVal = p; if (p) p->AddRef(); }
@@ -30,6 +31,7 @@ public:
     ~Value() { VariantClear(&value); }
     Value& operator=(Value other) { std::swap(value, other.value); return *this; }
     int integer() const { Value converted; require(VariantChangeType(&converted.value, const_cast<VARIANT*>(&value), 0, VT_I4), "integer conversion"); return converted.value.lVal; }
+    double number() const { Value converted; require(VariantChangeType(&converted.value, const_cast<VARIANT*>(&value), 0, VT_R8), "number conversion"); return converted.value.dblVal; }
     QString text() const { Value converted; require(VariantChangeType(&converted.value, const_cast<VARIANT*>(&value), 0, VT_BSTR), "text conversion"); return QString::fromWCharArray(converted.value.bstrVal); }
     Object object() const;
 };

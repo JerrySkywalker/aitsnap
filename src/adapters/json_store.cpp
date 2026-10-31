@@ -74,8 +74,8 @@ bool loadSettings(const QString& path, Settings& s, QString& error)
     if (parse.error || !doc.isObject()) { error = "Invalid settings JSON; original file preserved"; return false; }
     const auto o = doc.object();
     const int settingsVersion = o["schemaVersion"].toInt();
-    if (settingsVersion != 1 && settingsVersion != 2) { error = "Unsupported settings version; file preserved"; return false; }
-    const QStringList known{"schemaVersion", "profiles", "activeProfile", "outputDirectory", "format", "filenameTemplate", "saveHotkey", "copyHotkey", "bothHotkey", "clipboardRegion", "testId", "device", "station", "operator", "sequence", "startInTray", "scenes", "selectedSceneIds", "outputMode"};
+    if (settingsVersion != 1 && settingsVersion != 2 && settingsVersion != 3) { error = "Unsupported settings version; file preserved"; return false; }
+    const QStringList known{"schemaVersion", "profiles", "activeProfile", "outputDirectory", "format", "filenameTemplate", "saveHotkey", "copyHotkey", "bothHotkey", "clipboardRegion", "testId", "device", "station", "operator", "sequence", "startInTray", "scenes", "selectedSceneIds", "outputMode", "wordReport"};
     for (auto it = o.begin(); it != o.end(); ++it) if (!known.contains(it.key())) { error = "Unknown settings field; file preserved: " + it.key(); return false; }
     Settings candidate = defaultSettings();
     for (const auto& value : o["profiles"].toArray()) {
@@ -114,6 +114,10 @@ bool loadSettings(const QString& path, Settings& s, QString& error)
     auto& active = candidate.profiles[std::size_t(candidate.activeProfile)];
     active.outputMode = candidate.outputMode.toStdString(); active.sceneIds.clear();
     for (const auto& scene : candidate.selectedSceneIds) active.sceneIds.push_back(scene.toStdString()); active.clipboardSelection = candidate.clipboardRegion.toStdString();
+    const auto report = o["wordReport"].toObject(); candidate.report.enabled = report["enabled"].toBool(); candidate.report.documentPath = report["documentPath"].toString();
+    candidate.report.itemMode = report["itemMode"].toString("both"); candidate.report.layout = report["layout"].toString("inline");
+    if ((candidate.report.itemMode != "originals" && candidate.report.itemMode != "composites" && candidate.report.itemMode != "both") ||
+        (candidate.report.layout != "inline" && candidate.report.layout != "table")) { error = "Invalid Word report policy"; return false; }
     s = candidate; return true;
 }
 bool saveSettings(const QString& path, const Settings& s, QString& error)
@@ -127,17 +131,18 @@ bool saveSettings(const QString& path, const Settings& s, QString& error)
     QJsonArray scenes, selected;
     for (const auto& scene : s.scenes) scenes.append(sceneJson(scene));
     for (const auto& scene : s.selectedSceneIds) selected.append(scene);
-    QJsonObject o{{"schemaVersion", 2}, {"profiles", profiles}, {"activeProfile", s.activeProfile},
+    QJsonObject o{{"schemaVersion", 3}, {"profiles", profiles}, {"activeProfile", s.activeProfile},
         {"outputDirectory", s.outputDirectory}, {"format", s.format}, {"filenameTemplate", s.filenameTemplate},
         {"saveHotkey", s.saveHotkey}, {"copyHotkey", s.copyHotkey}, {"bothHotkey", s.bothHotkey},
         {"clipboardRegion", s.clipboardRegion}, {"testId", s.testId}, {"device", s.device},
         {"station", s.station}, {"operator", s.operatorName}, {"sequence", double(s.sequence)}, {"startInTray", s.startInTray},
-        {"scenes", scenes}, {"selectedSceneIds", selected}, {"outputMode", s.outputMode}};
+        {"scenes", scenes}, {"selectedSceneIds", selected}, {"outputMode", s.outputMode},
+        {"wordReport", QJsonObject{{"enabled", s.report.enabled}, {"documentPath", s.report.documentPath}, {"itemMode", s.report.itemMode}, {"layout", s.report.layout}}}};
     if (!QDir().mkpath(QFileInfo(path).absolutePath())) { error = "Cannot create settings directory"; return false; }
     QFile previous(path); int previousVersion = 0;
     if (previous.open(QIODevice::ReadOnly)) { previousVersion = QJsonDocument::fromJson(previous.readAll()).object()["schemaVersion"].toInt(); previous.close(); }
-    if (previousVersion == 1) {
-        if (!QFile::copy(path, path + ".v1-preserved-" + QUuid::createUuid().toString(QUuid::WithoutBraces))) { error = "Cannot preserve v1 settings before migration"; return false; }
+    if (previousVersion == 1 || previousVersion == 2) {
+        if (!QFile::copy(path, path + QString(".v%1-preserved-").arg(previousVersion) + QUuid::createUuid().toString(QUuid::WithoutBraces))) { error = "Cannot preserve old settings before migration"; return false; }
     }
     QSaveFile file(path);
     if (!file.open(QIODevice::WriteOnly) || file.write(QJsonDocument(o).toJson()) < 0 || !file.commit()) { error = file.errorString(); return false; }

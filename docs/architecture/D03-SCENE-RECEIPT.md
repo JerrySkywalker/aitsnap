@@ -65,3 +65,10 @@ editing, Explorer restart, mixed-DPI/topology changes, native Win10 and native
 Win7 x64/x86 are NOT_RUN/HOLD. WOW64 is not native Win7 qualification.
 
 Next eligible software goal: D04 durable Word bridge; no human gate is waived.
+
+Follow-up during D04: the Owner reported the desktop unlocked. The final D03
+Qt6 native two-display/five-region save/clipboard/focus check and region editor
+lifecycle/cancel/stable-profile acceptance regression then passed. Locked-session
+failures remain retained. Computer-use activation twice returned `user input
+was detected in this window`; further app input stopped. No M2 human visual
+acceptance was inferred from the unlocked native regression.
