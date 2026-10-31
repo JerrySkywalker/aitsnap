@@ -1,0 +1,23 @@
+# Out-of-source builds and local Qt/CMake configuration
+/build/
+/build-*/
+/out/
+CMakeUserPresets.json
+*.user
+*.user.*
+
+# Editor and operating system files
+/.vs/
+/.vscode/
+/.idea/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Local secrets must never be committed
+.env
+.env.*
+*.pem
+*.key
