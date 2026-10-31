@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 import subprocess
 import uuid
+from msi_ui import author_ui
 
 UPGRADE = uuid.UUID('476109b6-03ef-4f9d-a55d-e796ae147379')
 msi = C.WinDLL('msi')
@@ -25,6 +26,7 @@ get_summary = function('MsiGetSummaryInformationW',[W.UINT,W.LPCWSTR,W.UINT,C.PO
 summary_property = function('MsiSummaryInfoSetPropertyW',[W.UINT,W.UINT,W.UINT,C.c_int,C.c_void_p,W.LPCWSTR])
 summary_persist = function('MsiSummaryInfoPersist',[W.UINT])
 get_file_version = function('MsiGetFileVersionW',[W.LPCWSTR,W.LPWSTR,C.POINTER(W.DWORD),W.LPWSTR,C.POINTER(W.DWORD)])
+import_table = function('MsiDatabaseImportW',[W.UINT,W.LPCWSTR,W.LPCWSTR])
 def ok(code, operation):
     if code: raise RuntimeError(f'{operation}: Windows Installer error {code}')
 def guid(value): return '{'+str(value).upper()+'}'
@@ -58,10 +60,10 @@ def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--package',type=Path,required=True)
     p.add_argument('--destination',type=Path,required=True)
-    p.add_argument('--version',default='0.6.0')
+    p.add_argument('--version',default='0.6.1')
     a=p.parse_args(); package=a.package.resolve(); output=a.destination.resolve()
     if output.exists(): p.error('Choose a new destination directory')
-    manifest=json.loads((package/'package-manifest.json').read_text())
+    manifest=json.loads((package/'package-manifest.json').read_text(encoding='utf-8'))
     for file in manifest['files']:
         if not (package/file['path']).resolve().is_relative_to(package): raise RuntimeError('Package path leaves its root')
         if sha(package/file['path']) != file['sha256']: raise RuntimeError('Package hash mismatch: '+file['path'])
@@ -77,6 +79,9 @@ def main():
     subprocess.run(['makecab.exe','/F',str(output/'payload.ddf')],check=True,cwd=output)
     package_code=guid(uuid.uuid4()); path=output/f'AITSnap-{a.version}-windows-x64.msi'; db=Database(path)
     try:
+        # Set the string pool before inserting localized Chinese UI strings.
+        (output/'_ForceCodepage.idt').write_bytes(b'\r\n\r\n936\t_ForceCodepage\r\n')
+        ok(import_table(db.handle,str(output),'_ForceCodepage.idt'),'set Chinese codepage')
         db.table('Property','`Property` CHAR(72) NOT NULL, `Value` CHAR(0) LOCALIZABLE PRIMARY KEY `Property`')
         db.table('Directory','`Directory` CHAR(72) NOT NULL, `Directory_Parent` CHAR(72), `DefaultDir` CHAR(255) NOT NULL LOCALIZABLE PRIMARY KEY `Directory`')
         db.table('Component','`Component` CHAR(72) NOT NULL, `ComponentId` CHAR(38), `Directory_` CHAR(72) NOT NULL, `Attributes` SHORT NOT NULL, `Condition` CHAR(255), `KeyPath` CHAR(72) PRIMARY KEY `Component`')
@@ -94,7 +99,7 @@ def main():
         db.table('Upgrade','`UpgradeCode` CHAR(38) NOT NULL, `VersionMin` CHAR(20), `VersionMax` CHAR(20), `Language` CHAR(255), `Attributes` SHORT NOT NULL, `Remove` CHAR(255), `ActionProperty` CHAR(72) NOT NULL PRIMARY KEY `UpgradeCode`, `VersionMin`, `VersionMax`, `Language`, `Attributes`')
         for table in ['InstallExecuteSequence','InstallUISequence']:
             db.table(table,'`Action` CHAR(72) NOT NULL, `Condition` CHAR(255), `Sequence` SHORT PRIMARY KEY `Action`')
-        props=dict(ProductName='AITSnap Preview',ProductVersion=a.version,ProductCode=product,UpgradeCode=guid(UPGRADE),ProductLanguage='1033',Manufacturer='AITSnap contributors',INSTALLLEVEL='1',ARPNOMODIFY='1',ARPURLINFOABOUT='https://github.com/JerrySkywalker/aitsnap',SecureCustomProperties='OLDPRODUCTS;NEWERPRODUCTS')
+        props=dict(ProductName='AITSnap Preview',ProductVersion=a.version,ProductCode=product,UpgradeCode=guid(UPGRADE),ProductLanguage='2052',Manufacturer='AITSnap contributors',INSTALLLEVEL='1',ARPNOMODIFY='1',ARPURLINFOABOUT='https://github.com/JerrySkywalker/aitsnap',SecureCustomProperties='OLDPRODUCTS;NEWERPRODUCTS;INSTALLDIR',MsiLogging='v')
         for key,value in props.items(): db.insert('Property','Property Value',key,value)
         for row in [('TARGETDIR',None,'SourceDir'),('LocalAppDataFolder','TARGETDIR','.'),('ProgramsDir','LocalAppDataFolder','Programs'),('INSTALLDIR','ProgramsDir','AITSnap'),('ProgramMenuFolder','TARGETDIR','.'),('APPMENU','ProgramMenuFolder','AITSnap')]: db.insert('Directory','Directory Directory_Parent DefaultDir',*row)
         directories={Path('.'):'INSTALLDIR'}
@@ -126,9 +131,10 @@ def main():
         actions=[('FindRelatedProducts',None,25),('AppSearch','NOT Installed',50),('LaunchConditions',None,100),('CostInitialize',None,800),('FileCost',None,900),('CostFinalize',None,1000),('MigrateFeatureStates',None,1200),('InstallValidate',None,1400),('InstallInitialize',None,1500),('RemoveExistingProducts','OLDPRODUCTS',1501),('ProcessComponents',None,1600),('UnpublishFeatures',None,1800),('RemoveRegistryValues',None,2600),('RemoveShortcuts',None,3200),('RemoveFiles',None,3500),('RemoveFolders',None,3600),('CreateFolders',None,3700),('InstallFiles',None,4000),('CreateShortcuts',None,4500),('WriteRegistryValues',None,5000),('RegisterUser',None,6000),('RegisterProduct',None,6100),('PublishFeatures',None,6300),('PublishProduct',None,6400),('InstallFinalize',None,6600)]
         for row in actions: db.insert('InstallExecuteSequence','Action Condition Sequence',*row)
         for row in [('FindRelatedProducts',None,25),('AppSearch','NOT Installed',50),('LaunchConditions',None,100),('CostInitialize',None,800),('FileCost',None,900),('CostFinalize',None,1000),('ExecuteAction',None,1300)]: db.insert('InstallUISequence','Action Condition Sequence',*row)
+        author_ui(db,main_file)
         info=W.UINT(); ok(get_summary(db.handle,None,20,C.byref(info)),'summary')
         try:
-            for key,value in {2:'Installation Database',3:'AITSnap Windows x64 installer',4:'AITSnap contributors',7:'x64;1033',9:package_code,14:500,15:10,18:'AITSnap build_msi.py'}.items(): ok(summary_property(info,key,3 if isinstance(value,int) else 30,value if isinstance(value,int) else 0,None,None if isinstance(value,int) else value),'summary property')
+            for key,value in {2:'Installation Database',3:'AITSnap Windows x64 installer',4:'AITSnap contributors',7:'x64;2052',9:package_code,14:500,15:10,18:'AITSnap build_msi.py'}.items(): ok(summary_property(info,key,3 if isinstance(value,int) else 30,value if isinstance(value,int) else 0,None,None if isinstance(value,int) else value),'summary property')
             ok(summary_persist(info),'save summary')
         finally: close(info)
         ok(commit(db.handle),'commit MSI')

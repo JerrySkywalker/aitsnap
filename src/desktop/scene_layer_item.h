@@ -16,7 +16,7 @@ public:
     std::function<void()> beginEdit;
     std::function<void(const core::Layer&)> changed;
     std::function<bool()> snapEnabled;
-    LayerItem(core::Layer layer, QImage image) : layer_(std::move(layer)), image_(std::move(image))
+    LayerItem(core::Layer layer, QImage image, bool placeholder = false) : layer_(std::move(layer)), image_(std::move(image)), placeholder_(placeholder)
     {
         setData(0, QString::fromStdString(layer_.id)); setAcceptHoverEvents(true);
         sync(layer_);
@@ -31,7 +31,10 @@ public:
     }
     void paint(QPainter* p, const QStyleOptionGraphicsItem*, QWidget*) override
     {
-        paintLayerLocal(*p, layer_, image_);
+        auto previewLayer = layer_;
+        // Placeholder dimensions already represent the effective source/crop; never crop its thumbnail again.
+        if (placeholder_) previewLayer.crop = {};
+        paintLayerLocal(*p, previewLayer, image_);
         if (isSelected()) {
             const double zoom = scene() && !scene()->views().isEmpty() ? std::abs(scene()->views().front()->transform().m11()) : 1;
             p->setPen(QPen(QColor("#1689ff"), 2 / std::max(zoom, 0.01), Qt::DashLine)); p->setBrush(Qt::NoBrush); p->drawRect(boundingRect());
@@ -69,7 +72,7 @@ protected:
     void mouseReleaseEvent(QGraphicsSceneMouseEvent* e) override { resizing_ = false; QGraphicsItem::mouseReleaseEvent(e); }
     void hoverMoveEvent(QGraphicsSceneHoverEvent* e) override { setCursor(!layer_.locked && isSelected() && handle().contains(e->pos()) ? Qt::SizeFDiagCursor : layer_.locked ? Qt::ArrowCursor : Qt::SizeAllCursor); }
 private:
-    core::Layer layer_; QImage image_; bool updating_{}, resizing_{};
+    core::Layer layer_; QImage image_; bool placeholder_{}, updating_{}, resizing_{};
     QRectF handle() const {
         const double zoom = scene() && !scene()->views().isEmpty() ? std::abs(scene()->views().front()->transform().m11()) : 1;
         const double size = 9 / std::max(zoom, 0.01); return {layer_.destination.width - size, layer_.destination.height - size, size, size};

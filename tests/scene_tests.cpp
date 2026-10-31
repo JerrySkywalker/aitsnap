@@ -72,6 +72,19 @@ int main(int argc, char** argv)
         QString error; SceneTemplate roundtrip; check(sceneFromJson(sceneJson(row), roundtrip, error) && renderScene(roundtrip, sources).image == renderScene(row, sources).image && roundtrip.revisionCreatedAtUtc == row.revisionCreatedAtUtc && roundtrip.extensionsJson == row.extensionsJson, "scene roundtrip including metadata");
         auto unknown = sceneJson(row); unknown["futureField"] = true; check(!sceneFromJson(unknown, roundtrip, error), "unknown field rejected"); error.clear();
         CaptureProfile profile; profile.id = "synthetic-profile"; profile.name = "Synthetic sources"; profile.regions = {{"r0", "Red", {-90, 10, 16, 16}, true}, {"r1", "Green", {10, 10, 16, 16}, true}};
+        // Missing-image layout must represent the selected region, not a fixed thumbnail.
+        for (bool portrait : {false, true}) {
+            auto previewProfile = profile; previewProfile.regions.resize(1);
+            previewProfile.regions[0].rect = {0, 0, portrait ? 200 : 1200, portrait ? 1200 : 200};
+            auto previewScene = row; previewScene.width = previewScene.height = 600; previewScene.layers.resize(1);
+            previewScene.layers[0].destination = {0, 0, 600, 600, 0};
+            SceneEditor emptyPreview(previewScene, previewProfile, {});
+            auto* previewView = emptyPreview.findChild<QGraphicsView*>("sceneCanvas");
+            QImage pixels(600, 600, QImage::Format_RGB32); pixels.fill(Qt::black);
+            { QPainter painter(&pixels); previewView->scene()->render(&painter, QRectF(0,0,600,600), QRectF(0,0,600,600)); }
+            check(pixels.pixelColor(portrait ? 50 : 300, portrait ? 300 : 120) == sceneColour(previewScene.background), "missing-source preview preserves selected region aspect");
+            check(pixels.pixelColor(300,300) != sceneColour(previewScene.background), "missing-source placeholder remains visible");
+        }
         FakeCapture backend; profile.calibratedDisplays = backend.displays();
         for (auto preset : {LayoutPreset::Row, LayoutPreset::Column, LayoutPreset::Grid, LayoutPreset::Hero}) check(!validateScene(presetScene(profile, "preset", "Preset", 1280, 720, preset)), "preset geometry");
         Settings settings = defaultSettings(); settings.profiles = {profile}; settings.scenes = {row, column}; settings.selectedSceneIds = QStringList{"row", "column"}; settings.outputMode = "both"; settings.format = "JPEG"; settings.outputDirectory = directory;
