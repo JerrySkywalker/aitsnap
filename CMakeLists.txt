@@ -3,8 +3,8 @@ cmake_minimum_required(VERSION 3.24)
 
 project(AITSnap VERSION 0.1.0 LANGUAGES CXX)
 
-if(NOT WIN32 OR NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
-    message(FATAL_ERROR "The current AITSnap build baseline requires Windows x64.")
+if(NOT WIN32)
+    message(FATAL_ERROR "The current AITSnap build baseline requires Windows.")
 endif()
 
 set(CMAKE_CXX_STANDARD 20)
@@ -12,20 +12,45 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_AUTOMOC ON)
 
-# Qt 6.12 is the Windows 10/11 baseline. Review platform support before
-# adopting a newer minor version (Qt 6.12 is the last to support Windows 10).
-find_package(Qt6 6.12...<6.13 REQUIRED COMPONENTS Widgets)
+set(AITSNAP_QT_MAJOR "6" CACHE STRING "Explicit Qt major version: 5 or 6")
+set_property(CACHE AITSNAP_QT_MAJOR PROPERTY STRINGS 5 6)
+option(AITSNAP_BUILD_COMPAT_PROBE "Build the non-product Windows compatibility probe" OFF)
+
+if(AITSNAP_QT_MAJOR STREQUAL "6")
+    if(NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
+        message(FATAL_ERROR "The Qt 6 Windows 10/11 build requires x64.")
+    endif()
+    find_package(Qt6 6.12...<6.13 REQUIRED COMPONENTS Widgets)
+elseif(AITSNAP_QT_MAJOR STREQUAL "5")
+    find_package(Qt5 5.15 REQUIRED COMPONENTS Widgets)
+else()
+    message(FATAL_ERROR "AITSNAP_QT_MAJOR must be 5 or 6; no automatic fallback is used.")
+endif()
 
 add_executable(aitsnap WIN32
     src/main.cpp
     src/main_window.cpp
     src/main_window.h
+    src/compat/qt_widgets_compat.h
 )
 
-target_link_libraries(aitsnap PRIVATE Qt6::Widgets)
-
-if(MSVC)
-    target_compile_options(aitsnap PRIVATE /W4 /utf-8)
-elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    target_compile_options(aitsnap PRIVATE -Wall -Wextra -Wpedantic)
+set(aitsnap_targets aitsnap)
+if(AITSNAP_BUILD_COMPAT_PROBE)
+    add_executable(aitsnap-compat-probe probes/windows_compat_probe.cpp)
+    target_include_directories(aitsnap-compat-probe PRIVATE src)
+    target_link_libraries(aitsnap-compat-probe PRIVATE ole32)
+    list(APPEND aitsnap_targets aitsnap-compat-probe)
 endif()
+
+foreach(target IN LISTS aitsnap_targets)
+    target_link_libraries(${target} PRIVATE Qt${AITSNAP_QT_MAJOR}::Widgets)
+    if(AITSNAP_QT_MAJOR STREQUAL "5")
+        # Header API floor only; this does not qualify compiler/CRT dependencies.
+        target_compile_definitions(${target} PRIVATE WINVER=0x0601 _WIN32_WINNT=0x0601)
+    endif()
+    if(MSVC)
+        target_compile_options(${target} PRIVATE /W4 /utf-8 /Zc:__cplusplus)
+    elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+endforeach()

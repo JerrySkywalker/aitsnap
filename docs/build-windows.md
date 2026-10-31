@@ -1,98 +1,122 @@
-# Windows build baseline
+# Windows builds and compatibility probes
 
-The formal platform baseline is Windows 10 (1809+) / Windows 11, x64, using
-C++20 and Qt 6 Widgets. Windows 7 and Linux are future possibilities only and
-are outside current development and testing. The tested dependency baseline is
-Qt 6.12.0; CMake accepts 6.12.x. A newer Qt minor version needs platform review:
-[Qt's Windows support table](https://doc.qt.io/qt-6.12/windows.html) states that
-6.12 is the last version to support Windows 10.
+Windows 7 SP1 is required, using a Qt 5.15 Legacy candidate. Windows 10 (1809+)
+and Windows 11 x64 retain the Qt 6.12 + MSVC 2022 main build. See the
+[platform matrix](windows-compatibility.md) for qualification limits.
 
-## Prerequisites and dependency choice
+## Common setup
 
-- Visual Studio 2022 or its Build Tools, with the v143 x64 C++ toolchain and a
-  Windows SDK. A developer prompt is not required for the Visual Studio preset.
-- CMake 3.24 or newer. The preset uses the Visual Studio generator, so Ninja is
-  not required. Do not accidentally combine a MinGW compiler with an MSVC Qt kit.
-- An existing vcpkg root with its Windows `vcpkg.exe` and CMake toolchain.
-  Reuse that root; do not clone or bootstrap another installation. If the
-  existing root lacks the Windows CLI, its own `bootstrap-vcpkg.bat -disableMetrics`
-  can add it without replacing the checkout or installed packages.
-- The official Qt 6.12 MSVC 2022 x64 SDK, including Widgets and `qwindows.dll`.
-
-The current route uses the vcpkg **toolchain**, but sources Qt from the official
-SDK. The local audit found no installed vcpkg Qt package and no Qt package in
-either inspected binary cache. Reusing the installed SDK avoids compiling Qt
-from source. No `vcpkg install` is part of this route.
-
-The preset explicitly disables `VCPKG_MANIFEST_MODE` and `VCPKG_APPLOCAL_DEPS`.
-There is no vcpkg manifest or package baseline because no project dependency is
-being resolved by vcpkg. The audit records the toolchain checkout's Git HEAD;
-that observation is not a lock on other machines. If vcpkg-managed dependencies
-are introduced later, review the install plan and caches first, then introduce
-a manifest and an appropriate baseline. Do not silently trigger a full Qt build.
-
-## Configure and build
-
-In PowerShell, set these environment variables to existing local directories:
+Use CMake 3.24+ and the existing vcpkg root. Presets use the Visual Studio 2022
+generator and x64 compiler host; Ninja is not required. Set local paths in the
+current PowerShell session (or ignored `CMakeUserPresets.json`):
 
 ```powershell
 $env:VCPKG_ROOT = '<existing-vcpkg-root>'
-$env:QT_ROOT = '<qt-6.12-msvc2022-x64-kit-prefix>'
-Test-Path "$env:VCPKG_ROOT/vcpkg.exe"
-Test-Path "$env:QT_ROOT/lib/cmake/Qt6/Qt6Config.cmake"
+$env:QT_ROOT = '<qt-6.12-msvc2022-x64-kit>'
+$env:QT5_ROOT = '<qt-5.15-msvc2019-x64-kit>'
+$env:QT5_X86_ROOT = '<qt-5.15-msvc2019-x86-kit>'
+cmake --list-presets
+```
+
+Only set the Qt kit variables needed by the chosen route. Prefixes are kit
+roots, not `bin` directories. Never commit local paths or create another vcpkg.
+All presets load `$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake`; manifest
+installation and app-local copying remain disabled. Qt comes directly from the
+SDK, not a vcpkg package. No package manifest/baseline is needed for this route.
+
+## Main build: Qt 6 / Windows 10 and 11 x64
+
+```powershell
 cmake --preset windows-msvc-qt-sdk
 cmake --build --preset windows-msvc-qt-sdk-release
 ```
 
-The kit prefix is not its `bin` directory. Both paths are session-local and must
-not be committed. Use `CMakeUserPresets.json` (ignored) for optional local
-overrides. The checked-in preset contains no machine-specific paths.
+This retains v143, host/target x64, Qt 6.12.x and `x64-windows` host/target
+triplets. Qt 6 is not the Win7 route. Separate regression output can use
+`-B out/build/qt6-regression`, followed by
+`cmake --build out/build/qt6-regression --config Release`.
 
-The preset selects Visual Studio 2022, v143 host x64, target x64, and the
-`x64-windows` target/host triplets. The triplet uses dynamic CRT and library
-linkage. It sets `Qt6_DIR` explicitly to the SDK so an unrelated installation
-does not select Qt. Use a new build directory when changing compiler, toolchain,
-or Qt kit. The original ignored `build/` directory is historical evidence and
-must not be reused for this baseline.
-
-## Confirm integration and actual dependency origin
-
-Installing vcpkg or setting `VCPKG_ROOT` alone does not integrate a CMake project.
-Inspect the new build's `CMakeCache.txt` for `CMAKE_TOOLCHAIN_FILE`,
-`VCPKG_TARGET_TRIPLET`, `VCPKG_HOST_TRIPLET`, and `Qt6_DIR`. For evidence that the
-toolchain actually executed, configure with a trace of the toolchain file:
+## Legacy candidates: Qt 5 / Windows 7 SP1
 
 ```powershell
-cmake --preset windows-msvc-qt-sdk `
-    "--trace-source=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
-    --trace-redirect=out/vcpkg-toolchain-trace.log
+cmake --preset windows-qt5-legacy-x64
+cmake --build --preset windows-qt5-legacy-x64-release
+cmake --preset windows-qt5-legacy-x86
+cmake --build --preset windows-qt5-legacy-x86-release
 ```
 
-Check the trace for executed triplet and installed-prefix handling. Check the
-generated project/link command for SDK `Qt6Widgets`, `Qt6Gui`, and `Qt6Core`
-libraries. In the current route, the presence of the vcpkg toolchain does not
-mean that these Qt libraries came from vcpkg. Keep raw logs local: they contain
-machine paths and belong in ignored `out/`.
+Provision and qualify MSVC 2019 16.11 (v142 / 14.29) for C++20 mode before using
+these presets. The current machine lacks v142: the x64 candidate configure
+returned MSB8020. Do not silently substitute v143 and call that a Win7-qualified
+build. Select/record the Windows SDK locally, using
+`-DCMAKE_SYSTEM_VERSION=<installed-sdk-version>` if necessary. The SDK version
+and `WINVER=0x0601` / `_WIN32_WINNT=0x0601` header API floor do not establish
+runtime compatibility; CRT/UCRT and native testing remain separate requirements.
 
-## Launch the placeholder
+The x86 preset targets Win32 and `x86-windows`, keeping `x64-windows` as the
+build-host triplet. Use separate 32-bit Qt/CRT/dependency sets. A 32-bit app on
+Windows 11 x64 does not test a 32-bit Win7 OS. Never mix build directories.
 
-For a local smoke check, use the same SDK's DLLs and platform plugin:
+## Available host-only prevalidation
+
+The explicitly named v143 host presets check shared-source compatibility with
+the installed Qt 5 SDKs on the current host, without requiring absent v142:
 
 ```powershell
-$env:PATH = "$env:QT_ROOT/bin;$env:PATH"
-$env:QT_QPA_PLATFORM_PLUGIN_PATH = "$env:QT_ROOT/plugins/platforms"
+cmake --preset windows-qt5-host-preview-x64
+cmake --build --preset windows-qt5-host-preview-x64-release
+cmake --preset windows-qt5-host-preview-x86
+cmake --build --preset windows-qt5-host-preview-x86-release
+```
+
+These are **host previews, not Win7 deployment artifacts**. Do not copy current
+host runtime DLLs to Win7 or downgrade a modern binary's required CRT because
+Qt itself was built with MSVC 2019.
+
+## Optional probe and launch
+
+Legacy/host-preview presets enable `AITSNAP_BUILD_COMPAT_PROBE`. For Qt 6, enable
+it with `-DAITSNAP_BUILD_COMPAT_PROBE=ON`. This adds a console probe target,
+without adding product capabilities. Example using the Qt 5 x64 host preview:
+
+```powershell
+$kit = $env:QT5_ROOT
+$output = './out/build/windows-qt5-host-preview-x64/Release'
+$env:PATH = "$kit/bin;$env:PATH"
+$env:QT_QPA_PLATFORM_PLUGIN_PATH = "$kit/plugins/platforms"
 $env:QT_QPA_PLATFORM = 'windows'
-& ./out/build/windows-msvc-qt-sdk/Release/aitsnap.exe
+& "$output/aitsnap-compat-probe.exe"
+& "$output/aitsnap.exe"
 ```
 
-This uses the SDK installation and is not a standalone deployment or release
-package. A compile/link pass, a process/window startup check, and human visual
-acceptance are separate results. See the [validation record](qt6-baseline-validation.md)
-for which checks were actually performed. Windows 10 compatibility and manual
-visual acceptance are not established by the Windows 11 startup check.
+For the native check, deploy the qualified candidate, matching Qt DLLs and
+`qwindows.dll`, plus validated CRT/UCRT, to the intended Win7 SP1 image. Record
+its servicing prerequisites and run the application and:
 
-## Historical evidence
+```powershell
+& ./aitsnap-compat-probe.exe --require-win7
+```
 
-[Initial validation](initial-validation.md) is preserved unchanged. It records
-the original Qt 5 configure failure and earlier platform intent; it is not the
-current build contract.
+Probe exits: 0 = minimal checks completed; 2 = not native Win7 SP1; 3 = native OS
+query failed; 4 = C++20 subset failed; 5 = COM STA failed; 64 = invalid arguments.
+`--require-win7` rejects Windows 10/11 before declaring a Win7 result. Without
+that flag, code 0 on Windows 11 is only a host probe. Even native code 0 is not
+complete product or visual acceptance.
+
+The probe checks dynamically resolved `RtlGetVersion`, native OS/process bitness, a C++20
+subset, compiled/runtime Qt versions, screen count, tray availability and COM
+STA initialization. It does not capture screens, create tray icons, compose a
+canvas, activate Word or write documents.
+
+## Evidence and history
+
+Inspect `CMakeCache.txt` and the generated Release project for compiler,
+architecture, explicit Qt major, SDK libraries, vcpkg toolchain and triplets.
+For actual execution evidence, configure with
+`"--trace-source=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"` and
+`--trace-redirect=out/vcpkg-trace.log`. Raw logs/artifacts contain local paths
+and belong in ignored `out/`. This is not standalone deployment.
+
+[Current prevalidation](win7-prevalidation.md) records actual results.
+[Initialization](initial-validation.md) and [Qt 6 migration](qt6-baseline-validation.md)
+remain unchanged historical evidence. Linux is not developed for or tested.

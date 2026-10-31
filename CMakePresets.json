@@ -21,18 +21,77 @@
                 "rhs": "Windows"
             },
             "cacheVariables": {
+                "AITSNAP_QT_MAJOR": "6",
                 "Qt6_DIR": "$env{QT_ROOT}/lib/cmake/Qt6",
                 "VCPKG_TARGET_TRIPLET": "x64-windows",
                 "VCPKG_HOST_TRIPLET": "x64-windows",
                 "VCPKG_MANIFEST_MODE": false,
                 "VCPKG_APPLOCAL_DEPS": false
             }
+        },
+        {
+            "name": "windows-qt5-legacy-x64",
+            "displayName": "Windows 7 candidate / Qt 5.15 / v142 x64 (unqualified)",
+            "description": "Qt 5.15 Legacy candidate via QT5_ROOT and existing vcpkg; requires v142 16.11 and separate SDK/CRT/Windows 7 qualification.",
+            "inherits": "windows-msvc-qt-sdk",
+            "toolset": "v142,host=x64",
+            "cacheVariables": {
+                "AITSNAP_QT_MAJOR": "5",
+                "Qt5_DIR": "$env{QT5_ROOT}/lib/cmake/Qt5",
+                "Qt6_DIR": null,
+                "AITSNAP_BUILD_COMPAT_PROBE": true
+            }
+        },
+        {
+            "name": "windows-qt5-legacy-x86",
+            "displayName": "Windows 7 candidate / Qt 5.15 / v142 x86 (unqualified)",
+            "description": "Qt 5.15 Win32 Legacy candidate via QT5_X86_ROOT; requires separate v142, CRT and native x86 qualification.",
+            "inherits": "windows-qt5-legacy-x64",
+            "architecture": "Win32",
+            "cacheVariables": {
+                "Qt5_DIR": "$env{QT5_X86_ROOT}/lib/cmake/Qt5",
+                "VCPKG_TARGET_TRIPLET": "x86-windows"
+            }
+        },
+        {
+            "name": "windows-qt5-host-preview-x64",
+            "displayName": "Windows 11 probe only / Qt 5.15 / v143 x64",
+            "description": "Host-only Qt 5 build with the available v143 compiler; not a qualified Windows 7 binary.",
+            "inherits": "windows-qt5-legacy-x64",
+            "toolset": "v143,host=x64"
+        },
+        {
+            "name": "windows-qt5-host-preview-x86",
+            "displayName": "Windows 11 probe only / Qt 5.15 / v143 x86",
+            "description": "Host-only 32-bit Qt 5 build on Windows 11; not native Windows 7 or x86 OS acceptance.",
+            "inherits": "windows-qt5-legacy-x86",
+            "toolset": "v143,host=x64"
         }
     ],
     "buildPresets": [
         {
             "name": "windows-msvc-qt-sdk-release",
             "configurePreset": "windows-msvc-qt-sdk",
+            "configuration": "Release"
+        },
+        {
+            "name": "windows-qt5-legacy-x64-release",
+            "configurePreset": "windows-qt5-legacy-x64",
+            "configuration": "Release"
+        },
+        {
+            "name": "windows-qt5-legacy-x86-release",
+            "configurePreset": "windows-qt5-legacy-x86",
+            "configuration": "Release"
+        },
+        {
+            "name": "windows-qt5-host-preview-x64-release",
+            "configurePreset": "windows-qt5-host-preview-x64",
+            "configuration": "Release"
+        },
+        {
+            "name": "windows-qt5-host-preview-x86-release",
+            "configurePreset": "windows-qt5-host-preview-x86",
             "configuration": "Release"
         }
     ]
