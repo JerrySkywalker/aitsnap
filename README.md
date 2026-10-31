@@ -7,7 +7,7 @@ and associating them with test execution records.
 
 ## Status
 
-Repository initialization only. The source contains a minimal Qt Widgets window;
+Software skeleton only. The source contains a minimal Qt Widgets window;
 the product capabilities below are planned and are not implemented. There is no
 release, installer, or validated platform support yet.
 
@@ -25,42 +25,46 @@ command files, or organization-specific materials.
 
 ## Technology and target systems
 
-- C++20, Qt Widgets, and CMake 3.16 or newer.
-- Qt 5.15 is the initial dependency baseline, using `Qt5::Widgets`.
-- Windows 7 SP1 and Windows 10/11 are target systems, not verified support claims.
-- Windows 7 SP1 compatibility and a suitable compiler, Qt 5.15 build, runtime,
-  and deployment combination remain to be validated. C++20 compiler support alone
-  does not establish Windows 7 runtime compatibility.
-- Linux remains a possible future port; no Linux validation is provided.
+- Formal platform baseline: Windows 10 (1809 or later) / Windows 11, x64.
+- C++20, Qt 6.12 Widgets (`Qt6::Widgets`), and CMake 3.24 or newer.
+- Preferred compiler: MSVC 2022 (v143), x64, with the matching Qt SDK.
+- Qt 6.12.x is the dependency baseline; newer minor versions require platform
+  review because Qt 6.12 is the last Qt version to support Windows 10.
+- Windows 7 and Linux are future possibilities only: no development or testing
+  for either platform is included in the current scope.
+- The platform policy does not imply that every OS version has been tested.
+  See the [current validation record](docs/qt6-baseline-validation.md).
 
 ## Build
 
-Use a C++20 compiler and a matching Qt 5.15 development kit. Configure the Qt kit
-path locally; do not commit machine-specific paths. For example, from the
-repository root with Ninja available:
+Use the existing vcpkg installation and the official Qt 6.12 MSVC x64 SDK.
+Set `VCPKG_ROOT` to that vcpkg root and `QT_ROOT` to the Qt kit prefix in the
+current PowerShell session. Then, from the repository root:
 
-```sh
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_PREFIX_PATH="<qt-kit-prefix>"
-cmake --build build
+```powershell
+cmake --preset windows-msvc-qt-sdk
+cmake --build --preset windows-msvc-qt-sdk-release
 ```
 
-The placeholder is the Qt kit installation prefix, not its `bin` directory.
-The compiler and Qt kit must be ABI-compatible. With a multi-configuration
-generator, select the desired configuration using `cmake --build build --config Debug`.
-On Windows, Qt runtime DLLs and the platform plugin must be available to run the
-executable. Packaging and runtime deployment are outside this initialization.
+The portable preset explicitly loads `$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake`
+and uses the `x64-windows` triplet. Qt comes from the official SDK selected by
+`QT_ROOT`, **not** from a vcpkg package. Manifest installation and vcpkg app-local
+copying are disabled; configuration does not start a Qt source build.
+Do not create another vcpkg installation or commit local paths.
 
-See [initial validation](docs/initial-validation.md) for the actual local result
-and remaining checks. A successful configure or compiler probe is not a completed
-application build or platform qualification.
+See [Windows build and launch instructions](docs/build-windows.md), including
+runtime DLL/plugin setup and how to verify actual toolchain loading.
+The [original initialization record](docs/initial-validation.md) is retained as
+history; its Qt 5 and Windows 7 statements no longer define the current baseline.
 
 ## Source layout
 
 ```text
 CMakeLists.txt        Build definition
+CMakePresets.json     Portable MSVC x64 / Qt SDK / vcpkg configuration
 src/main.cpp          Application entry point
 src/main_window.*     Minimal window placeholder
-docs/                 Initialization validation record
+docs/                 Build instructions and validation history
 ```
 
 ## License
