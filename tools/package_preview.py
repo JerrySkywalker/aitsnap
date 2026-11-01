@@ -33,7 +33,7 @@ def main():
     shutil.copy2(a.qt / 'translations/qtbase_zh_CN.qm', translations / 'qtbase_zh_CN.qm')
     for name in ['install-preview.ps1', 'uninstall-preview.ps1', 'Launch-Preview.ps1']:
         shutil.copy2(ROOT / 'tools' / name, target / name)
-    for name in ['LICENSE', 'README.md']:
+    for name in ['LICENSE', 'README.md', 'README.zh-CN.md']:
         shutil.copy2(ROOT / name, target / name)
     shutil.copytree(ROOT / 'docs/preview', target / 'docs')
     shutil.copytree(ROOT / 'docs/architecture', target / 'docs/architecture')
