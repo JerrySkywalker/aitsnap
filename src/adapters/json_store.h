@@ -9,6 +9,7 @@ namespace aitsnap {
 struct ReportOptions {
     bool enabled{};
     QString documentPath, itemMode{"both"}, layout{"inline"};
+    QString targetMode{"specified"}; // Adapter callers retain explicit-target behavior.
 };
 struct Settings {
     std::vector<core::CaptureProfile> profiles;

@@ -181,8 +181,7 @@ bool MainWindow::collectSettings(Settings& c, QString& e)
     c.outputMode = outputMode_->currentData().toString(); c.selectedSceneIds.clear();
     for (int i = 0; i < scenes_->count(); ++i) if (scenes_->item(i)->checkState() == Qt::Checked) c.selectedSceneIds.append(scenes_->item(i)->data(Qt::UserRole).toString());
     p.outputMode = c.outputMode.toStdString(); p.sceneIds.clear(); for (const auto& id : c.selectedSceneIds) p.sceneIds.push_back(id.toStdString()); p.clipboardSelection = c.clipboardRegion.toStdString();
-    c.report.enabled = reportEnabled_->isChecked(); c.report.documentPath = reportPath_->text().trimmed(); c.report.itemMode = reportMode_->currentData().toString(); c.report.layout = reportLayout_->currentData().toString();
-    if (c.report.enabled && (!QDir::isAbsolutePath(c.report.documentPath) || QFileInfo(c.report.documentPath).suffix().compare("docx", Qt::CaseInsensitive))) { e = aitsnap::uiText("自动报告需要明确的 DOCX 完整路径。"); return false; }
+    c.report = selectedReportOptions();
     core::CaptureRequest sample; sample.issuedAtUtc = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs).toStdString(); sample.profile = p;
     core::Region example{"", uiText("区域").toStdString(), {0, 0, 1, 1}, true, 1};
     expandFilename(c, sample, p.regions.empty() ? example : p.regions.front(), e); return e.isEmpty();
@@ -283,14 +282,33 @@ void MainWindow::changeEvent(QEvent* event)
     if (event->type() == QEvent::PaletteChange && overviewSources_)
         QTimer::singleShot(0, this, [this] { refreshWorkspace(); });
 }
+ReportOptions MainWindow::selectedReportOptions() const
+{
+    ReportOptions options; options.enabled=reportEnabled_->isChecked();options.targetMode=reportTargetMode_->currentData().toString();
+    options.documentPath=reportPath_->text().trimmed();options.itemMode=reportMode_->currentData().toString();options.layout=reportLayout_->currentData().toString();return options;
+}
+QString MainWindow::reportTarget(const QString& batchDirectory,const QString& issuedAtUtc,QString* diagnostic) const
+{
+    if(!reportQueue_)return {};
+    QString error;const auto time=issuedAtUtc.isEmpty()?QDateTime::currentDateTime():QDateTime::fromString(issuedAtUtc,Qt::ISODateWithMs);
+    const auto root=batchDirectory.isEmpty()?directory_->text().trimmed():QFileInfo(batchDirectory).absolutePath();
+    const auto path=reportQueue_->resolveTarget(selectedReportOptions(),root,time,false,error);if(diagnostic)*diagnostic=error;return path;
+}
 void MainWindow::refreshReportStatus()
 {
     if (!reportQueue_ || !reportStatus_) return; int committed = 0, pending = 0, uncertain = 0, failed = 0;
     for (const auto& job : reportQueue_->jobs()) { const auto state = job["state"].toString(); if (state == "COMMITTED") ++committed; else if (state == "UNCERTAIN") ++uncertain; else if (state == "FAILED") ++failed; else ++pending; }
     reportStatus_->setText(aitsnap::uiText("Word：已提交 %1 · 排队/执行 %2 · 待核对 %3 · 失败 %4").arg(committed).arg(pending).arg(uncertain).arg(failed) + (reportQueue_->diagnostic().isEmpty() ? "" : "\n" + reportQueue_->diagnostic()));
-    const bool linked = lastOutcome_ && reportQueue_->hasBatchForDocument(qs(lastOutcome_->batch.batchId), reportPath_->text().trimmed());
+    QString targetError;const auto today=reportTarget({},{},&targetError);
+    const bool automatic=reportTargetMode_->currentData()=="automatic";
+    reportTargetStatus_->setText(today.isEmpty() ? (automatic && !QDir(directory_->text().trimmed()).exists()?uiText("首次保存截图后，自动在截图目录建立今日报告。"):uiText("报告目标：")+targetError) : (automatic?uiText("今日报告："):uiText("报告目标："))+QDir::toNativeSeparators(today));
+    if(auto* open=findChild<QPushButton*>("openCurrentReport"))open->setEnabled(QFileInfo(today).isFile());
+    reportTargetStatus_->setToolTip(today.isEmpty()?targetError:today);
+    const auto target=lastOutcome_?reportTarget(lastOutcome_->directory,qs(lastOutcome_->batch.request.issuedAtUtc)):QString{};
+    const bool linked = lastOutcome_ && !target.isEmpty() && reportQueue_->hasBatchForDocument(qs(lastOutcome_->batch.batchId),target);
+    appendLast_->setToolTip(target);
     appendLast_->setText(linked ? uiText("本批已加入报告") : uiText("将最近保存批次加入报告"));
-    appendLast_->setEnabled(lastOutcome_ && !lastOutcome_->directory.isEmpty() && !reportPath_->text().trimmed().isEmpty() && !linked);
+    appendLast_->setEnabled(lastOutcome_ && !lastOutcome_->directory.isEmpty() && !target.isEmpty() && !linked);
     if (batchCards_) selectBatch();
 }
 void MainWindow::showContextStore()

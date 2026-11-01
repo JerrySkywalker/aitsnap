@@ -18,6 +18,7 @@
 #include <QDialogButtonBox>
 #include <QFontDatabase>
 #include <QLabel>
+#include <QLineEdit>
 #include <QTableWidget>
 #include <QThread>
 #include <iostream>
@@ -91,6 +92,11 @@ int main(int argc, char** argv)
                 check(window.findChild<QLabel*>("workbenchSourcesTitle")->height()==window.findChild<QLabel*>("workbenchLayoutTitle")->height() && window.findChild<QLabel*>("workbenchOutputsTitle")->height()==window.findChild<QLabel*>("workbenchLayoutTitle")->height(),"common title height");
                 window.hide();
             }
+            auto* reportTargetMode=window.findChild<QComboBox*>("reportTargetMode");auto* reportPath=window.findChild<QLineEdit*>("reportDocumentPath");auto* reportEnabled=window.findChild<QCheckBox*>("reportEnabled");
+            check(reportTargetMode->currentData()=="automatic" && !reportPath->isEnabled(),"blank legacy report defaults automatic with separate explicit field");
+            reportTargetMode->setCurrentIndex(reportTargetMode->findData("specified"));reportPath->setText("invalid-report-path");reportEnabled->setChecked(true);window.findChild<QPushButton*>("applySettings")->click();
+            Settings invalidReport;check(loadSettings(path,invalidReport,error) && invalidReport.report.enabled && invalidReport.report.targetMode=="specified" && window.findChild<QPushButton*>("captureSave")->isEnabled(),"invalid report target remains explicit and does not disable screenshots");
+            reportEnabled->setChecked(false);reportTargetMode->setCurrentIndex(reportTargetMode->findData("automatic"));window.findChild<QPushButton*>("applySettings")->click();
             mode->setCurrentIndex(mode->findData("dark")); app.processEvents();
             check(activeColorMode() == "dark" && window.palette().color(QPalette::Window).lightness() < 90 && window.palette().color(QPalette::Text).lightness() > 190, "dark widgets have contrasting palette");
             auto* status = window.findChild<QLabel*>("captureStatus"); const auto darkStatus = status->palette().color(QPalette::WindowText);

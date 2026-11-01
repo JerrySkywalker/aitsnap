@@ -55,3 +55,15 @@ PR29源码82808322aa2c6435003036fb4be5d9a6cb6493e3，merge cf14e7b7530b4f7e9fd02
 W05三列统一card容器、标题高度、8px内边距及间距，右列列表+预览保持一个完整Panel。关联输出/来源采用虚线描边，不再冒充实心选中背景；勾选继续表达启用。输出卡关闭横滚并等宽省略，完整名称有tooltip。Qt6/Qt5重建后的appearance/management各2/2 PASS；浅/深组件图已实际查看，三列上下边界和标题几何断言通过，导出像素不随主题改变的原有断言通过。
 
 首轮面板构建因测试漏include失败，之后误运行了旧二进制；该轮结果及图显式标记INVALID-FIRST-RUN，不计新源码资格。修复include后重新编译exit0，使用UX071-PANELS/final新目录生成最终组件图和两路final-tests.log。offscreen图不等于原生混合DPI或Owner视觉验收，后者继续HOLD。此分支未改截图、报告或历史字节。
+
+## PR30合并及W06按日报告
+
+PR30源码25067dcf1babc0bdacd428fb6b2a7cb7a13b25b1，merge b346a3e38436d64a114cb0f4228ba0ba736160ab。W05组件PASS、原生混合DPI/Owner视觉HOLD。
+
+W06实现automatic/specified模式，旧非空路径迁移specified、旧空路径迁移automatic，enabled原值保持。界面独立选择方式、指定路径、今日目标及打开入口，历史/最近批次追加显示冻结目标。自动模式按canonical截图根目录+批次本地日持久保留首个有效报告批次时间戳文件，直接放根目录，已存在无关文件则加编号不覆盖；preview不建文件/不占目标。首个DOCX未生成时后续job仍指同一路径，沿用create/append FIFO；重启、日期/根目录变化不改已入队path/fingerprint；移动/删除已提交文档明确报错。无效指定报告路径不阻断截图，复制模式不建Word队列。
+
+Qt6/Qt5 report-queue、appearance、management各3/3 PASS；新增探针后重建report并分别再PASS。涵盖迁移保留旧字节/开关、中文空格根目录、同名无关文件保护、首文档未生成连续入队、重启续用、跨日、根切换冻结旧job、已提交文档移动HOLD及无效显式扩展名不偷换自动。localization369条PASS。一次构建期间写UI源被Windows读取锁拒绝，没有改ACL；待两路构建结束后完成改动并重新全量编译受影响目标，最终验证基于稳定源码。
+
+真实现代Word16.0合成实验：独立native/8b088216-e0f1-4195-bac6-fdf216e05aa1，常规ReportQueue/aitsnap-word-bridge先create，队列对象重启后append，同一中文空格截图根目录报告。两个job COMMITTED、DOCX ZIP回读drawingCount2/committedMarkers2、source SHA不变；DOCX SHA9483121c62caee0be090df420cc882e18e1fbb01bbb38118b4225cc09dddc745。没有桌面输入/现有文档实验，不构成Word2010、Win10/Win7或人工版式验收。原始证据UX071-REPORT/{qt6,qt5}-final-tests.log、*-probe-final-tests.log、native.stdout.log及该实验receipt.json/docx-readback.json。
+
+完整0.7.1包尚未生成，W02真实Finish首次启动仍HOLD；下一步完成同会话源审阅/正常PR，再继续W02源取证与W07版本/包集成。原预算持续计费，不延长120h。

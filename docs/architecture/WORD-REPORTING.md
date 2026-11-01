@@ -23,3 +23,13 @@ Test both Word 2010 bitness variants only when available; COM server bitness may
 ## Research & source
 Microsoft Word COM InlineShapes.AddPicture documentation: https://learn.microsoft.com/office/vba/api/Word.InlineShapes.AddPicture
 Microsoft Office automation unattended caution: https://support.microsoft.com/help/257757
+
+## 0.7.1 daily target routing
+
+Reporting remains opt-in. Settings distinguish automatic daily targets from explicit DOCX paths. Legacy nonempty paths migrate to explicit mode; blank paths migrate to automatic mode while retaining the enabled flag. The adapter ReportOptions default remains explicit for existing programmatic callers; defaultSettings selects automatic mode for the product.
+
+Automatic routing uses canonical screenshot root and the batch's local calendar date. Before enqueueing the first valid saved-image job, the queue reserves `AITSnap-yyyyMMdd-HHmmsszzz.docx` directly in that root, choosing a suffix if an unrelated file exists. `report-jobs/routing/daily-targets-v1.json` records this mapping even before Word creates the document. The preview does not reserve or create files. Restart reuses the reservation; root/day changes select another mapping. Historical batches use their saved root and capture date, shown on the append action tooltip.
+
+Queue jobs retain the resolved absolute path and existing fingerprint, create/append FIFO and recovery semantics. Changes to settings never retarget old jobs. A missing previously committed daily document requires restoration or an explicit new target; it is not silently recreated. Invalid report paths or unavailable Word do not invalidate capture configuration or discard saved screenshots. Copy-only captures do not queue reports.
+
+Qualification: Qt6/Qt5 fake-worker routing/FIFO/restart/collision/migration tests pass. Modern Word16 synthetic daily create, queue restart and append passed on the current Win11 host, with two image nodes and two committed markers in DOCX readback and unchanged source hashes. Word2010, native Win7/Win10 and human pagination/visual acceptance remain HOLD.

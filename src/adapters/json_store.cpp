@@ -31,7 +31,7 @@ QString settingsPath()
 }
 Settings defaultSettings()
 {
-    Settings s; s.outputDirectory = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) + "/captures";
+    Settings s; s.report.targetMode = "automatic"; s.outputDirectory = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) + "/captures";
     return s;
 }
 QJsonObject profileJson(const core::CaptureProfile& p)
@@ -124,8 +124,10 @@ bool loadSettings(const QString& path, Settings& s, QString& error)
     active.outputMode = candidate.outputMode.toStdString(); active.sceneIds.clear();
     for (const auto& scene : candidate.selectedSceneIds) active.sceneIds.push_back(scene.toStdString()); active.clipboardSelection = candidate.clipboardRegion.toStdString();
     const auto report = o["wordReport"].toObject(); candidate.report.enabled = report["enabled"].toBool(); candidate.report.documentPath = report["documentPath"].toString();
+    candidate.report.targetMode = report["targetMode"].toString(candidate.report.documentPath.isEmpty() ? "automatic" : "specified");
     candidate.report.itemMode = report["itemMode"].toString("both"); candidate.report.layout = report["layout"].toString("inline");
-    if ((candidate.report.itemMode != "originals" && candidate.report.itemMode != "composites" && candidate.report.itemMode != "both") ||
+    if ((candidate.report.targetMode != "automatic" && candidate.report.targetMode != "specified") ||
+        (candidate.report.itemMode != "originals" && candidate.report.itemMode != "composites" && candidate.report.itemMode != "both") ||
         (candidate.report.layout != "inline" && candidate.report.layout != "table")) { error = "Invalid Word report policy"; return false; }
     s = candidate; return true;
 }
@@ -147,7 +149,7 @@ bool saveSettings(const QString& path, const Settings& s, QString& error)
         {"station", s.station}, {"operator", s.operatorName}, {"sequence", double(s.sequence)}, {"startInTray", s.startInTray},
         {"appearance", QJsonObject{{"language", s.language}, {"colorMode", s.colorMode}}},
         {"scenes", scenes}, {"selectedSceneIds", selected}, {"outputMode", s.outputMode},
-        {"wordReport", QJsonObject{{"enabled", s.report.enabled}, {"documentPath", s.report.documentPath}, {"itemMode", s.report.itemMode}, {"layout", s.report.layout}}}};
+        {"wordReport", QJsonObject{{"enabled", s.report.enabled}, {"documentPath", s.report.documentPath}, {"targetMode", s.report.targetMode}, {"itemMode", s.report.itemMode}, {"layout", s.report.layout}}}};
     if (!QDir().mkpath(QFileInfo(path).absolutePath())) { error = "Cannot create settings directory"; return false; }
     QFile previous(path); int previousVersion = 0;
     if (previous.open(QIODevice::ReadOnly)) { previousVersion = QJsonDocument::fromJson(previous.readAll()).object()["schemaVersion"].toInt(); previous.close(); }

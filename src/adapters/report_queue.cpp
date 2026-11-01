@@ -142,17 +142,65 @@ bool ReportQueue::persist(QJsonObject& job, const QString& path)
     if (!storeReportJob(path, job, error)) { diagnostic_ = error; ready_ = false; return false; }
     if (changed) changed(); return true;
 }
+QString ReportQueue::resolveTarget(const ReportOptions& options, const QString& captureRoot, const QDateTime& batchTime, bool reserve, QString& error) const
+{
+    error.clear();
+    if(options.targetMode=="specified") {
+        const QFileInfo target(options.documentPath);
+        if(!QDir::isAbsolutePath(options.documentPath) || target.suffix().compare("docx",Qt::CaseInsensitive) || target.absoluteDir().canonicalPath().isEmpty()) { error="Select a complete DOCX path in an existing directory";return {}; }
+        return canonicalReportPath(options.documentPath);
+    }
+    if(options.targetMode!="automatic" || !batchTime.isValid()) {error="Invalid automatic report policy or batch time";return {};}
+    const auto root=QDir(captureRoot).canonicalPath();
+    if(root.isEmpty()) {error="Screenshot root is unavailable; restore it before adding a report";return {};}
+    const auto date=batchTime.toLocalTime().date().toString("yyyy-MM-dd");
+    const auto key=QString::fromLatin1(QCryptographicHash::hash((root.toCaseFolded()+"\n"+date).toUtf8(),QCryptographicHash::Sha256).toHex());
+    const auto routing=QDir(directory_).filePath("routing"), indexPath=QDir(routing).filePath("daily-targets-v1.json");
+    QJsonObject index{{"schemaVersion",1},{"targets",QJsonObject{}}};
+    if(QFile::exists(indexPath)) {
+        QFile file(indexPath);QJsonParseError parse;
+        if(!file.open(QIODevice::ReadOnly) || file.size()>1024*1024) {error="Cannot read daily report index: "+indexPath;return {};}
+        const auto doc=QJsonDocument::fromJson(file.readAll(),&parse);
+        if(parse.error || !doc.isObject() || doc.object()["schemaVersion"].toInt()!=1 || !doc.object()["targets"].isObject()) {error="Invalid daily report index; preserve and review: "+indexPath;return {};}
+        index=doc.object();
+    }
+    auto targets=index["targets"].toObject();
+    if(targets.contains(key)) {
+        const auto entry=targets[key].toObject(); const auto path=entry["documentPath"].toString();
+        if(entry["root"].toString().compare(root,Qt::CaseInsensitive) || entry["date"]!=date || !QDir::isAbsolutePath(path) || QFileInfo(path).absolutePath().compare(root,Qt::CaseInsensitive) || QFileInfo(path).suffix().compare("docx",Qt::CaseInsensitive)) {error="Invalid daily report target; preserve and review: "+indexPath;return {};}
+        if(!QFileInfo::exists(path)) for(const auto& job:jobs()) if(job["state"]=="COMMITTED" && job["target"].toObject()["documentPath"].toString().compare(path,Qt::CaseInsensitive)==0) {error="Daily report was moved or deleted. Restore "+path+" or choose an explicit new report.";return {};}
+        return path;
+    }
+    const auto stem="AITSnap-"+batchTime.toLocalTime().toString("yyyyMMdd-HHmmsszzz");QString path;
+    for(int suffix=0;suffix<10000;++suffix) {path=QDir(root).filePath(stem+(suffix?QString("-%1").arg(suffix):QString{})+".docx");if(!QFileInfo::exists(path))break;path.clear();}
+    if(path.isEmpty()){error="Daily report filename range exhausted";return {};}
+    if(reserve) {
+        if(!ready_){error=diagnostic_;return {};}
+        targets[key]=QJsonObject{{"root",root},{"date",date},{"documentPath",path},{"firstBatchTimeUtc",batchTime.toUTC().toString(Qt::ISODateWithMs)}};index["targets"]=targets;
+        if(!QDir().mkpath(routing)){error="Cannot create report routing directory";return {};}
+        QSaveFile file(indexPath);const auto bytes=QJsonDocument(index).toJson();
+        if(!file.open(QIODevice::WriteOnly) || file.write(bytes)!=bytes.size() || !file.commit()){error="Cannot reserve daily report target: "+file.errorString();return {};}
+    }
+    return path;
+}
 bool ReportQueue::enqueue(const CaptureOutcome& outcome, const ReportOptions& options, QString& error)
 {
     if (!ready_) { error = diagnostic_; return false; }
-    QString mode = QFileInfo::exists(options.documentPath) ? "append" : "create";
-    const auto canonicalTarget = canonicalReportPath(options.documentPath);
+    auto resolved=options;
+    const auto when=QDateTime::fromString(QString::fromStdString(outcome.batch.request.issuedAtUtc),Qt::ISODateWithMs);
+    const auto root=QFileInfo(outcome.directory).absolutePath();
+    resolved.documentPath=resolveTarget(options,root,when,false,error);if(resolved.documentPath.isEmpty())return false;
+    // Validate sources before reserving the first report filename.
+    if(makeReportJob(outcome,resolved,"create",error).isEmpty())return false;
+    resolved.documentPath=resolveTarget(options,root,when,true,error);if(resolved.documentPath.isEmpty())return false;
+    QString mode = QFileInfo::exists(resolved.documentPath) ? "append" : "create";
+    const auto canonicalTarget = canonicalReportPath(resolved.documentPath);
     double sequence = 1;
     for (const auto& job : jobs()) {
         sequence = std::max(sequence, job["extensions"].toObject()["enqueueSequence"].toDouble() + 1);
         if (job["state"] != "COMMITTED" && job["target"].toObject()["documentPath"].toString().compare(canonicalTarget, Qt::CaseInsensitive) == 0) mode = "append";
     }
-    auto job = makeReportJob(outcome, options, mode, error); if (job.isEmpty()) return false;
+    auto job = makeReportJob(outcome, resolved, mode, error); if (job.isEmpty()) return false;
     auto ext = job["extensions"].toObject(); ext["enqueueSequence"] = sequence; job["extensions"] = ext;
     const auto path = QDir(directory_).filePath(job["jobId"].toString() + ".json");
     if (QFile::exists(path)) { error = "Report job already exists"; return false; }
@@ -174,7 +222,9 @@ bool ReportQueue::enqueueHistorical(const QString& manifestPath, const ReportOpt
     QJsonParseError parse; const auto document = QJsonDocument::fromJson(file.readAll(), &parse); const auto saved = document.object();
     if (parse.error || !document.isObject() || saved["schemaVersion"].toInt() != 1 || saved["batchId"].toString().isEmpty() ||
         !QDateTime::fromString(saved["createdAtUtc"].toString(), Qt::ISODateWithMs).isValid()) { error = "Invalid saved batch identity or timestamp"; return false; }
-    if (hasBatchForDocument(saved["batchId"].toString(), options.documentPath)) { error = "This batch is already linked to this report; inspect or recover its existing job"; return false; }
+    const auto target=resolveTarget(options,QFileInfo(QFileInfo(manifestPath).absolutePath()).absolutePath(),QDateTime::fromString(saved["createdAtUtc"].toString(),Qt::ISODateWithMs),false,error);
+    if(target.isEmpty())return false;
+    if (hasBatchForDocument(saved["batchId"].toString(), target)) { error = "This batch is already linked to this report; inspect or recover its existing job"; return false; }
     CaptureOutcome input; input.directory = QFileInfo(manifestPath).absolutePath();
     input.batch.batchId = saved["batchId"].toString().toStdString(); input.batch.request.requestId = saved["requestId"].toString().toStdString();
     input.batch.request.issuedAtUtc = saved["createdAtUtc"].toString().toStdString();

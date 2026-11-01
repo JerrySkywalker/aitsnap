@@ -217,9 +217,11 @@ void MainWindow::selectBatch()
     batchDetail_->setText(item ? item->text().replace('\n', " · ") + QString(" · %1 ").arg(batchImages_->count()) + uiText("个已保存图像") : uiText("当前输出目录暂无已保存批次"));
     batchDetail_->setToolTip(QFileInfo(selectedBatchManifest_).absolutePath());
     batchImages_->setCurrentRow(batchImages_->count() ? 0 : -1); selectBatchImage();
-    const bool linked = reportQueue_ && reportQueue_->hasBatchForDocument(manifest["batchId"].toString(), reportPath_->text().trimmed());
+    const auto target=reportTarget(QFileInfo(selectedBatchManifest_).absolutePath(),manifest["createdAtUtc"].toString());
+    const bool linked = reportQueue_ && !target.isEmpty() && reportQueue_->hasBatchForDocument(manifest["batchId"].toString(),target);
     appendBatch_->setText(linked ? uiText("本批已加入报告") : uiText("将本批加入报告"));
-    appendBatch_->setEnabled(reportQueue_ && !selectedBatchManifest_.isEmpty() && !reportPath_->text().trimmed().isEmpty() && !manifest["batchId"].toString().isEmpty() && batchImages_->count() > 0 && !linked);
+    appendBatch_->setToolTip(target);
+    appendBatch_->setEnabled(reportQueue_ && !selectedBatchManifest_.isEmpty() && !target.isEmpty() && !manifest["batchId"].toString().isEmpty() && batchImages_->count() > 0 && !linked);
     reportCards_->clear(); if (!reportQueue_) return;
     const QMap<QString, QString> states{{"COMMITTED", uiText("已提交")}, {"QUEUED", uiText("排队中")}, {"RUNNING", uiText("正在写入")}, {"UNCERTAIN", uiText("待核对")}, {"FAILED", uiText("失败")}, {"RETRYABLE", uiText("等待重试")}};
     for (const auto& job : reportQueue_->jobs()) {
