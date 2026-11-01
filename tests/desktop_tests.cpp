@@ -6,12 +6,16 @@
 #include "adapters/win_capture.h"
 #include "compat/qt_widgets_compat.h"
 #include "desktop/mini_capture_window.h"
+#include "desktop/live_output_window.h"
+#include "adapters/live_preview.h"
+#include "core/scene_geometry.h"
 #include <QApplication>
 #include <QAction>
 #include <QCheckBox>
 #include <QLineEdit>
 #include <QClipboard>
 #include <QComboBox>
+#include <QListWidget>
 #include <QDateTime>
 #include <QDir>
 #include <QEventLoop>
@@ -110,7 +114,24 @@ int main(int argc, char** argv)
             check(saveSettings(path, settings, error), "synthetic main settings");
             const auto evidence = app.arguments().indexOf("--evidence");
             if (evidence >= 0 && evidence + 1 < app.arguments().size()) { settings.outputDirectory = app.arguments()[evidence + 1]; check(saveSettings(path, settings, error), "evidence config"); }
-            MainWindow host(nullptr, path); QEventLoop wait;
+            if(app.arguments().contains("--live")){settings.scenes={core::presetScene(profile,"live-scene","实时拼图",160,100,core::LayoutPreset::Grid)};check(saveSettings(path,settings,error),"live scene fixture");}
+            MainWindow host(nullptr, path);int extraCaptures=0;
+            if(app.arguments().contains("--live")){
+                auto settle=[](int ms){QEventLoop loop;QTimer::singleShot(ms,&loop,&QEventLoop::quit);loop.exec();};
+                host.show();settle(1700);auto* live=dynamic_cast<LivePreviewService*>(host.findChild<QObject*>("livePreviewService"));check(live && live->active() && live->snapshot().sources.size()==5,"workspace samples before first evidence capture");
+                Settings unchanged;check(loadSettings(path,unchanged,error) && unchanged.sequence==0,"live frames do not consume sequence");
+                check(!QDir(settings.outputDirectory).exists() || QDir(settings.outputDirectory).entryList({"*Synthetic*"},QDir::Dirs|QDir::NoDotAndDotDot).empty(),"live frames create no batch directory");
+                check(QDir(temp.filePath("report-jobs")).entryList({"*.json"},QDir::Files).empty(),"live frames enqueue no Word jobs");
+                check(live->snapshot().sources.at("r0").image.pixelColor(4,4)==QColor(Qt::red),"workspace live pixels match known source");
+                host.findChild<QPushButton*>("openLiveOutput")->click();settle(1500);auto* output=dynamic_cast<LiveOutputWindow*>(host.findChild<QWidget*>("liveOutputWindow"));check(output && output->isVisible(),"selected source opens independent live window");
+                output->findChild<QAction*>("copyPreview")->trigger();check(QApplication::clipboard()->image().pixelColor(4,4)==QColor(Qt::red),"independent live window displays actual source pixels");
+                std::shared_ptr<CaptureOutcome> fresh;QEventLoop freshWait;host.captureFinished=[&](auto result){fresh=result;freshWait.quit();};host.triggerCapture(1);check(!output->isVisible(),"formal capture hides live output windows");QTimer::singleShot(10000,&freshWait,&QEventLoop::quit);freshWait.exec();check(fresh && fresh->directory.isEmpty() && output->isVisible() && toQImage(fresh->batch.captures.front().image).pixelColor(4,4)==QColor(Qt::red),"formal capture uses fresh correct pixels and restores output");extraCaptures=1;
+                output->findChild<QPushButton*>("liveOutputPause")->click();check(output->paused(),"output can pause");output->close();
+                host.findChild<QListWidget*>("workspaceNavigation")->setCurrentRow(2);host.findChild<QPushButton*>("openLiveOutput")->click();settle(1500);output=dynamic_cast<LiveOutputWindow*>(host.findChild<QWidget*>("liveOutputWindow"));check(output && output->key()=="scene:live-scene","scene page opens the selected scene rather than stale workbench selection");output->findChild<QAction*>("copyPreview")->trigger();const auto expected=renderScenePreview(settings.scenes.front(),live->snapshot().sources,{1600,1000});check(expected.complete && QApplication::clipboard()->image()==expected.image,"independent scene uses exact shared live composition algorithm");output->close();
+                host.findChild<QCheckBox*>("livePreviewEnabled")->setChecked(false);host.hide();settle(150);check(!live->active() && live->snapshot().sources.empty(),"last subscription stops live capture and releases cache");
+                std::cout<<"LIVE_WORKSPACE_NATIVE_PASS before-first-capture no-sequence no-disk no-Word exact-pixels independent-window pause release\n";
+            }
+            QEventLoop wait;
             std::shared_ptr<CaptureOutcome> outcome;
             host.captureFinished = [&](auto result) { outcome = result; wait.quit(); };
             const auto foreground = GetForegroundWindow();
@@ -133,7 +154,7 @@ int main(int argc, char** argv)
             check(saved == 5 && copied == 1, "five files and one clipboard");
             check(QApplication::clipboard()->image().pixelColor(4, 4) == QColor(Qt::green), "selected clipboard image");
             check(QFile::exists(QDir(outcome->directory).filePath("batch.json")), "batch manifest saved");
-            Settings restarted; check(loadSettings(path, restarted, error) && restarted.sequence == 1, "persistent capture sequence");
+            Settings restarted; check(loadSettings(path, restarted, error) && restarted.sequence == 1+extraCaptures, "persistent capture sequence");
             std::cout << "NATIVE_M1_AUTOMATED_PASS displays=" << profile.calibratedDisplays.size() << " regions=5 saved=5 clipboard=1 focus=preserved elapsed_ms=" << outcome->elapsedMs << " manifest=" << outcome->directory.toStdString() << "/batch.json\n";
             if(app.arguments().contains("--capture-contract")) {
                 const char* buttons[]{"captureSave","captureCopy","captureBoth"};
@@ -145,7 +166,7 @@ int main(int argc, char** argv)
                     check(fileCount==(mode==1?0:5) && copyCount==(mode==0?0:1),"save/copy/both side effects match named actions");
                     check(mode!=1 || (outcome->directory.isEmpty() && !QDir(destination).exists()),"fresh copy never writes an image batch");
                     check(QDir(temp.filePath("report-jobs")).entryList({"*.json"},QDir::Files).empty(),"copy-only mode creates no Word job even when reporting enabled");
-                    Settings captured;check(loadSettings(path,captured,error) && captured.sequence==mode+2 && captured.outputDirectory==destination,"every UI action commits the current draft and advances exactly one sequence");
+                    Settings captured;check(loadSettings(path,captured,error) && captured.sequence==mode+2+extraCaptures && captured.outputDirectory==destination,"every UI action commits the current draft and advances exactly one sequence");
                 }
                 std::cout<<"CAPTURE_ACTION_CONTRACT_PASS save/copy/both fresh side effects draft routing exact sequence no copy Word job\n";
             }

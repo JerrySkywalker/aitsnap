@@ -4,6 +4,7 @@
 #include "desktop/workspace_views.h"
 #include "adapters/win_capture.h"
 #include "adapters/report_queue.h"
+#include "adapters/live_preview.h"
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDir>
@@ -22,6 +23,7 @@
 #include <QSignalBlocker>
 #include <QSet>
 #include <QTableWidget>
+#include <QScrollBar>
 #include <algorithm>
 
 namespace aitsnap {
@@ -45,11 +47,7 @@ static void restoreSelection(QListWidget* list, int current, const QSet<QString>
 }
 static RenderResult sceneThumbnail(core::SceneTemplate scene, const SceneSources& sources)
 {
-    const auto size = QSize(scene.width, scene.height).scaled({720, 420}, Qt::KeepAspectRatio);
-    const double scale = double(size.width()) / scene.width;
-    scene.width = std::max(1, size.width()); scene.height = std::max(1, size.height());
-    for (auto& layer : scene.layers) { layer.destination.x *= scale; layer.destination.y *= scale; layer.destination.width *= scale; layer.destination.height *= scale; layer.missingSourcePolicy = "placeholder"; }
-    return renderScene(scene, sources);
+    return renderScenePreview(std::move(scene),sources);
 }
 void MainWindow::refreshWorkspace()
 {
@@ -82,16 +80,21 @@ void MainWindow::refreshWorkspace()
         for (int i = 0; i < int(profile.regions.size()); ++i) if (qs(profile.regions[std::size_t(i)].id) == overviewOutputKey_) { selected = i; regions_->setCurrentCell(i, 1); break; }
     }
     const auto selectedCards=selectionIds(sourceCards_), selectedOverview=selectionIds(overviewSources_), selectedOutputs=selectionIds(overviewOutputs_);
+    QListWidget* scrolling[]{sourceCards_,overviewSources_,overviewOutputs_};int vertical[3]{},horizontal[3]{};for(int i=0;i<3;++i){vertical[i]=scrolling[i]->verticalScrollBar()->value();horizontal[i]=scrolling[i]->horizontalScrollBar()->value();}
     const QSignalBlocker blocker(sourceCards_), overviewBlock(overviewSources_), outputBlock(overviewOutputs_);
     sourceCards_->clear(); overviewSources_->clear(); overviewOutputs_->clear();
-    const bool sameProfile = lastOutcome_ && lastOutcome_->batch.request.profile.id == profile.id;
-    const auto sources = sameProfile ? batchSources(lastOutcome_->batch) : SceneSources{};
+    syncLivePreview(profile);
+    const bool live=livePreview_ && livePreviewEnabled_->isChecked();
+    const bool sameProfile = !live && lastOutcome_ && lastOutcome_->batch.request.profile.id == profile.id;
+    const auto sources = live?livePreview_->snapshot().sources:sameProfile ? batchSources(lastOutcome_->batch) : SceneSources{};
+    std::map<std::string,QImage> images;for(const auto& region:profile.regions){const auto source=sources.find(region.id);if(source!=sources.end() && source->second.image.size()==QSize(region.rect.width,region.rect.height))images[region.id]=source->second.image;}
+    topology_->setImages(images);overviewTopology_->setImages(images);
     int enabled = 0, regionIndex = 0;
     for (const auto& region : profile.regions) {
         enabled += region.enabled ? 1 : 0;
         const auto source = sources.find(region.id);
         const auto image = source == sources.end() ? QImage{} : source->second.image;
-        const auto suffix = image.isNull() ? uiText("未采集") : uiText("最近批次");
+        const auto suffix = live?livePreview_->snapshot().state:image.isNull() ? uiText("未采集") : uiText("最近批次");
         auto* item = new QListWidgetItem(regionLabel(region) + QString("\n%1×%2 · ").arg(region.rect.width).arg(region.rect.height) + suffix + (region.enabled ? QString{} : uiText(" · 未启用")), sourceCards_);
         item->setCheckState(region.enabled ? Qt::Checked : Qt::Unchecked);
         if (!image.isNull()) item->setIcon(QPixmap::fromImage(image.scaled({120, 80}, Qt::KeepAspectRatio, Qt::SmoothTransformation)));
@@ -126,8 +129,9 @@ void MainWindow::refreshWorkspace()
         const auto image = source == sources.end() ? QImage{} : source->second.image;
         bool stale = false;
         if (sameProfile) { const auto& previous = lastOutcome_->batch.request.profile.regions; const auto old = std::find_if(previous.begin(), previous.end(), [&](const auto& r) { return r.id == region.id; }); stale = old == previous.end() || old->rect != region.rect; }
-        sourcePreview_->setImage(image, regionLabel(region) + (image.isNull() ? uiText(" · 尚未采集") : stale ? uiText(" · 旧批次尺寸，需要重新采集") : uiText(" · 最近批次")), {region.rect.width, region.rect.height});
-        preview_->setImage(image, regionLabel(region) + (image.isNull() ? uiText(" · 尚未采集") : stale ? uiText(" · 旧批次尺寸，需要重新采集") : uiText(" · 最近批次")), {region.rect.width, region.rect.height});
+        const auto state=live?" · "+livePreview_->snapshot().state:image.isNull()?uiText(" · 尚未采集"):stale?uiText(" · 旧批次尺寸，需要重新采集"):uiText(" · 最近批次");
+        sourcePreview_->setImage(image, regionLabel(region)+state,{region.rect.width,region.rect.height});preview_->setImage(image,regionLabel(region)+state,{region.rect.width,region.rect.height});
+        if(live){const auto issue=livePreview_->snapshot().issues.find(region.id);if(issue!=livePreview_->snapshot().issues.end())sourceDetail_->setText(sourceDetail_->text()+"\n"+issue->second);}
         sourceDetail_->setText(regionLabel(region) + QString(" · (%1, %2) · %3×%4 px").arg(region.rect.x).arg(region.rect.y).arg(region.rect.width).arg(region.rect.height) + (stale ? uiText(" · 旧批次尺寸，需要重新采集") : QString{}));
     }
     if (!error.isEmpty()) sourceDetail_->setText(uiText("当前修改尚未生效：") + error);
@@ -147,7 +151,7 @@ void MainWindow::refreshWorkspace()
             const auto previous = std::find_if(oldRegions.begin(), oldRegions.end(), [&](const auto& r) { return r.id == layer.sourceRegionId; });
             return current != profile.regions.end() && previous != oldRegions.end() && current->rect != previous->rect;
         });
-        const auto caption = qs(scene->name) + (!rendered.complete ? uiText(" · 布局预览，待采集") : stale ? uiText(" · 来源尺寸已改动，请重新采集") : sources.empty() ? uiText(" · 场景预览") : uiText(" · 最近批次预览"));
+        const auto caption = qs(scene->name) + (live?" · "+livePreview_->snapshot().state:!rendered.complete ? uiText(" · 布局预览，待采集") : stale ? uiText(" · 来源尺寸已改动，请重新采集") : sources.empty() ? uiText(" · 场景预览") : uiText(" · 最近批次预览"));
         const QString sceneKey = "scene:" + qs(scene->id);
         if (candidate.outputMode != "originals" && candidate.selectedSceneIds.contains(qs(scene->id))) {
             const bool missing = std::any_of(scene->layers.begin(), scene->layers.end(), [&](const auto& layer) { return layer.visible && std::none_of(profile.regions.begin(), profile.regions.end(), [&](const auto& r) { return r.id == layer.sourceRegionId && r.enabled; }); });
@@ -162,6 +166,7 @@ void MainWindow::refreshWorkspace()
     for (int row=0; row<overviewOutputs_->count(); ++row) if(selectedOutputs.contains(overviewOutputs_->item(row)->data(Qt::UserRole).toString())) overviewOutputs_->item(row)->setSelected(true);
     updateObjectActions();
     if (!overviewOutputs_->count()) { auto* empty = new QListWidgetItem(uiText("请在拼图场景中选择输出"), overviewOutputs_); empty->setFlags(Qt::NoItemFlags); }
+    for(int i=0;i<3;++i){scrolling[i]->doItemsLayout();scrolling[i]->verticalScrollBar()->setValue(vertical[i]);scrolling[i]->horizontalScrollBar()->setValue(horizontal[i]);}
 }
 static QJsonObject readManifest(const QString& path)
 {

@@ -54,6 +54,7 @@ void DisplayCanvas::paintEvent(QPaintEvent*)
         const auto& r = profile_.regions[std::size_t(i)]; const auto frame = transform_.mapRect(physicalRect(r.rect));
         const bool highlighted = i == selected_ || std::find(highlighted_.begin(), highlighted_.end(), r.id) != highlighted_.end();
         QColor accent = palette().color(QPalette::Link); QColor fill = accent; fill.setAlpha(highlighted ? 100 : 35);
+        const auto image=images_.find(r.id);if(image!=images_.end() && !image->second.isNull())p.drawImage(frame,image->second);
         p.setPen(QPen(accent, highlighted ? 3 : 1, r.enabled ? Qt::SolidLine : Qt::DashLine)); p.setBrush(fill); p.drawRoundedRect(frame, 3, 3);
         auto label = regionLabel(r); if (!r.enabled) label += uiText(" · 未启用");
         const int labelWidth = std::min(width() - 16, std::max(56, p.fontMetrics().horizontalAdvance(label) + 14));

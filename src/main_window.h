@@ -22,6 +22,7 @@ class ContextStore;
 class LocalPipeServer;
 class DisplayCanvas; class ImagePreview;
 class MiniCaptureWindow;
+class LivePreviewService;class LiveOutputWindow;class SceneEditor;
 
 class MainWindow final : public QMainWindow
 {
@@ -35,6 +36,7 @@ protected:
     void closeEvent(QCloseEvent*) override;
     void changeEvent(QEvent*) override;
     bool eventFilter(QObject*, QEvent*) override;
+    void showEvent(QShowEvent*)override;void hideEvent(QHideEvent*)override;
 private:
     Settings settings_;
     QString configurationPath_;
@@ -89,6 +91,10 @@ private:
     MiniCaptureWindow* mini_{};
     bool restoreMiniAfterCapture_{};
     void showMiniWindow();
+    LivePreviewService* livePreview_{};QCheckBox* livePreviewEnabled_{};QComboBox* livePreviewRate_{};QLabel* livePreviewStatus_{};
+    std::vector<LiveOutputWindow*> liveOutputs_;std::vector<QWidget*> restoreLiveWindows_;
+    SceneEditor* liveEditor_{};
+    void syncLivePreview(const core::CaptureProfile&);void openLiveOutput(const QString& key={});void updateLiveOutputs();
     void updateCaptureActions(bool canCapture);
     bool busy_{}, paused_{}, configurationBlocked_{}, editingRegions_{}, editingScene_{}, refreshingWorkspace_{};
     void buildUi(); void setupTray(); void loadProfile();

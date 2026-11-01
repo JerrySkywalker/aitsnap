@@ -6,6 +6,7 @@
 #include <QImage>
 #include <QTransform>
 #include <functional>
+#include <map>
 namespace aitsnap {
 inline constexpr int linkedItemRole = Qt::UserRole + 10;
 class LinkedItemDelegate final : public QStyledItemDelegate {
@@ -19,6 +20,7 @@ public:
     explicit DisplayCanvas(QWidget* parent = nullptr);
     void setLayout(core::CaptureProfile profile, std::vector<core::Display> current, int selected);
     void highlightSources(std::vector<std::string> ids);
+    void setImages(std::map<std::string,QImage> images){images_=std::move(images);update();}
     int regionAt(const QPoint&) const;
     std::function<void(int)> selected;
 protected:
@@ -30,6 +32,7 @@ private:
     int selected_{-1};
     QTransform transform_;
     std::vector<std::string> highlighted_;
+    std::map<std::string,QImage> images_;
 };
 class ImagePreview final : public QWidget {
 public:

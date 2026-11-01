@@ -46,6 +46,10 @@ void MainWindow::buildUi()
     titleRow->addWidget(new QLabel(uiText("截图配置"))); titleRow->addWidget(profiles_);
     auto* addProfile = new QPushButton(uiText("新建配置")); addProfile->setObjectName("newProfile"); titleRow->addWidget(addProfile); auto* manage = new QPushButton(uiText("管理配置")); manage->setObjectName("manageProfiles"); titleRow->addWidget(manage); connect(manage, &QPushButton::clicked, this, [this] { showProfileManager(); });
     auto* apply = new QPushButton(uiText("应用配置")); apply->setObjectName("applySettings"); titleRow->addWidget(apply); outer->addLayout(titleRow);
+    auto* liveRow=new QHBoxLayout;livePreviewEnabled_=new QCheckBox(uiText("实时预览"));livePreviewEnabled_->setObjectName("livePreviewEnabled");livePreviewEnabled_->setChecked(settings_.livePreviewEnabled);liveRow->addWidget(livePreviewEnabled_);
+    livePreviewRate_=new QComboBox;livePreviewRate_->setObjectName("livePreviewRate");for(int rate:{1,2,5})livePreviewRate_->addItem(uiText("%1 帧/秒").arg(rate),rate);livePreviewRate_->setCurrentIndex(std::max(0,livePreviewRate_->findData(settings_.livePreviewFps)));liveRow->addWidget(livePreviewRate_);
+    livePreviewStatus_=new QLabel;livePreviewStatus_->setObjectName("livePreviewStatus");livePreviewStatus_->setTextFormat(Qt::PlainText);liveRow->addWidget(livePreviewStatus_,1);auto* liveWindow=new QPushButton(uiText("打开实时图窗"));liveWindow->setObjectName("openLiveOutput");liveRow->addWidget(liveWindow);outer->addLayout(liveRow);
+    connect(livePreviewEnabled_,&QCheckBox::toggled,this,[this]{refreshWorkspace();});connect(livePreviewRate_,QOverload<int>::of(&QComboBox::currentIndexChanged),this,[this]{refreshWorkspace();});connect(liveWindow,&QPushButton::clicked,this,[this]{openLiveOutput();});
     auto* body = new QHBoxLayout; outer->addLayout(body, 1);
     navigation_ = new QListWidget; navigation_->setObjectName("workspaceNavigation"); navigation_->setFixedWidth(158);
     navigation_->addItems({uiText("工作台"), uiText("源区域"), uiText("拼图场景"), uiText("批次与报告"), uiText("设置")});
@@ -213,7 +217,7 @@ void MainWindow::buildUi()
     auto* about = makeForm(); about->addRow(new QLabel(QString("AITSnap %1").arg(AITSNAP_VERSION))); auto* aboutNote = new QLabel(uiText("多屏截图、托盘操作、自由拼图与 Word 报告。Word 报告需要已安装 Microsoft Word。截图、配置和报告保存在本机。")); aboutNote->setWordWrap(true); about->addRow(aboutNote);
     for (auto* line : {profileName_, filename_, testId_, device_, station_, operator_}) connect(line, &QLineEdit::textChanged, this, [refreshTimer] { refreshTimer->start(); });
     connect(categories, &QListWidget::currentRowChanged, settingPages, &QStackedWidget::setCurrentIndex); categories->setCurrentRow(0);
-    connect(navigation_, &QListWidget::currentRowChanged, this, [this](int index) { pages_->setCurrentIndex(index); if (index == 1) sourceViews_->setCurrentIndex(0); if (index == 3) refreshBatches(); }); navigation_->setCurrentRow(0);
+    connect(navigation_, &QListWidget::currentRowChanged, this, [this](int index) { pages_->setCurrentIndex(index); if (index == 1) sourceViews_->setCurrentIndex(0); if (index == 3) refreshBatches();if(status_)refreshWorkspace(); }); navigation_->setCurrentRow(0);
     auto* actions = new QHBoxLayout; auto* save = new QPushButton(uiText("截图并保存")); auto* copy = new QPushButton(uiText("复制选中图片")); auto* both = new QPushButton(uiText("保存并复制")); auto* folder = new QPushButton(uiText("打开输出目录")); save->setObjectName("captureSave"); save->setProperty("primary", true);
     actions->addWidget(save); actions->addWidget(copy); actions->addWidget(both); actions->addStretch(); actions->addWidget(folder); outer->addLayout(actions);
     status_ = new QLabel; status_->setObjectName("captureStatus"); status_->setWordWrap(true); status_->setTextInteractionFlags(Qt::TextSelectableByMouse); outer->addWidget(status_); setCentralWidget(central);

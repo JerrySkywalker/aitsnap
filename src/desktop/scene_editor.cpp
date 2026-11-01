@@ -170,6 +170,17 @@ std::vector<std::size_t> SceneEditor::selectedIndices() const
     for (std::size_t i = 0; i < model_.layers.size(); ++i) if (selected_.count(model_.layers[i].id)) indices.push_back(i);
     return indices;
 }
+void SceneEditor::setPreviewSources(SceneSources sources)
+{
+    sources_=std::move(sources);
+    for(const auto& layer:model_.layers){const auto item=items_.find(layer.id);if(item==items_.end())continue;
+        const auto source=sources_.find(layer.sourceRegionId);const bool actual=source!=sources_.end() && !source->second.image.isNull() && (layer.sourceArtifactId.empty() || layer.sourceArtifactId==source->second.artifactId);
+        const auto region=std::find_if(profile_.regions.begin(),profile_.regions.end(),[&](const auto& r){return r.id==layer.sourceRegionId;});QImage image;
+        if(actual)image=source->second.image;
+        else{QSize size=layer.crop.valid()?QSize(layer.crop.width,layer.crop.height):region!=profile_.regions.end()?QSize(region->rect.width,region->rect.height):QSize(qRound(layer.destination.width),qRound(layer.destination.height));size=size.scaled({640,400},Qt::KeepAspectRatio);image=QImage(std::max(1,size.width()),std::max(1,size.height()),QImage::Format_RGB32);image.fill(QColor("#33485d"));}
+        item->second->setPreviewImage(image,!actual,(region==profile_.regions.end()?uiText("缺失源"):regionLabel(*region))+(actual?QString{}:uiText(" · 实时缺帧")));
+    }
+}
 void SceneEditor::rebuild()
 {
     syncing_ = true; graphics_->clear(); items_.clear(); layers_->clear();
