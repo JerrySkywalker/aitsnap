@@ -10,6 +10,7 @@ class DisplayCanvas final : public QWidget {
 public:
     explicit DisplayCanvas(QWidget* parent = nullptr);
     void setLayout(core::CaptureProfile profile, std::vector<core::Display> current, int selected);
+    void highlightSources(std::vector<std::string> ids);
     std::function<void(int)> selected;
 protected:
     void paintEvent(QPaintEvent*) override;
@@ -19,6 +20,7 @@ private:
     std::vector<core::Display> current_;
     int selected_{-1};
     QTransform transform_;
+    std::vector<std::string> highlighted_;
 };
 class ImagePreview final : public QWidget {
 public:

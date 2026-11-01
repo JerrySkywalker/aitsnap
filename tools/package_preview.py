@@ -29,6 +29,8 @@ def main():
     for path in a.crt.glob('*.dll'):
         shutil.copy2(path, target / path.name)
     (target / 'qt.conf').write_text('[Paths]\nPrefix=.\nPlugins=.\n', encoding='utf-8')
+    translations = target / 'translations'; translations.mkdir()
+    shutil.copy2(a.qt / 'translations/qtbase_zh_CN.qm', translations / 'qtbase_zh_CN.qm')
     for name in ['install-preview.ps1', 'uninstall-preview.ps1', 'Launch-Preview.ps1']:
         shutil.copy2(ROOT / 'tools' / name, target / name)
     for name in ['LICENSE', 'README.md']:

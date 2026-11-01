@@ -16,6 +16,8 @@
 #include <QListWidget>
 #include <QMap>
 #include <QPainter>
+#include <QPushButton>
+#include <QLineEdit>
 #include <QScopedValueRollback>
 #include <QSignalBlocker>
 #include <QSet>
@@ -30,13 +32,13 @@ static QImage smallImage(const QString& path)
     if (size.width() > 1200 || size.height() > 800) { size.scale({1200, 800}, Qt::KeepAspectRatio); reader.setScaledSize(size); }
     return reader.read();
 }
-static QImage sceneThumbnail(core::SceneTemplate scene, const SceneSources& sources)
+static RenderResult sceneThumbnail(core::SceneTemplate scene, const SceneSources& sources)
 {
     const auto size = QSize(scene.width, scene.height).scaled({720, 420}, Qt::KeepAspectRatio);
     const double scale = double(size.width()) / scene.width;
     scene.width = std::max(1, size.width()); scene.height = std::max(1, size.height());
     for (auto& layer : scene.layers) { layer.destination.x *= scale; layer.destination.y *= scale; layer.destination.width *= scale; layer.destination.height *= scale; layer.missingSourcePolicy = "placeholder"; }
-    return renderScene(scene, sources).image;
+    return renderScene(scene, sources);
 }
 void MainWindow::refreshWorkspace()
 {
@@ -44,6 +46,9 @@ void MainWindow::refreshWorkspace()
     QScopedValueRollback<bool> guard(refreshingWorkspace_, true);
     auto candidate = settings_; QString error; if (!collectSettings(candidate, error)) candidate = settings_;
     const auto& profile = candidate.profiles[std::size_t(candidate.activeProfile)];
+    if (overviewOutputKey_.startsWith("scene:")) {
+        if (candidate.outputMode == "originals" || !candidate.selectedSceneIds.contains(overviewOutputKey_.mid(6))) overviewOutputKey_.clear();
+    } else if (!overviewOutputKey_.isEmpty() && (candidate.outputMode == "composites" || std::none_of(profile.regions.begin(), profile.regions.end(), [&](const auto& r) { return r.enabled && qs(r.id) == overviewOutputKey_; }))) overviewOutputKey_.clear();
     if (error.isEmpty()) {
         auto next = candidate; ++next.sequence; core::CaptureRequest sample; sample.profile = profile;
         sample.issuedAtUtc = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs).toStdString();
@@ -55,10 +60,20 @@ void MainWindow::refreshWorkspace()
     } else filenamePreview_->setText(error);
     std::vector<core::Display> displays; try { WinCaptureBackend backend; displays = backend.displays(); } catch (...) { /* Unknown layout is rendered explicitly. */ }
     int selected = regions_->currentRow(); if (selected < 0 && !profile.regions.empty()) selected = 0;
-    const QSignalBlocker blocker(sourceCards_); sourceCards_->clear();
+    if (!profile.regions.empty()) selected = std::min(selected, int(profile.regions.size()) - 1);
+    std::vector<std::string> outputSources;
+    if (overviewOutputKey_.startsWith("scene:")) {
+        const auto id = overviewOutputKey_.mid(6).toStdString();
+        const auto scene = std::find_if(candidate.scenes.begin(), candidate.scenes.end(), [&](const auto& s) { return s.id == id; });
+        if (scene != candidate.scenes.end()) for (const auto& layer : scene->layers) if (layer.visible) outputSources.push_back(layer.sourceRegionId);
+    } else if (!overviewOutputKey_.isEmpty()) {
+        for (int i = 0; i < int(profile.regions.size()); ++i) if (qs(profile.regions[std::size_t(i)].id) == overviewOutputKey_) { selected = i; regions_->setCurrentCell(i, 1); break; }
+    }
+    const QSignalBlocker blocker(sourceCards_), overviewBlock(overviewSources_), outputBlock(overviewOutputs_);
+    sourceCards_->clear(); overviewSources_->clear(); overviewOutputs_->clear();
     const bool sameProfile = lastOutcome_ && lastOutcome_->batch.request.profile.id == profile.id;
     const auto sources = sameProfile ? batchSources(lastOutcome_->batch) : SceneSources{};
-    int enabled = 0;
+    int enabled = 0, regionIndex = 0;
     for (const auto& region : profile.regions) {
         enabled += region.enabled ? 1 : 0;
         const auto source = sources.find(region.id);
@@ -70,8 +85,22 @@ void MainWindow::refreshWorkspace()
         else { QPixmap blank(96, 60); blank.fill(palette().color(QPalette::AlternateBase)); QPainter p(&blank); p.setPen(palette().color(QPalette::Text)); p.drawText(blank.rect(), Qt::AlignCenter, QString::number(region.displayNumber)); item->setIcon(blank); }
         item->setSizeHint({200, 85});
         item->setToolTip(regionLabel(region) + QString(" · %1×%2 px").arg(region.rect.width).arg(region.rect.height));
+        item->setData(Qt::UserRole, qs(region.id));
+        auto* overviewItem = item->clone(); overviewSources_->addItem(overviewItem);
+        const bool linked = std::find(outputSources.begin(), outputSources.end(), region.id) != outputSources.end();
+        if (linked) overviewItem->setBackground(palette().color(QPalette::Highlight));
+        if (region.enabled && candidate.outputMode != "composites") {
+            auto* output = new QListWidgetItem(item->icon(), uiText("原图") + " · " + regionLabel(region) + QString("\n%1×%2").arg(region.rect.width).arg(region.rect.height), overviewOutputs_);
+            output->setData(Qt::UserRole, qs(region.id)); output->setSizeHint({210, 85});
+            const bool referenced = !overviewOutputKey_.isEmpty() ? qs(region.id) == overviewOutputKey_ : regionIndex == selected;
+            if (referenced) output->setBackground(palette().color(QPalette::Highlight));
+            if (qs(region.id) == overviewOutputKey_) overviewOutputs_->setCurrentItem(output);
+        }
+        ++regionIndex;
     }
-    sourceCards_->setCurrentRow(selected); topology_->setLayout(profile, displays, selected); overviewTopology_->setLayout(profile, displays, selected);
+    sourceCards_->setCurrentRow(selected); topology_->setLayout(profile, displays, selected);
+    overviewSources_->setCurrentRow(outputSources.empty() ? selected : -1);
+    overviewTopology_->setLayout(profile, displays, outputSources.empty() ? selected : -1); overviewTopology_->highlightSources(outputSources);
     appearanceTopology_->setLayout(profile, displays, selected);
     if (selected >= 0 && selected < int(profile.regions.size())) {
         const auto& region = profile.regions[std::size_t(selected)]; const auto source = sources.find(region.id);
@@ -79,6 +108,7 @@ void MainWindow::refreshWorkspace()
         bool stale = false;
         if (sameProfile) { const auto& previous = lastOutcome_->batch.request.profile.regions; const auto old = std::find_if(previous.begin(), previous.end(), [&](const auto& r) { return r.id == region.id; }); stale = old == previous.end() || old->rect != region.rect; }
         sourcePreview_->setImage(image, regionLabel(region) + (image.isNull() ? uiText(" · 尚未采集") : stale ? uiText(" · 旧批次尺寸，需要重新采集") : uiText(" · 最近批次")), {region.rect.width, region.rect.height});
+        preview_->setImage(image, regionLabel(region) + (image.isNull() ? uiText(" · 尚未采集") : stale ? uiText(" · 旧批次尺寸，需要重新采集") : uiText(" · 最近批次")), {region.rect.width, region.rect.height});
         sourceDetail_->setText(regionLabel(region) + QString(" · (%1, %2) · %3×%4 px").arg(region.rect.x).arg(region.rect.y).arg(region.rect.width).arg(region.rect.height) + (stale ? uiText(" · 旧批次尺寸，需要重新采集") : QString{}));
     }
     if (!error.isEmpty()) sourceDetail_->setText(uiText("当前修改尚未生效：") + error);
@@ -90,10 +120,27 @@ void MainWindow::refreshWorkspace()
         auto* item = scenes_->item(i); const auto id = item->data(Qt::UserRole).toString().toStdString();
         const auto scene = std::find_if(candidate.scenes.begin(), candidate.scenes.end(), [&](const auto& s) { return s.id == id; });
         if (scene == candidate.scenes.end()) continue;
-        const auto thumbnail = sceneThumbnail(*scene, sources); item->setIcon(QPixmap::fromImage(thumbnail)); item->setSizeHint({260, 110});
-        if (item == scenes_->currentItem()) scenePreview_->setImage(thumbnail, qs(scene->name) + (sources.empty() ? uiText(" · 布局预览，待采集") : uiText(" · 最近批次预览")));
+        const auto rendered = sceneThumbnail(*scene, sources); const auto& thumbnail = rendered.image; item->setIcon(QPixmap::fromImage(thumbnail)); item->setSizeHint({260, 110});
+        const bool stale = sameProfile && std::any_of(scene->layers.begin(), scene->layers.end(), [&](const auto& layer) {
+            if (!layer.visible) return false;
+            const auto current = std::find_if(profile.regions.begin(), profile.regions.end(), [&](const auto& r) { return r.id == layer.sourceRegionId; });
+            const auto& oldRegions = lastOutcome_->batch.request.profile.regions;
+            const auto previous = std::find_if(oldRegions.begin(), oldRegions.end(), [&](const auto& r) { return r.id == layer.sourceRegionId; });
+            return current != profile.regions.end() && previous != oldRegions.end() && current->rect != previous->rect;
+        });
+        const auto caption = qs(scene->name) + (!rendered.complete ? uiText(" · 布局预览，待采集") : stale ? uiText(" · 来源尺寸已改动，请重新采集") : sources.empty() ? uiText(" · 场景预览") : uiText(" · 最近批次预览"));
+        const QString sceneKey = "scene:" + qs(scene->id);
+        if (candidate.outputMode != "originals" && candidate.selectedSceneIds.contains(qs(scene->id))) {
+            const bool missing = std::any_of(scene->layers.begin(), scene->layers.end(), [&](const auto& layer) { return layer.visible && std::none_of(profile.regions.begin(), profile.regions.end(), [&](const auto& r) { return r.id == layer.sourceRegionId && r.enabled; }); });
+            auto* output = new QListWidgetItem(item->icon(), uiText("拼图") + " · " + qs(scene->name) + (missing ? uiText(" · 源未启用或缺失") : QString{}) + QString("\n%1×%2").arg(scene->width).arg(scene->height), overviewOutputs_);
+            output->setData(Qt::UserRole, sceneKey); output->setSizeHint({210, 100});
+            if (sceneKey == overviewOutputKey_) { overviewOutputs_->setCurrentItem(output); scenes_->setCurrentRow(i); preview_->setImage(thumbnail, caption); }
+            else if (overviewOutputKey_.isEmpty() && selected >= 0 && std::any_of(scene->layers.begin(), scene->layers.end(), [&](const auto& l) { return l.visible && l.sourceRegionId == profile.regions[std::size_t(selected)].id; })) output->setBackground(palette().color(QPalette::Highlight));
+        }
+        if (item == scenes_->currentItem()) scenePreview_->setImage(thumbnail, caption);
     }
     if (scenes_->count() == 0) scenePreview_->setImage({}, uiText("尚无场景，请先新建拼图"));
+    if (!overviewOutputs_->count()) { auto* empty = new QListWidgetItem(uiText("请在拼图场景中选择输出"), overviewOutputs_); empty->setFlags(Qt::NoItemFlags); }
 }
 static QJsonObject readManifest(const QString& path)
 {
@@ -148,10 +195,13 @@ void MainWindow::selectBatch()
     batchDetail_->setText(item ? item->text().replace('\n', " · ") + QString(" · %1 ").arg(batchImages_->count()) + uiText("个已保存图像") : uiText("当前输出目录暂无已保存批次"));
     batchDetail_->setToolTip(QFileInfo(selectedBatchManifest_).absolutePath());
     batchImages_->setCurrentRow(batchImages_->count() ? 0 : -1); selectBatchImage();
+    const bool linked = reportQueue_ && reportQueue_->hasBatchForDocument(manifest["batchId"].toString(), reportPath_->text().trimmed());
+    appendBatch_->setText(linked ? uiText("本批已加入报告") : uiText("将本批加入报告"));
+    appendBatch_->setEnabled(reportQueue_ && !selectedBatchManifest_.isEmpty() && !reportPath_->text().trimmed().isEmpty() && !manifest["batchId"].toString().isEmpty() && batchImages_->count() > 0 && !linked);
     reportCards_->clear(); if (!reportQueue_) return;
     const QMap<QString, QString> states{{"COMMITTED", uiText("已提交")}, {"QUEUED", uiText("排队中")}, {"RUNNING", uiText("正在写入")}, {"UNCERTAIN", uiText("待核对")}, {"FAILED", uiText("失败")}, {"RETRYABLE", uiText("等待重试")}};
     for (const auto& job : reportQueue_->jobs()) {
-        const auto state = job["state"].toString(); auto* card = new QListWidgetItem(QFileInfo(job["documentPath"].toString()).fileName() + "\n" + states.value(state, state), reportCards_);
+        const auto state = job["state"].toString(); auto* card = new QListWidgetItem(QFileInfo(job["target"].toObject()["documentPath"].toString()).fileName() + "\n" + states.value(state, state), reportCards_);
         card->setSizeHint({200, 74}); card->setToolTip(job["errorMessage"].toString());
         if (job["batchId"] == manifest["batchId"] && batchCards_->currentItem()) card->setIcon(batchCards_->currentItem()->icon());
     }

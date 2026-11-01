@@ -41,6 +41,7 @@
 #include <QRunnable>
 #include <QSplitter>
 #include <QScrollArea>
+#include <QSignalBlocker>
 #include <QSystemTrayIcon>
 #include <QStyle>
 #include <QTableWidget>
@@ -128,6 +129,9 @@ void MainWindow::rebuildProfileMenu()
 }
 void MainWindow::loadProfile()
 {
+    const auto* previous = regions_->currentRow() >= 0 ? regions_->item(regions_->currentRow(), 1) : nullptr;
+    const auto selectedId = previous ? previous->data(Qt::UserRole).toString() : QString{};
+    const QSignalBlocker regionBlock(regions_);
     const auto& p = settings_.profiles[std::size_t(settings_.activeProfile)]; profileName_->setText(qs(p.name)); regions_->setRowCount(0); clipboard_->clear();
     settings_.selectedSceneIds.clear(); for (const auto& id : p.sceneIds) settings_.selectedSceneIds.append(qs(id)); settings_.outputMode = qs(p.outputMode);
     const auto wantedClipboard = p.clipboardSelection.empty() ? settings_.clipboardRegion : qs(p.clipboardSelection);
@@ -141,6 +145,9 @@ void MainWindow::loadProfile()
         if (r.enabled) clipboard_->addItem(regionLabel(r), qs(r.id));
     }
     for (const auto& scene : settings_.scenes) clipboard_->addItem(aitsnap::uiText("拼图：") + qs(scene.name), "scene:" + qs(scene.id));
+    int selectedRow = 0;
+    for (int row = 0; row < regions_->rowCount(); ++row) if (regions_->item(row, 1)->data(Qt::UserRole).toString() == selectedId) selectedRow = row;
+    if (regions_->rowCount()) regions_->setCurrentCell(selectedRow, 1);
     int index = clipboard_->findData(wantedClipboard); if (index >= 0) clipboard_->setCurrentIndex(index);
     settings_.clipboardRegion = clipboard_->currentData().toString();
     outputMode_->setCurrentIndex(std::max(0, outputMode_->findData(settings_.outputMode))); rebuildScenes(); rebuildSceneMenu();
@@ -263,11 +270,20 @@ void MainWindow::closeEvent(QCloseEvent* e)
 {
     if (QSystemTrayIcon::isSystemTrayAvailable()) { hide(); e->ignore(); } else e->accept();
 }
+void MainWindow::changeEvent(QEvent* event)
+{
+    QMainWindow::changeEvent(event);
+    if (event->type() == QEvent::PaletteChange && overviewSources_)
+        QTimer::singleShot(0, this, [this] { refreshWorkspace(); });
+}
 void MainWindow::refreshReportStatus()
 {
     if (!reportQueue_ || !reportStatus_) return; int committed = 0, pending = 0, uncertain = 0, failed = 0;
     for (const auto& job : reportQueue_->jobs()) { const auto state = job["state"].toString(); if (state == "COMMITTED") ++committed; else if (state == "UNCERTAIN") ++uncertain; else if (state == "FAILED") ++failed; else ++pending; }
     reportStatus_->setText(aitsnap::uiText("Word：已提交 %1 · 排队/执行 %2 · 待核对 %3 · 失败 %4").arg(committed).arg(pending).arg(uncertain).arg(failed) + (reportQueue_->diagnostic().isEmpty() ? "" : "\n" + reportQueue_->diagnostic()));
+    const bool linked = lastOutcome_ && reportQueue_->hasBatchForDocument(qs(lastOutcome_->batch.batchId), reportPath_->text().trimmed());
+    appendLast_->setText(linked ? uiText("本批已加入报告") : uiText("将最近保存批次加入报告"));
+    appendLast_->setEnabled(lastOutcome_ && !lastOutcome_->directory.isEmpty() && !reportPath_->text().trimmed().isEmpty() && !linked);
     if (batchCards_) selectBatch();
 }
 void MainWindow::showContextStore()
@@ -427,7 +443,7 @@ void MainWindow::editRegions()
                     else setStatus(error, true);
                 } else setStatus(aitsnap::uiText("已取消框选，区域未改动。"));
                 editingRegions_ = false; if (restore) { showNormal(); raise(); activateWindow(); }
-            });
+            }, regions_->currentRow());
         } catch (const std::exception& e) { editingRegions_ = false; setStatus(QString::fromUtf8(e.what()), true); if (restore) showNormal(); }
     });
 }

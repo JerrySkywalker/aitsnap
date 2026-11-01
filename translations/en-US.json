@@ -311,5 +311,18 @@
   "默认多屏": "Default multi-screen",
   "历史重排": "Historical recomposition",
   "拼图 %1": "Scene %1",
-  "多屏截图、托盘操作、自由拼图与 Word 报告。Word 报告需要已安装 Microsoft Word。截图、配置和报告保存在本机。": "Multi-screen capture, tray actions, scene composition and Word reports. Microsoft Word is required for reports. Captures, settings and reports are stored locally."
+  "多屏截图、托盘操作、自由拼图与 Word 报告。Word 报告需要已安装 Microsoft Word。截图、配置和报告保存在本机。": "Multi-screen capture, tray actions, scene composition and Word reports. Microsoft Word is required for reports. Captures, settings and reports are stored locally.",
+  "原图": "Original",
+  "拼图": "Composite",
+  "下一次输出": "Next capture outputs",
+  "请在拼图场景中选择输出": "Select outputs in Scenes",
+  " · 源未启用或缺失": " · Source disabled or missing",
+  "重命名 F2": "Rename F2",
+  "停止导出": "Stop export",
+  "显示占位": "Show placeholder",
+  "跳过图层": "Skip layer",
+  "本批已加入报告": "Batch already linked to report",
+  "将本批加入报告": "Append this batch to report",
+  " · 来源尺寸已改动，请重新采集": " · Source geometry changed; capture again",
+  " · 场景预览": " · Scene preview"
 }

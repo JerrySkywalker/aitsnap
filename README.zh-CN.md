@@ -3,7 +3,7 @@
 [English README](README.md)
 
 AITSnap 是面向截图整理与试验执行记录关联的开源桌面软件项目。
-0.6.0 候选版已实现多屏截图、托盘、区域/自由拼图编辑、Word 队列和只读事件关联，提供 Windows Installer 安装包。
+0.7.0 候选版加入浏览式工作台、默认显示器布局、源区域/拼图/历史批次预览、可读编号及文件名、统一多尺寸图标；设置中的“外观”支持简体中文/English/系统语言和浅色/深色/跟随系统。多屏截图、托盘、自由拼图、Word 队列与只读事件关联继续复用原实现。安装入口为品牌 Setup EXE 和同内容 MSI。
 使用方法见[操作手册](docs/preview/OPERATOR-MANUAL.zh-CN.md)，范围见[发布说明](docs/preview/RELEASE-NOTES.md)。
 本机 Win11 自动化证据不代表 Win10、Win7、Word2010 或人工视觉验收通过。
 

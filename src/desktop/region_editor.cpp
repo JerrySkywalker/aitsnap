@@ -1,16 +1,19 @@
-#include "appearance.h"
 // SPDX-License-Identifier: Apache-2.0
 #define NOMINMAX
 #include <windows.h>
 #include <dwmapi.h>
 #include "region_editor.h"
+#include "appearance.h"
 #include "adapters/json_store.h"
 #include "adapters/win_capture.h"
 #include "core/region_edit.h"
 #include <QApplication>
 #include <QHBoxLayout>
+#include <QVBoxLayout>
 #include <QKeyEvent>
 #include <QLabel>
+#include <QInputDialog>
+#include <QLineEdit>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPushButton>
@@ -41,10 +44,13 @@ public:
         setWindowFlags(Qt::FramelessWindowHint | Qt::Tool | Qt::WindowStaysOnTopHint);
         setAttribute(Qt::WA_DeleteOnClose); setFocusPolicy(Qt::StrongFocus); setMouseTracking(true); setCursor(Qt::CrossCursor);
         setWindowTitle(aitsnap::uiText("AITSnap · 屏幕区域编辑 [%1,%2]").arg(display_.rect.x).arg(display_.rect.y));
-        auto* bar = new QWidget(this); bar->setStyleSheet("background:#172332; color:white; border-radius:5px;");
-        auto* layout = new QHBoxLayout(bar); layout->addWidget(new QLabel(aitsnap::uiText("空白处框选 · 拖动区域/角点 · Tab 切换 · 方向键微调")));
+        auto* bar = new QWidget(this); toolbar_ = bar; bar->setStyleSheet("background:#172332; color:white; border-radius:5px;");
+        auto* layout = new QVBoxLayout(bar); auto* hint = new QLabel(aitsnap::uiText("空白处框选 · 拖动区域/角点 · Tab 切换 · 方向键微调")); hint->setWordWrap(true); layout->addWidget(hint);
+        auto* actions = new QHBoxLayout; layout->addLayout(actions);
         auto* accept = new QPushButton(aitsnap::uiText("完成 Enter")); auto* cancel = new QPushButton(aitsnap::uiText("取消 Esc"));
-        layout->addWidget(accept); layout->addWidget(cancel); bar->move(16, 16); bar->adjustSize();
+        auto* rename = new QPushButton(uiText("重命名 F2")); rename->setObjectName("renameRegion");
+        actions->addWidget(rename); actions->addWidget(accept); actions->addWidget(cancel); actions->addStretch(); bar->move(16, 16); bar->adjustSize();
+        connect(rename, &QPushButton::clicked, this, [this] { renameSelected(); });
         connect(accept, &QPushButton::clicked, this, [this] { state_->finish(true); });
         connect(cancel, &QPushButton::clicked, this, [this] { state_->finish(false); });
     }
@@ -55,6 +61,11 @@ public:
             display_.rect.width, display_.rect.height, SWP_SHOWWINDOW);
     }
 protected:
+    void resizeEvent(QResizeEvent* event) override
+    {
+        QWidget::resizeEvent(event);
+        if (toolbar_) { toolbar_->setFixedWidth(std::max(240, width() - 32)); toolbar_->adjustSize(); }
+    }
     bool focusNextPrevChild(bool next) override
     {
         if (state_->profile.regions.empty()) return true;
@@ -75,7 +86,8 @@ protected:
             const double labelWidth = std::min(double(width()), double(std::max(240, painter.fontMetrics().horizontalAdvance(label) + 12)));
             const double labelX = std::clamp(area.x(), 0.0, std::max(0.0, width() - labelWidth));
             double labelY = std::clamp(area.y() - 26, 0.0, double(std::max(0, height() - 26)));
-            if (labelY < 70 && labelX < 1000) labelY = std::clamp(std::max(76.0, area.y() + 4), 0.0, double(std::max(0, height() - 26)));
+            if (QRectF(labelX, labelY, labelWidth, 26).intersects(toolbar_->geometry().adjusted(-6, -6, 6, 6)))
+                labelY = std::clamp(double(toolbar_->geometry().bottom() + 8), 0.0, double(std::max(0, height() - 26)));
             const QRectF labelRect(labelX, labelY, labelWidth, 26);
             painter.fillRect(labelRect, QColor(16, 35, 51, 235)); painter.setPen(Qt::white);
             painter.drawText(labelRect.adjusted(6, 0, -4, 0), Qt::AlignLeft | Qt::AlignVCenter, painter.fontMetrics().elidedText(label, Qt::ElideRight, int(labelWidth) - 10));
@@ -117,6 +129,7 @@ protected:
     void keyPressEvent(QKeyEvent* e) override
     {
         if (e->key() == Qt::Key_Escape) { state_->finish(false); return; }
+        if (e->key() == Qt::Key_F2) { renameSelected(); return; }
         if (e->key() == Qt::Key_Return || e->key() == Qt::Key_Enter) { state_->finish(true); return; }
         if (e->key() == Qt::Key_Tab && !state_->profile.regions.empty()) { state_->selected = (state_->selected + 1) % int(state_->profile.regions.size()); state_->refresh(); return; }
         if (state_->selected >= 0) {
@@ -131,15 +144,24 @@ protected:
     void closeEvent(QCloseEvent* e) override;
 private:
     std::shared_ptr<EditState> state_; core::Display display_; QImage background_;
+    QWidget* toolbar_{};
+    void renameSelected()
+    {
+        if (state_->selected < 0 || state_->selected >= int(state_->profile.regions.size())) return;
+        const int index = state_->selected; bool ok{};
+        const auto name = QInputDialog::getText(this, uiText("重命名区域"), uiText("名称"), QLineEdit::Normal, QString::fromUtf8(state_->profile.regions[std::size_t(index)].name.c_str()), &ok);
+        if (ok && !name.trimmed().isEmpty()) { state_->profile.regions[std::size_t(index)].name = name.trimmed().toStdString(); state_->refresh(); }
+    }
 };
 void RegionOverlay::closeEvent(QCloseEvent* e)
 {
     if (!state_->closing) state_->finish(false);
     QWidget::closeEvent(e);
 }
-void openRegionEditor(QWidget* owner, const core::CaptureProfile& profile, std::function<void(bool, core::CaptureProfile)> finished)
+void openRegionEditor(QWidget* owner, const core::CaptureProfile& profile, std::function<void(bool, core::CaptureProfile)> finished, int selectedRegion)
 {
     auto state = std::make_shared<EditState>(); state->profile = profile; core::numberRegions(state->profile);
+    if (selectedRegion >= 0 && selectedRegion < int(profile.regions.size())) state->selected = selectedRegion;
     WinCaptureBackend backend; const auto displays = backend.displays();
     std::vector<QImage> backgrounds;
     for (const auto& d : displays) {

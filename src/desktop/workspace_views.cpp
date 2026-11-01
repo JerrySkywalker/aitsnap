@@ -10,6 +10,7 @@ static QRectF physicalRect(core::Rect r) { return {double(r.x), double(r.y), dou
 DisplayCanvas::DisplayCanvas(QWidget* parent) : QWidget(parent) { setMinimumSize(360, 240); setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding); }
 void DisplayCanvas::setLayout(core::CaptureProfile p, std::vector<core::Display> current, int selection)
 { profile_ = std::move(p); current_ = std::move(current); selected_ = selection; update(); }
+void DisplayCanvas::highlightSources(std::vector<std::string> ids) { highlighted_ = std::move(ids); update(); }
 void DisplayCanvas::paintEvent(QPaintEvent*)
 {
     QPainter p(this); p.setRenderHint(QPainter::Antialiasing); p.fillRect(this->rect(), palette().color(QPalette::Base));
@@ -37,13 +38,27 @@ void DisplayCanvas::paintEvent(QPaintEvent*)
         p.setPen(palette().color(QPalette::WindowText));
         p.drawText(frame.adjusted(8, 5, -5, -5), Qt::AlignLeft | Qt::AlignTop, uiText("显示器 %1").arg(number) + QString(" · %1×%2").arg(d.rect.width).arg(d.rect.height) + (connected ? QString{} : uiText(" · 已断开")));
     }
+    std::vector<QRectF> badges;
     for (int i = 0; i < int(profile_.regions.size()); ++i) {
         const auto& r = profile_.regions[std::size_t(i)]; const auto frame = transform_.mapRect(physicalRect(r.rect));
-        QColor accent = palette().color(QPalette::Link); QColor fill = accent; fill.setAlpha(i == selected_ ? 100 : 35);
-        p.setPen(QPen(accent, i == selected_ ? 3 : 1, r.enabled ? Qt::SolidLine : Qt::DashLine)); p.setBrush(fill); p.drawRoundedRect(frame, 3, 3);
+        const bool highlighted = i == selected_ || std::find(highlighted_.begin(), highlighted_.end(), r.id) != highlighted_.end();
+        QColor accent = palette().color(QPalette::Link); QColor fill = accent; fill.setAlpha(highlighted ? 100 : 35);
+        p.setPen(QPen(accent, highlighted ? 3 : 1, r.enabled ? Qt::SolidLine : Qt::DashLine)); p.setBrush(fill); p.drawRoundedRect(frame, 3, 3);
         auto label = regionLabel(r); if (!r.enabled) label += uiText(" · 未启用");
         const int labelWidth = std::min(width() - 16, std::max(56, p.fontMetrics().horizontalAdvance(label) + 14));
-        const QRectF badge(std::clamp(frame.left(), 8.0, double(std::max(8, width() - labelWidth - 8))), std::clamp(frame.top() + 3, 54.0, double(std::max(54, height() - 30))), labelWidth, 24);
+        QRectF badge(std::clamp(frame.left(), 8.0, double(std::max(8, width() - labelWidth - 8))), std::clamp(frame.top() + 3, 54.0, double(std::max(54, height() - 30))), labelWidth, 24);
+        const auto overlaps = [&](const QRectF& candidate) { return std::any_of(badges.begin(), badges.end(), [&](const auto& used) { return candidate.adjusted(-2, -2, 2, 2).intersects(used); }); };
+        if (overlaps(badge)) {
+            const auto start = badge;
+            for (int step = 1; step < height() / 28; ++step) {
+                auto candidate = start.translated(0, step * 28);
+                if (candidate.bottom() <= height() - 6 && !overlaps(candidate)) { badge = candidate; break; }
+                candidate = start.translated(0, -step * 28);
+                if (candidate.top() >= 54 && !overlaps(candidate)) { badge = candidate; break; }
+            }
+            if (badge != start) { p.setPen(QPen(accent, 1)); p.drawLine(frame.center(), badge.center()); }
+        }
+        badges.push_back(badge);
         p.fillRect(badge, palette().color(QPalette::Base)); p.setPen(palette().color(QPalette::Text));
         p.drawText(badge.adjusted(5, 0, -5, 0), Qt::AlignLeft | Qt::AlignVCenter, p.fontMetrics().elidedText(label, Qt::ElideRight, labelWidth - 10));
     }

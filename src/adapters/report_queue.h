@@ -23,6 +23,8 @@ public:
     ReportQueue(QString directory, QString helper, QObject* parent = nullptr, int timeoutMs = 60000);
     ~ReportQueue() override;
     bool enqueue(const CaptureOutcome&, const ReportOptions&, QString& error);
+    bool enqueueHistorical(const QString& manifestPath, const ReportOptions&, QString& error);
+    bool hasBatchForDocument(const QString& batchId, const QString& documentPath) const;
     bool inspectMarker(const QString& jobId, QString& error);
     bool retryFailed(const QString& jobId, QString& error);
     QList<QJsonObject> jobs() const;

@@ -97,7 +97,7 @@ void SceneEditor::buildUi()
     zIndex_ = integerSpin(aitsnap::uiText("层级 Z"), -1000000, std::numeric_limits<int>::max());
     visible_ = new QCheckBox(aitsnap::uiText("可见")); locked_ = new QCheckBox(aitsnap::uiText("锁定移动")); locked_->setObjectName("layerLocked"); aspect_ = new QCheckBox(aitsnap::uiText("等比适配（不拉伸图片）")); aspect_->setToolTip(aitsnap::uiText("保持源图或裁剪后的宽高比，在目标框内居中，可能留白。取消后图片会拉伸铺满目标框。")); form->addRow(visible_); form->addRow(locked_); form->addRow(aspect_);
     cropX_ = integerSpin(aitsnap::uiText("裁剪 X"), 0, 32768); cropY_ = integerSpin(aitsnap::uiText("裁剪 Y"), 0, 32768); cropWidth_ = integerSpin(aitsnap::uiText("裁剪宽 (0=完整)"), 0, 32768); cropHeight_ = integerSpin(aitsnap::uiText("裁剪高 (0=完整)"), 0, 32768);
-    missing_ = new QComboBox; missing_->addItems({"fail", "placeholder", "skip"}); form->addRow(aitsnap::uiText("缺源策略"), missing_);
+    missing_ = new QComboBox; missing_->setObjectName("missingSourcePolicy"); missing_->addItem(uiText("停止导出"), "fail"); missing_->addItem(uiText("显示占位"), "placeholder"); missing_->addItem(uiText("跳过图层"), "skip"); form->addRow(aitsnap::uiText("缺源策略"), missing_);
     group_ = new QLineEdit; group_->setReadOnly(true); form->addRow(uiText("组合状态"), group_);
     pinned_ = new QLineEdit; pinned_->setReadOnly(true); form->addRow(aitsnap::uiText("固定源图"), pinned_);
     auto* relink = new QPushButton(aitsnap::uiText("改用当前批次源")); form->addRow(relink);
@@ -206,7 +206,7 @@ void SceneEditor::refreshProperties()
         source_->setCurrentIndex(index); x_->setValue(d.x); y_->setValue(d.y); width_->setValue(d.width); height_->setValue(d.height); rotation_->setValue(std::fmod(d.rotationDeg, 360));
         zIndex_->setValue(layer.zIndex); visible_->setChecked(layer.visible); locked_->setChecked(layer.locked); aspect_->setChecked(layer.preserveAspect);
         cropX_->setValue(layer.crop.x); cropY_->setValue(layer.crop.y); cropWidth_->setValue(layer.crop.width); cropHeight_->setValue(layer.crop.height);
-        missing_->setCurrentText(qs(layer.missingSourcePolicy)); group_->setText(layer.groupId.empty() ? uiText("未分组") : uiText("已组合")); pinned_->setText(layer.sourceArtifactId.empty() ? uiText("跟随当前批次") : uiText("已固定历史源图"));
+        missing_->setCurrentIndex(std::max(0, missing_->findData(qs(layer.missingSourcePolicy)))); group_->setText(layer.groupId.empty() ? uiText("未分组") : uiText("已组合")); pinned_->setText(layer.sourceArtifactId.empty() ? uiText("跟随当前批次") : uiText("已固定历史源图"));
     }
     loadingProperties_ = false;
 }
@@ -220,7 +220,7 @@ void SceneEditor::applyProperties()
     layer.destination = {x_->value(), y_->value(), width_->value(), height_->value(), rotation_->value()};
     layer.zIndex = zIndex_->value(); layer.visible = visible_->isChecked(); layer.locked = locked_->isChecked(); layer.preserveAspect = aspect_->isChecked();
     layer.crop = cropWidth_->value() > 0 ? core::Rect{cropX_->value(), cropY_->value(), cropWidth_->value(), cropHeight_->value()} : core::Rect{};
-    layer.missingSourcePolicy = missing_->currentText().toStdString();
+    layer.missingSourcePolicy = missing_->currentData().toString().toStdString();
     if (source != layer.sourceRegionId) { layer.sourceRegionId = source; layer.sourceArtifactId.clear(); layer.crop = {}; }
     pushUndo(); updateLayer(layer); rebuild();
 }

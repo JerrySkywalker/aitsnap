@@ -1,6 +1,8 @@
 # Preview release notes
 
-Current candidate: [0.6.0 M3 recovery and Windows Installer](RELEASE-0.6.0.md).
+Current candidate: [0.7.0 visual workspace and appearance](RELEASE-0.7.0.md).
+
+Earlier installer candidates: [0.6.2](RELEASE-0.6.2.md), [0.6.1](RELEASE-0.6.1.md), [0.6.0 M3](RELEASE-0.6.0.md).
 
 ## 0.5.0-preview — historical limited local Windows preview
 
