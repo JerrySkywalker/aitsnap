@@ -46,6 +46,13 @@ SceneEditor::SceneEditor(core::SceneTemplate scene, core::CaptureProfile profile
     setWindowTitle(aitsnap::uiText("AITSnap · 自由拼图")); resize(1360, 860); setMinimumSize(1040, 680);
     buildUi(); rebuild(); QTimer::singleShot(0, this, [this] { view_->fitInView(graphics_->sceneRect(), Qt::KeepAspectRatio); });
 }
+SceneEditor::~SceneEditor()
+{
+    // Qt destroys the child scene after C++ members (including selected_) are gone.
+    // Removing selected items then emits selectionChanged; stop these callbacks now.
+    disconnect(graphics_, nullptr, this, nullptr);
+    disconnect(layers_, nullptr, this, nullptr);
+}
 void SceneEditor::buildUi()
 {
     auto* outer = new QVBoxLayout(this); outer->setContentsMargins(18, 16, 18, 14);
