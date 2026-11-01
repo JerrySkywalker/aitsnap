@@ -1,17 +1,17 @@
 {
   "package": "AITSNAP-V1-UX-ITERATION-002",
   "productBaseline": "b9fad25d20fb2325b584411acc27e7c5e1534601",
-  "disposition": "CONCEPTS_WITH_070_IMPLEMENTATION_CHECKPOINT_NOT_FINAL_ACCEPTANCE",
+  "disposition": "070_INSTALL_CANDIDATE_DELIVERED_WITH_NATIVE_OWNER_HOLDS",
   "files": [
     {
       "path": "ACCEPTANCE.md",
-      "sha256": "3ec442bea1cc30078cf598795ec1470aad9c6e8b04cec9e8d81c84f0cc173f9e",
-      "bytes": 3976
+      "sha256": "31587f862f85436d476f02ea76c5ec1314e99dbc9fd11f1a68401747fdad2e73",
+      "bytes": 4262
     },
     {
       "path": "AI-IMPLEMENTATION-ENTRY.md",
-      "sha256": "37adfc94b8f3608467eec895a9885401c01897daaca739637b9510f9439a3eb2",
-      "bytes": 3862
+      "sha256": "9ef9700c3e8b9e78dd7cc7456742df3b2f26d41d07f8f3e426554ea6f8b52165",
+      "bytes": 4148
     },
     {
       "path": "APPEARANCE-070.md",
@@ -259,14 +259,19 @@
       "bytes": 5136
     },
     {
+      "path": "DELIVERY-070.md",
+      "sha256": "a44a25f7e9be3e940f2f14219cfcc99af446b57f986fd85f43612c23d3af507d",
+      "bytes": 13073
+    },
+    {
       "path": "DISPLAY-LAYOUT.md",
       "sha256": "0b59a7f102669c30fff4278f26c13e16fae1f786bd5c7d8dd8cacc64716faad8",
       "bytes": 6231
     },
     {
       "path": "EXECUTION-070.md",
-      "sha256": "3328a555010e4896da3d002a1adc408d501aff91a2fd2a0dff1eca8926cefd2d",
-      "bytes": 6257
+      "sha256": "2d0a918983f1c2ae7c699aceffc842dd2611007ae30a8daffa8ac805818ec170",
+      "bytes": 6728
     },
     {
       "path": "ISSUES-AND-EVIDENCE.md",
@@ -280,8 +285,8 @@
     },
     {
       "path": "ROADMAP-AND-CHECKLIST.md",
-      "sha256": "9e88abe09fa9cf802e6c10445e213a53bec4efb43fd34f0bc8b5da87def6e6ba",
-      "bytes": 13709
+      "sha256": "75718719183abc7b15316d35e982516bdb6f6d686f82a2069a868ea85a6f46df",
+      "bytes": 13995
     },
     {
       "path": "TABS-CONCEPT.md",
