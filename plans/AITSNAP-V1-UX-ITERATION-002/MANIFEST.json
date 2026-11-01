@@ -1,0 +1,77 @@
+{
+  "package": "AITSNAP-V1-UX-ITERATION-002",
+  "productBaseline": "b9fad25d20fb2325b584411acc27e7c5e1534601",
+  "disposition": "DIAGNOSIS_AND_PROPOSED_DESIGN_NOT_IMPLEMENTED_OR_OWNER_APPROVED",
+  "files": [
+    {
+      "path": "ACCEPTANCE.md",
+      "sha256": "3ec442bea1cc30078cf598795ec1470aad9c6e8b04cec9e8d81c84f0cc173f9e",
+      "bytes": 3976
+    },
+    {
+      "path": "concepts/01-workbench.png",
+      "sha256": "3cf9e88dcb4af0400c440eb865cff228b9502764ff33258d80c4e2a888653066",
+      "bytes": 137673
+    },
+    {
+      "path": "concepts/01-workbench.svg",
+      "sha256": "756664e1d0ac110a0bd1ed13d5fe960fdf33a757d1f291a69a6fe2c230732b15",
+      "bytes": 12873
+    },
+    {
+      "path": "concepts/02-region-selection.png",
+      "sha256": "97cbd2ad93d50f2ab20e9367a4f50e6e1ad8a89e8ee139d175a4fbd264b4c1bd",
+      "bytes": 113673
+    },
+    {
+      "path": "concepts/02-region-selection.svg",
+      "sha256": "b7faff7ee8a2912024f90790f6c11820ddb1b8c89fc7ec6d6e10cabe8048ca1e",
+      "bytes": 7400
+    },
+    {
+      "path": "concepts/03-scene-composer.png",
+      "sha256": "61c8121584adb404afe43e08f0e368adc7fb6369089f5328ea0edee0db404cbb",
+      "bytes": 147484
+    },
+    {
+      "path": "concepts/03-scene-composer.svg",
+      "sha256": "8e3b87432b9581144f088dd066e8b3d5924b48082ca761dbe2d96749cdad5349",
+      "bytes": 11574
+    },
+    {
+      "path": "concepts/brandmark-proposal.svg",
+      "sha256": "c822bfabc9abc1e2139758bd306e3264d2f4feda48ff6303085815e24d8fdb2c",
+      "bytes": 328
+    },
+    {
+      "path": "concepts/generate_concepts.py",
+      "sha256": "c4b0d021da0daa465b5a6119f65aba60c0252a624f2e78f2d3e55704b295482e",
+      "bytes": 14169
+    },
+    {
+      "path": "concepts/review-board.html",
+      "sha256": "fd0ca42db9a945bb63fc188f0f0edaee7d5f216bc32d52c7562cb6d18b2365d6",
+      "bytes": 2480
+    },
+    {
+      "path": "ISSUES-AND-EVIDENCE.md",
+      "sha256": "b2f8c9b523f49d4edd91a5f99ce2459da61cbcd22580999dc42e1daf432504bd",
+      "bytes": 10712
+    },
+    {
+      "path": "OWNER-HANDOFF.md",
+      "sha256": "5bdb18cd0e17a2d72551c9a1db986c88691332c0999d34570aa034a1ac37187d",
+      "bytes": 5173
+    },
+    {
+      "path": "ROADMAP-AND-CHECKLIST.md",
+      "sha256": "5da3818c4d0c98bc4666c0429a5ecd70233f554a8f7622c5a135e5077f6c8191",
+      "bytes": 13216
+    },
+    {
+      "path": "UI-CONCEPT.md",
+      "sha256": "61ba6cc63852c0f7d30ef26b2063aebaf5304bd99573c393392d39473cd0a6ff",
+      "bytes": 4768
+    }
+  ]
+}
