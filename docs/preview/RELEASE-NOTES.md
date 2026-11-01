@@ -1,6 +1,7 @@
 # Preview release notes
 
-Current candidate: [0.7.2 startup and capture command repair](RELEASE-0.7.2.md).
+Current candidate line: [0.8.0 dual hotkeys, report text, mini capture and live preview](RELEASE-0.8.0.md). Exact built artifacts and qualification are recorded in its delivery receipt.
+Previous candidate: [0.7.2 startup and capture command repair](RELEASE-0.7.2.md).
 Previous candidate: [0.7.1 repair and daily reporting](RELEASE-0.7.1.md).
 Previous candidate: [0.7.0 visual workspace and appearance](RELEASE-0.7.0.md).
 

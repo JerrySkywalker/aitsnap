@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
+#define NOMINMAX
+#include <windows.h>
 #include "desktop/appearance.h"
 #include "desktop/workspace_views.h"
 #include "desktop/scene_layer_item.h"
@@ -25,6 +27,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QPlainTextEdit>
+#include <QFocusEvent>
 #include <QTableWidget>
 #include <QThread>
 #include <iostream>
@@ -169,6 +172,8 @@ int main(int argc, char** argv)
         }
         {
             MainWindow window(nullptr,emptyPath,"-");settle();auto* preset=window.findChild<QComboBox*>("reportTextPreset");check(preset,"Word text settings available");
+            auto* key=window.findChild<QLineEdit*>("saveHotkey");QFocusEvent focusIn(QEvent::FocusIn);QApplication::sendEvent(key,&focusIn);check(RegisterHotKey(nullptr,0x4700,MOD_CONTROL|MOD_ALT|MOD_SHIFT,VK_F20),"editing releases global binding");UnregisterHotKey(nullptr,0x4700);QFocusEvent focusOut(QEvent::FocusOut);QApplication::sendEvent(key,&focusOut);settle();check(!RegisterHotKey(nullptr,0x4700,MOD_CONTROL|MOD_ALT|MOD_SHIFT,VK_F20),"leaving hidden/inactive editor restores global binding");
+            QFile original(emptyPath);check(original.open(QIODevice::ReadOnly),"read pre-edit settings");const auto oldBytes=original.readAll();original.close();const auto oldKey=key->text();QApplication::sendEvent(key,&focusIn);check(RegisterHotKey(nullptr,0x4701,MOD_ALT|MOD_SHIFT,VK_F19),"external hotkey during editing");key->setText("Alt+Shift+F19");window.findChild<QPushButton*>("applySettings")->click();check(original.open(QIODevice::ReadOnly) && original.readAll()==oldBytes,"editing conflict rejected before settings commit");original.close();UnregisterHotKey(nullptr,0x4701);key->setText(oldKey);QApplication::sendEvent(key,&focusOut);settle();
             preset->setCurrentIndex(preset->findData("images"));check(window.findChild<QLabel*>("reportTextPreview")->text().contains("images",Qt::CaseInsensitive),"image-only preview localized");
             window.findChild<QPushButton*>("applySettings")->click();Settings saved;check(loadSettings(emptyPath,saved,error) && !saved.report.text.titleEnabled && !saved.report.text.captionEnabled && !saved.report.text.contextEnabled,"image-only toggles persist");
             window.findChild<QCheckBox*>("reportTextEnabled0")->setChecked(true);window.findChild<QPlainTextEdit*>("reportTextTemplate0")->setPlainText("Custom {profile}");check(preset->currentData()=="custom" && window.findChild<QLabel*>("reportTextPreview")->text().startsWith("Custom "),"editing switches to custom and previews resolved fields");

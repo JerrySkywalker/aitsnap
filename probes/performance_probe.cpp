@@ -6,6 +6,7 @@
 #include "adapters/win_capture.h"
 #include "adapters/capture_files.h"
 #include "adapters/report_queue.h"
+#include "adapters/live_preview.h"
 #include "core/scene_geometry.h"
 #include "compat/qt_widgets_compat.h"
 #include <QApplication>
@@ -15,11 +16,15 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QThread>
+#include <QElapsedTimer>
+#include <QEventLoop>
+#include <QTimer>
 #include <QUuid>
 #include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <stdexcept>
+#include <future>
 using namespace aitsnap;
 static void check(bool ok, const char* message) { if (!ok) throw std::runtime_error(message); }
 static QJsonObject summary(std::vector<double> values) { if (values.empty()) return {{"n", 0}, {"status", "NOT_MEASURED"}}; std::sort(values.begin(), values.end()); auto p = [&](double q) { return values[std::size_t(std::ceil(q * values.size())) - 1]; }; return {{"n", int(values.size())}, {"p50Ms", p(.50)}, {"p95Ms", p(.95)}, {"maxMs", values.back()}, {"clock", "monotonic"}}; }
@@ -34,7 +39,7 @@ int main(int argc, char** argv)
 {
     compat::configureHighDpi(); QApplication app(argc, argv); app.setApplicationName("AITSnapBenchmark"); std::vector<HWND> windows;
     try {
-        check(app.arguments().size() == 2, "new benchmark root required"); if (const auto status = interactiveDesktopStatus(); status) { std::cout << "NATIVE_HOLD " << status.code << '\n'; return 2; }
+        const bool liveOnly=app.arguments().contains("--live-only");check(app.arguments().size() == (liveOnly?3:2), "new benchmark root required"); if (const auto status = interactiveDesktopStatus(); status) { std::cout << "NATIVE_HOLD " << status.code << '\n'; return 2; }
         const auto root = QDir(app.arguments()[1]).absoluteFilePath(QUuid::createUuid().toString(QUuid::WithoutBraces)); check(QDir().mkpath(root), "benchmark output"); QString error;
         WinCaptureBackend backend; const auto displays = backend.displays(); check(!displays.empty(), "benchmark displays");
         WNDCLASSW wc{}; wc.lpfnWndProc = paint; wc.hInstance = GetModuleHandleW(nullptr); wc.lpszClassName = L"AITSnapPerformancePatterns"; check(RegisterClassW(&wc) != 0, "benchmark pattern class");
@@ -53,6 +58,25 @@ int main(int argc, char** argv)
             core::CaptureRequest request; request.requestId = std::string(scene ? "multi-" : "single-") + std::to_string(index) + "-" + QUuid::createUuid().toString(QUuid::WithoutBraces).toStdString(); request.issuedAtUtc = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs).toStdString(); request.profile = profile; request.context.testId = "PUBLIC-SYNTHETIC-PERF"; settings.sequence = index + 1;
             auto outcome = captureToFiles(backend, settings, request, true); for (const auto& c : outcome.batch.captures) check(!c.error && c.image.valid(), "benchmark source acquisition"); for (const auto& o : outcome.batch.outputs) { check(!o.error && o.status == "SAVED", "benchmark image output"); ++files; } check(writeBatchManifest(outcome, error), "benchmark manifest"); return outcome;
         };
+        if(liveOnly){
+            settings.profiles={multi};settings.outputMode="both";settings.scenes={core::presetScene(multi,"live-bench-scene","Synthetic 1920x1080",1920,1080,core::LayoutPreset::Grid)};settings.selectedSceneIds=QStringList{"live-bench-scene"};
+            auto cpu=[] {FILETIME created{},exited{},kernel{},user{};check(GetProcessTimes(GetCurrentProcess(),&created,&exited,&kernel,&user),"process CPU clock");ULARGE_INTEGER k{},u{};k.LowPart=kernel.dwLowDateTime;k.HighPart=kernel.dwHighDateTime;u.LowPart=user.dwLowDateTime;u.HighPart=user.dwHighDateTime;return k.QuadPart+u.QuadPart;};
+            const auto gdi=GetGuiResources(GetCurrentProcess(),GR_GDIOBJECTS);QJsonArray cases;
+            {
+                LivePreviewService preview;preview.configure(multi);preview.setFps(2);
+                for(int mode=0;mode<3;++mode){
+                    int frames=0;std::vector<double> frameTimes,compositionTimes,formalTimes;
+                    preview.changed=[&]{if(preview.snapshot().sources.empty())return;++frames;frameTimes.push_back(preview.snapshot().elapsedMs);if(mode==2){QElapsedTimer timer;timer.start();const auto rendered=renderScenePreview(settings.scenes.front(),preview.snapshot().sources);check(rendered.complete && !rendered.image.isNull(),"live composition");compositionTimes.push_back(double(timer.nsecsElapsed())/1000000.0);}};
+                    const auto cpuBefore=cpu();QElapsedTimer idleClock;idleClock.start();preview.setActive(mode!=0);QEventLoop idle;QTimer::singleShot(5000,&idle,&QEventLoop::quit);idle.exec();const auto idleMs=double(idleClock.nsecsElapsed())/1000000.0;const auto idleCpuMs=double(cpu()-cpuBefore)/10000.0;const auto idleFrames=frames;
+                    for(int sample=0;sample<10;++sample){auto future=std::async(std::launch::async,[&,sample]{return run(multi,mode*10+sample,true);});while(future.wait_for(std::chrono::milliseconds(0))!=std::future_status::ready){QCoreApplication::processEvents();QThread::msleep(5);}formalTimes.push_back(future.get().elapsedMs);QCoreApplication::processEvents();}
+                    PROCESS_MEMORY_COUNTERS memory{};memory.cb=sizeof(memory);check(GetProcessMemoryInfo(GetCurrentProcess(),&memory,sizeof(memory)),"live benchmark memory");
+                    cases.append(QJsonObject{{"mode",mode==0?"off":mode==1?"source-only":"source-and-scene"},{"targetFps",mode?2:0},{"idleElapsedMs",idleMs},{"idleCpuMs",idleCpuMs},{"idleOneCorePercent",idleCpuMs/idleMs*100.0},{"idleFramesDelivered",idleFrames},{"idleDeliveredFps",idleFrames*1000.0/idleMs},{"previewFrame",summary(frameTimes)},{"liveComposition",summary(compositionTimes)},{"formalCaptureAndSave",summary(formalTimes)},{"workingSetBytes",qint64(memory.WorkingSetSize)},{"processLifetimePeakWorkingSetBytes",qint64(memory.PeakWorkingSetSize)}});
+                    preview.setActive(false);preview.changed={};QEventLoop stopped;QTimer::singleShot(300,&stopped,&QEventLoop::quit);stopped.exec();
+                }
+            }
+            const QJsonObject receipt{{"status","LIVE_PERFORMANCE_PASS"},{"version",AITSNAP_VERSION},{"qt",qVersion()},{"nativeDisplays",int(displays.size())},{"sourceSizesPx",sizes},{"sceneSizePx",QJsonArray{1920,1080}},{"cases",cases},{"gdiBefore",int(gdi)},{"gdiAfterPreviewDestroyed",int(GetGuiResources(GetCurrentProcess(),GR_GDIOBJECTS))},{"imageFiles",files},{"wordPhase","NOT_RUN_NO_WORD_JOBS_CREATED"},{"scope","actual synthetic native adapters; asynchronous formal capture + live service, optional QImage scene composition; no physical input/UI latency/24h claim"}};
+            check(saveBytesNew(QJsonDocument(receipt).toJson(),root+"/live-performance.json",error),"live metrics");for(const auto window:windows)DestroyWindow(window);std::cout<<"LIVE_PERFORMANCE_PASS evidence="<<root.toStdString()<<std::endl;return 0;
+        }
         for (int i = 0; i < 20; ++i) singleTimes.push_back(run(single, i, false).elapsedMs);
         settings.profiles = {multi}; settings.outputMode = "both"; settings.scenes = {core::presetScene(multi, "bench-scene", "Synthetic 1920x1080", 1920, 1080, core::LayoutPreset::Grid)}; settings.selectedSceneIds = QStringList{"bench-scene"};
         const auto gdiBefore = GetGuiResources(GetCurrentProcess(), GR_GDIOBJECTS);
