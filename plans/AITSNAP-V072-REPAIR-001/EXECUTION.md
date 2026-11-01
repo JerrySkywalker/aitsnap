@@ -61,3 +61,13 @@ PR35 merge78ddc0bfeb49d506ff1235316193f9c1c9daa9ce，PR36 merge de710f66ac43da20
 从完整Setup实际打开0.7.2系统向导后，Computer Use读取msiexec窗口被产品策略拒绝，原文product policy blocks this app: msiexec.exe。已向Owner发出人工退出旧版/完成安装/保留Launch选项的异步问题，尚无回答；最后核对安装EXE仍0.7.1，不能填安装PASS。额外独立Word探针命令被自动审批blocked by policy在进程创建前拒绝，未执行，不写PASS，也未换入口。非UI只读检查和预算记录可继续。实际Win32插件包内smoke已通过，不受该额外探针影响。
 
 候选源ec82339c78304e67e5d8b3b5937134608ba39972，完整包和阶段/阻断/接续见DELIVERY-RECEIPT.md；安装后第一次窗口必须先观察，不能通过主动第二次运行掩盖。下一步唯一依赖是Owner手动安装后的实际证据；没有普通技术决策待问。
+
+## Owner手动安装完成后的原生闭环（2026-11-01）
+
+Owner回复“已安装，完成后窗口正常”。在任何二次启动前核对安装目录EXE版本0.7.2/SHA匹配包，逐项125文件全部匹配。旧PID54396退出，新PID56060 --show现有窗口实际显示完整0.7.2 UI，先保存现场，再做其他输入。
+
+随后Alt+F4主窗从可见窗口清单消失、PID56060仍在；正常打开已安装EXE后同PID/HWND24908086恢复，画面/控件正常、工作台实际点击通过。配置/规则哈希仍与preinstall一致，没有截图或重写Owner历史。安装后的新PID与Owner首次正常报告构成冷启动证据，不声明另做强制退出重启。UI点击向导由Owner执行，agent未控制被禁止的msiexec。
+
+机器回执和DELIVERY-RECEIPT已从pending改为当前Win11已安装闭环；其他系统/旧Word及全面人工资格保持独立HOLD。仅更新文档，候选源码ec82339和已安装包字节不变，不重跑无变化CI。
+
+最终只读登记检查：MsiQueryProductStateW新0.7.2为5、旧0.7.1为-1，MsiGetProductInfoW版本0.7.2；平铺HKCU键未找到仅为发现位置假设不成立，不当作安装失败。四个Qt/Windows平台模块实际均加载自安装目录。原始msi-registration.json及loaded-modules.json留存。
