@@ -32,8 +32,9 @@ def collage(d,x,y,w,h,style=0,labels=False):
         if labels:
             d.rect(xx+5,yy+5,160,34,'white',BORDER,r=5);d.badge(xx+8,yy+7,k+1);d.text(xx+46,yy+28,names[k],16)
 
-def sources_page():
-    d=Diagram();d.shell('源区域 · 看见每一个截图范围','当前配置：试验记录 · 3 个显示器 · 4 个区域全部启用',1)
+def source_outline(changed=False):
+    subtitle='当前 2 块显示器 · 配置记忆 3 块 · 布局需确认' if changed else '当前配置：试验记录 · 3 个显示器 · 4 个区域全部启用'
+    d=Diagram();d.shell('源区域 · 看见每一个截图范围',subtitle,1)
     d.rect(212,184,1362,66,'white',BORDER);d.button(230,196,186,'试验记录  ▾');d.button(434,196,160,'屏幕框选 / 拖动')
     d.button(610,196,148,'确认屏幕布局');d.text(1110,224,'最近图像 10:48:59 · 非实时',17,MUTED)
     d.rect(212,270,292,620,'white',BORDER);d.text(232,308,'来源卡片',22,INK,700)
@@ -41,9 +42,20 @@ def sources_page():
         y=327+i*133;d.rect(228,y,260,120,'#f8fbfd',BLUE if i==0 else BORDER)
         d.badge(240,y+12,i+1,BLUE if i==0 else MINT);d.text(281,y+34,n,20,INK,600)
         letterbox(d,240,y+48,92,56,i,*[(1200,200),(600,480),(1280,720),(600,400)][i])
-        d.text(344,y+69,['显示器 A','显示器 A','显示器 B','显示器 C'][i],16,MUTED);d.text(344,y+96,'✓ 启用',16,MINT)
+        d.text(344,y+69,['显示器 A','显示器 A','显示器 B','显示器 C'][i],16,MUTED)
+        d.text(344,y+96,'待核对' if changed and i==3 else '✓ 启用',16,AMBER if changed and i==3 else MINT)
+    d.rect(212,910,1362,66,'white',BORDER);d.button(230,922,140,'+ 添加区域');d.button(388,922,140,'删除所选')
+    d.text(550,950,'布局变化 · 核对区域后确认' if changed else '变更保存后生效；已有批次保留原图',17,AMBER if changed else MUTED)
+    if changed:
+        d.rect(1114,922,166,42,'#f0f3f7',BORDER,r=8);d.text(1130,950,'截图暂停',18,MUTED,600)
+    else:d.button(1114,922,166,'截图并保存')
+    d.button(1296,922,254,'应用区域设置',True)
+    return d
+
+def sources_page():
+    d=source_outline()
     d.rect(524,270,698,620,'white',BORDER);d.text(546,308,'#1 电压曲线',23,INK,700)
-    tabs(d,546,326,[('区域预览',116),('显示器布局',136)])
+    tabs(d,546,326,[('显示器布局',136),('区域浏览',116)],selected=1)
     letterbox(d,546,385,654,238,0,1200,200)
     d.text(560,410,'源图等比显示 · 四周空白属于预览空间',16,MUTED)
     d.text(546,657,'位置与屏幕对应',19,INK,600)
@@ -60,9 +72,49 @@ def sources_page():
     d.text(1264,638,'☑ 启用此区域',19,MINT,600);d.text(1264,678,'复制目标：电压曲线  ▾',18)
     d.line(1264,708,1552,708);d.button(1264,730,288,'在屏幕上调整此区域')
     d.text(1264,804,'区域名称用于预览和未来文件名',16,MUTED)
-    d.rect(212,910,1362,66,'white',BORDER);d.button(230,922,140,'+ 添加区域');d.button(388,922,140,'删除所选')
-    d.text(550,950,'变更保存后生效；已有批次保留原图',17,MUTED);d.button(1114,922,166,'截图并保存');d.button(1296,922,254,'应用区域设置',True)
     d.save('04-sources-tab')
+
+def display_layout_page(changed=False):
+    d=source_outline(changed)
+    d.rect(524,270,698,620,'white',BORDER);d.text(546,308,'显示器布局 · 默认视图',23,INK,700)
+    tabs(d,546,326,[('显示器布局',136),('区域浏览',116)],selected=0)
+    d.rect(546,382,654,42,'#fff3d8' if changed else '#e8f5f2',r=7)
+    d.text(560,410,'布局已变更 · 当前配置截图暂停，请先核对' if changed else '当前桌面与此配置保存的布局一致',17,AMBER if changed else MINT,600)
+    # Synthetic virtual layout: A(0,0), B(1920,-360), C(4480,-840), with a common bottom edge.
+    scale=.112;ox=558;oy=450
+    displays=[('A',0,0,1920,1080),('B',1920,-360,2560,1440),('C',4480,-840,1080,1920)]
+    for name,x,y,w,h in displays:
+        px=ox+x*scale;py=oy+(y+840)*scale;ww=w*scale;hh=h*scale
+        missing=changed and name=='C'
+        d.rect(px,py,ww,hh,'#f3f4f6' if missing else '#eef3f8','#aebbc9' if missing else '#8096ac',r=5)
+        if missing:d.parts.append(f'<rect x="{px}" y="{py}" width="{ww}" height="{hh}" rx="5" fill="none" stroke="#a1834e" stroke-dasharray="6 4"/>')
+        d.text(px+6,py-8,name+(' · 已断开' if missing else ' · 竖屏' if name=='C' else ''),14,AMBER if missing else MUTED,600)
+        regions=[(1,60,80,1200,200),(2,80,400,600,480)] if name=='A' else [(3,120,100,1280,720)] if name=='B' else [(4,60,300,600,400)]
+        for n,rx,ry,rw,rh in regions:
+            xx=px+rx*scale;yy=py+ry*scale
+            d.rect(xx,yy,rw*scale,rh*scale,'#f3e8d1' if missing else '#d8e8ff' if n==1 else '#d9f1ed',AMBER if missing else BLUE if n==1 else MINT,r=2)
+            if n==1:d.text(xx+4,yy+16,'1 电压曲线',13,BLUE,600)
+            elif n==3:d.text(xx+5,yy+24,'3 相机画面',15,MINT,600)
+            else:
+                d.text(xx+4,yy+15,str(n)+(' 待核对' if missing else ''),12,AMBER if missing else MINT,600)
+                if not missing:d.text(xx+4,yy+35,names[n-1],12,MINT)
+    d.text(546,685,'按物理桌面比例示意 · 编号与左侧来源卡片一致',16,MUTED)
+    d.rect(546,707,654,153,'#f7fafc',BORDER,r=7);d.text(562,737,'此配置记忆的位置、分辨率与方向',18,INK,600)
+    for i,(a,b) in enumerate([('A · 1920×1080','位置 (0, 0) · 横屏'),('B · 2560×1440','位置 (1920, -360)'),('C · 1080×1920','位置 (4480, -840)')]):
+        x=562+i*211;d.text(x,775,a,15);d.text(x,808,b,14,MUTED)
+    d.rect(1242,270,332,620,'white',BORDER);d.text(1264,308,'布局记忆与配置',22,INK,700)
+    d.rect(1264,330,288,99,'#fff3d8' if changed else '#e8f5f2',r=8)
+    d.text(1280,362,'当前配置：试验记录',18,INK,600)
+    d.text(1280,398,'当前 2 块 / 已记忆 3 块' if changed else '已匹配 3 块显示器',17,AMBER if changed else MINT,600)
+    d.text(1264,468,'已记忆：位置 / 分辨率 / 方向',17)
+    d.text(1264,505,'布局改变后，不自动移动旧区域',16,MUTED)
+    d.text(1264,539,'先对照屏幕，再确认或切换配置',16,MUTED)
+    d.button(1264,565,288,'确认当前显示器布局')
+    d.text(1264,644,'常用配置（手动切换）',18,INK,600)
+    for i,(name,sub) in enumerate([('试验记录 · 三屏','当前配置'),('笔记本单屏','切换后先核对区域')]):
+        y=666+i*90;d.rect(1264,y,288,76,'#edf4ff' if i==0 else '#f8fafc',BLUE if i==0 else BORDER,r=7)
+        d.text(1280,y+29,name,18,BLUE if i==0 else INK,600);d.text(1280,y+56,sub,15,MUTED)
+    d.save('09-display-layout-change' if changed else '08-display-layout-default')
 
 def scenes_page():
     d=Diagram();d.shell('拼图场景 · 选一份布局，直接看到输出','复用现有画布、图层属性与预设 · 试验总览 / 修订 3',2)
@@ -155,24 +207,26 @@ def settings_page():
     d.button(1154,922,164,'放弃修改');d.button(1336,922,216,'保存并应用',True)
     d.save('07-settings-tab')
 
-PAGES=[('01-workbench','工作台'),('04-sources-tab','源区域'),('05-scenes-tab','拼图场景'),('06-batches-reports-tab','批次与报告'),('07-settings-tab','设置')]
+PAGES=[('01-workbench','工作台'),('08-display-layout-default','源区域'),('05-scenes-tab','拼图场景'),('06-batches-reports-tab','批次与报告'),('07-settings-tab','设置')]
 
 def board():
     html='''<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AITSnap 五个导航页概念审计</title><style>
     body{margin:0;background:#edf2f7;color:#17283d;font:16px "Microsoft YaHei UI",sans-serif}header{padding:20px 28px;background:white;border-bottom:1px solid #d9e2eb}h1{margin:0;font-size:25px}p{color:#52677e;margin:10px 0}nav{display:flex;gap:10px;flex-wrap:wrap}button{font:inherit;padding:10px 20px;border:1px solid #b8c8da;border-radius:7px;background:white;color:#17345a;cursor:pointer}button[aria-selected=true]{color:white;background:#2364d2;border-color:#2364d2}main{padding:16px}img{display:block;width:100%;height:auto;border-radius:10px}section[hidden]{display:none}footer{padding:0 28px 24px;color:#52677e}</style>
-    <header><h1>AITSnap · 五个导航页概念审计</h1><p>沿用已获方向性肯定的工作台风格。以下为合成示例与待审布局，未改动软件。点击上方页签或图内左侧导航切换；其他按钮仅为绘制示意。</p><nav role="tablist">'''
+    <header><h1>AITSnap · 五个导航页概念审计</h1><p>沿用已获方向性肯定的工作台风格。以下为合成示例与待审布局，未改动软件。顶部页签、图内左侧导航及源区域的两个子页签可以切换；其他按钮仅为绘制示意。</p><nav role="tablist">'''
     for i,(_,label) in enumerate(PAGES):html+=f'<button type="button" role="tab" id="tab{i}" aria-controls="panel{i}" aria-selected="{str(i==0).lower()}" onclick="show({i})">{label}</button>'
-    html+='</nav></header><main>'
+    html+='</nav><div id="source-subnav" role="tablist" aria-label="源区域视图" hidden style="margin-top:12px"><button type="button" role="tab" id="source-layout" aria-selected="true" aria-controls="panel1" onclick="setSource(\'layout\')">显示器布局（默认）</button> <button type="button" role="tab" id="source-regions" aria-selected="false" aria-controls="panel1" onclick="setSource(\'regions\')">区域浏览</button> <button type="button" onclick="setSource(\'changed\')">布局变化示例</button></div></header><main>'
     # Image navigation hit regions are based on the common, explicit 1600x1000 shell geometry.
     for i,(name,label) in enumerate(PAGES):
         html+=f'<section role="tabpanel" id="panel{i}" aria-labelledby="tab{i}"'+(' hidden' if i else '')+f'><img id="image{i}" src="{name}.svg" alt="AITSnap {label}概念图" onclick="imageNav(event,this)"></section>'
     html+='''</main><footer>源区域、场景编辑和 Word 队列沿用现有能力；缩略图列表、浏览联动及效果预览为新增展示。真实 Word 页排版不在此处伪造。</footer><script>
-    const total=5;function show(n){for(let i=0;i<total;i++){document.getElementById('panel'+i).hidden=i!==n;document.getElementById('tab'+i).setAttribute('aria-selected',String(i===n));}}
-    function imageNav(e,img){const r=img.getBoundingClientRect(),x=(e.clientX-r.left)*1600/r.width,y=(e.clientY-r.top)*1000/r.height;if(x>=12&&x<=172){for(let i=0;i<5;i++)if(y>=100+i*60&&y<=146+i*60){show(i);document.getElementById('tab'+i).focus();return;}}}
+    const total=5;let sourceView='layout';function setSource(view){sourceView=view;document.getElementById('image1').src=({layout:'08-display-layout-default.svg',regions:'04-sources-tab.svg',changed:'09-display-layout-change.svg'})[view];document.getElementById('source-layout').setAttribute('aria-selected',String(view!=='regions'));document.getElementById('source-regions').setAttribute('aria-selected',String(view==='regions'));}
+    function show(n){for(let i=0;i<total;i++){document.getElementById('panel'+i).hidden=i!==n;document.getElementById('tab'+i).setAttribute('aria-selected',String(i===n));}document.getElementById('source-subnav').hidden=n!==1;if(n===1)setSource('layout');}
+    function imageNav(e,img){const r=img.getBoundingClientRect(),x=(e.clientX-r.left)*1600/r.width,y=(e.clientY-r.top)*1000/r.height;if(x>=12&&x<=172){for(let i=0;i<5;i++)if(y>=100+i*60&&y<=146+i*60){show(i);document.getElementById('tab'+i).focus();return;}}if(img.id==='image1'&&y>=326&&y<=364){if(x>=546&&x<=682)setSource('layout');else if(x>=690&&x<=806)setSource('regions');}}
     document.querySelector('nav').addEventListener('keydown',e=>{if(e.key!=='ArrowRight'&&e.key!=='ArrowLeft')return;e.preventDefault();const current=Array.from(document.querySelectorAll('nav button')).findIndex(b=>b.getAttribute('aria-selected')==='true');const n=(current+(e.key==='ArrowRight'?1:total-1))%total;show(n);document.getElementById('tab'+n).focus();});
+    document.getElementById('source-subnav').addEventListener('keydown',e=>{if(e.key!=='ArrowRight'&&e.key!=='ArrowLeft')return;e.preventDefault();setSource(sourceView==='regions'?'layout':'regions');document.getElementById(sourceView==='regions'?'source-regions':'source-layout').focus();});
     </script></html>'''
     (OUT/'tab-review-board.html').write_text(html,encoding='utf-8',newline='\n')
 
 if __name__=='__main__':
-    sources_page();scenes_page();batches_page();settings_page();board()
-    print('Generated four tab SVG concepts and five-tab offline review board')
+    sources_page();display_layout_page();display_layout_page(True);scenes_page();batches_page();settings_page();board()
+    print('Generated tab concepts, default display layout and change state with offline review board')

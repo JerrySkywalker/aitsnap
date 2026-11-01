@@ -9,9 +9,14 @@
       "bytes": 3976
     },
     {
+      "path": "AI-IMPLEMENTATION-ENTRY.md",
+      "sha256": "37adfc94b8f3608467eec895a9885401c01897daaca739637b9510f9439a3eb2",
+      "bytes": 3862
+    },
+    {
       "path": "BUDGET-SNAPSHOT.md",
-      "sha256": "a1afc8f2033f4f91f7046b6490ecde193399a9a10dfa6d216988777afe868708",
-      "bytes": 1831
+      "sha256": "2d3188db43dcd5780d79da2adf605e837f4aadaaf1e64a03a7744c676724342e",
+      "bytes": 1842
     },
     {
       "path": "concepts/01-workbench.png",
@@ -45,12 +50,12 @@
     },
     {
       "path": "concepts/04-sources-tab.png",
-      "sha256": "f007c3218184231a99afb56640be3de6c182ed94b7abb4d21da280cd6000bf49",
-      "bytes": 146478
+      "sha256": "88a791572ab20a7320954a9917fd315791335df61c081b5f1955de1e0b1d54d7",
+      "bytes": 146544
     },
     {
       "path": "concepts/04-sources-tab.svg",
-      "sha256": "02153e3eb82e308075f76c76a86b0098dc9dde8359ea049042bd16e8a97320b9",
+      "sha256": "2d8902dc74ed17218118fb1a009ef4336f8974a3aa728e74ba33ed7eabbc3e7b",
       "bytes": 12050
     },
     {
@@ -84,6 +89,26 @@
       "bytes": 8654
     },
     {
+      "path": "concepts/08-display-layout-default.png",
+      "sha256": "28623ca2ca69390e2fd5cffa3dfd34b556665aa5a6a72065f741e1ce5af2affe",
+      "bytes": 158071
+    },
+    {
+      "path": "concepts/08-display-layout-default.svg",
+      "sha256": "69ea3cf8e0a9c74ade9c60e82e6b0a595becb1fd630838cd614d462a907da4ad",
+      "bytes": 12481
+    },
+    {
+      "path": "concepts/09-display-layout-change.png",
+      "sha256": "c48bc758032e6b57651fcd56db32ebe3e3e4f8e8bfba956e5397bc907289470e",
+      "bytes": 161338
+    },
+    {
+      "path": "concepts/09-display-layout-change.svg",
+      "sha256": "ef0bca3e4c92aef07b12fdedf3c17ed9cc5745ae5466bdab5bb085b1ddce078d",
+      "bytes": 12526
+    },
+    {
       "path": "concepts/brandmark-proposal.svg",
       "sha256": "c822bfabc9abc1e2139758bd306e3264d2f4feda48ff6303085815e24d8fdb2c",
       "bytes": 328
@@ -95,8 +120,8 @@
     },
     {
       "path": "concepts/generate_tab_concepts.py",
-      "sha256": "696d75596cbd3622adda2e7bf8d40a39a9090b9800906a2a04b581850a980ac1",
-      "bytes": 15014
+      "sha256": "eca515d2e1763142b364bd6c962e6de7c65759d134b6a8ab0893f03a0c46d778",
+      "bytes": 20498
     },
     {
       "path": "concepts/review-board.html",
@@ -105,8 +130,13 @@
     },
     {
       "path": "concepts/tab-review-board.html",
-      "sha256": "46215ee57fe60e0c4103db83db5aa6cf8454ecc8a9fa8a92312024081ddd9578",
-      "bytes": 3680
+      "sha256": "1ef47427e4f832581f4f681753100832e41d64e9ec5e041528a1bda4452b85e4",
+      "bytes": 5136
+    },
+    {
+      "path": "DISPLAY-LAYOUT.md",
+      "sha256": "0b59a7f102669c30fff4278f26c13e16fae1f786bd5c7d8dd8cacc64716faad8",
+      "bytes": 6231
     },
     {
       "path": "ISSUES-AND-EVIDENCE.md",
@@ -115,24 +145,24 @@
     },
     {
       "path": "OWNER-HANDOFF.md",
-      "sha256": "6ba1f815aadcffa78ee7db7c512a7a0ac74d6659ca2dadc2371eb5e052a35249",
-      "bytes": 5721
+      "sha256": "423199f991e5ab509340b73b36ab85c75c2747b4fd9110d4de838741cbba4cfa",
+      "bytes": 6117
     },
     {
       "path": "ROADMAP-AND-CHECKLIST.md",
-      "sha256": "feff084b2448ca622fdcebf57afae4927edc304e4a8712598329eaa592f7b29b",
-      "bytes": 13432
+      "sha256": "9e88abe09fa9cf802e6c10445e213a53bec4efb43fd34f0bc8b5da87def6e6ba",
+      "bytes": 13709
     },
     {
       "path": "TABS-CONCEPT.md",
-      "sha256": "0e58749994ae92e354144acee720f85d7d42cbc03cfd189b346f406317cd5c70",
-      "bytes": 8016
+      "sha256": "4b7cfc8d4d0df0476f14783d24980ceebe26d83565b45c0c4696ad5c87877e31",
+      "bytes": 8509
     },
     {
       "path": "UI-CONCEPT.md",
-      "sha256": "5f08d4d9cd457861b9fc9e1aa2bf3e972451dd9a69a2619d1e713a11b05e70a2",
-      "bytes": 5068
+      "sha256": "84c431d1427ad9f98a73886e42ce5e52baf40e54f809ad16af6c258a743f9c3b",
+      "bytes": 5304
     }
   ],
-  "designScope": "Original3concepts plus4navigationtabs; Owner endorsedworkbenchdirection; newtabs awaitreview"
+  "designScope": "Original concepts plus four tabs, default display-layout subtab and change state; product unchanged; source-backed capability and AI image handoff notes"
 }
