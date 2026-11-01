@@ -41,6 +41,7 @@ void MainWindow::buildUi()
     auto* titleRow = new QHBoxLayout;
     auto* title = new QLabel(QString("AITSnap %1").arg(AITSNAP_VERSION)); title->setStyleSheet("font-size:25px;font-weight:600;"); titleRow->addWidget(title);
     titleRow->addWidget(new QLabel(uiText("多屏证据工作台"))); titleRow->addStretch();
+    auto* mini=new QPushButton(uiText("迷你窗"));mini->setObjectName("openMiniWindow");titleRow->addWidget(mini);connect(mini,&QPushButton::clicked,this,[this]{showMiniWindow();});
     profiles_ = new QComboBox; profiles_->setObjectName("profiles"); for (const auto& p : settings_.profiles) profiles_->addItem(qs(p.name)); profiles_->setCurrentIndex(settings_.activeProfile);
     titleRow->addWidget(new QLabel(uiText("截图配置"))); titleRow->addWidget(profiles_);
     auto* addProfile = new QPushButton(uiText("新建配置")); addProfile->setObjectName("newProfile"); titleRow->addWidget(addProfile); auto* manage = new QPushButton(uiText("管理配置")); manage->setObjectName("manageProfiles"); titleRow->addWidget(manage); connect(manage, &QPushButton::clicked, this, [this] { showProfileManager(); });

@@ -20,6 +20,7 @@ class ReportQueue;
 class ContextStore;
 class LocalPipeServer;
 class DisplayCanvas; class ImagePreview;
+class MiniCaptureWindow;
 
 class MainWindow final : public QMainWindow
 {
@@ -78,6 +79,10 @@ private:
     void refreshWorkspace(); void refreshBatches(); void selectBatch(); void selectBatchImage();
     QAction* captureActions_[3]{};
     QAction* regionEditAction_{};
+    QAction* pauseCaptureAction_{};
+    MiniCaptureWindow* mini_{};
+    bool restoreMiniAfterCapture_{};
+    void showMiniWindow();
     void updateCaptureActions(bool canCapture);
     bool busy_{}, paused_{}, configurationBlocked_{}, editingRegions_{}, editingScene_{}, refreshingWorkspace_{};
     void buildUi(); void setupTray(); void loadProfile();
