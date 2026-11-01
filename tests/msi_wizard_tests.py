@@ -66,7 +66,7 @@ try:
             assert not (tx<x+w and tx+tw>x and ty<y+h and ty+th>y), 'Overlapping text/input: '+text[0]+'/'+text[1]+' and '+target[1]
     progress = {r[1]:r for r in controls if r[0]=='ProgressDlg'}
     assert int(progress['Body'][6])+int(progress['Body'][8]) <= int(progress['Action'][6]), 'Progress body obscures action text'
-    assert properties['ProductVersion'] in ['0.6.1','0.6.2','0.7.0','0.7.1']
+    assert properties['ProductVersion'] in ['0.6.1','0.6.2','0.7.0','0.7.1','0.7.2']
     assert any(r[0]=='WelcomeDlg' and '[ProductVersion]' in r[3] and '多屏截图' in r[3] for r in controls)
     assert any(r[0]=='ExitDlg' and '立即启动 AITSnap' in r[3] for r in controls)
     sequence = {r[0]:r[1] for r in rows('InstallUISequence',['Action','Sequence'])}
@@ -75,7 +75,7 @@ try:
     assert any(r[:3]==['FolderDlg','Next','SetTargetPath'] for r in events)
     assert any(r[:3]==['ExitDlg','Finish','MsiLaunchApp'] and 'LAUNCH_AITSNAP' in r[4] and 'REMOVE' in r[4] for r in events)
     assert not any(r[0] in ['MsiLaunchApp','LaunchAITSnap'] for r in rows('InstallExecuteSequence',['Action']))
-    if properties['ProductVersion'] in ['0.7.0','0.7.1']:
+    if properties['ProductVersion'] in ['0.7.0','0.7.1','0.7.2']:
         main_key = next(r[0] for r in rows('File',['File','FileName']) if r[1].split('|')[-1] == 'aitsnap.exe')
         assert any(r[:4] == ['ExitDlg','Finish','MsiLaunchApp',f'[#{main_key}] --show'] for r in events), 'Documented file token and explicit foreground intent'
         for dialog,button in [('FolderDlg','Next'),('MaintenanceDlg','Repair'),('MaintenanceDlg','Remove')]:

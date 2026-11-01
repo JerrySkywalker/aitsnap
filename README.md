@@ -7,18 +7,17 @@ and associating them with test execution records.
 
 ## Status
 
-The 0.7.1 repair candidate adds scoped bulk object management, shared context actions,
-aligned workbench panels and optional daily Word reports, and fixes the reproduced
-scene-save lifetime crash. Installer-Finish white-screen root cause remains
-UNPROVEN/HOLD; startup phase diagnostics are included. It retains the 0.7.0
-visual workspace, source/display and scene browsers,
-batch/report browsing, readable region identities and filenames, a shared multi-size
-icon, and Settings → Appearance with Chinese/English and system/light/dark modes.
-It retains capture, tray/hotkeys, scene editing, durable Word jobs and read-only
-execution-context integration. See the
+The 0.7.2 candidate fixes the reproduced white-window path when opening an
+instance hidden to the tray: activation now restores Qt widget state in its own
+UI thread. It also unifies fresh capture/save/copy commands and their global
+shortcut labels across main buttons and the tray, and separates cached preview
+copying from fresh capture. Existing custom shortcut settings remain supported.
+It retains the visual workspace, bulk object management, appearance settings,
+daily Word reports and the 0.7.1 scene-lifecycle repair. See the
 [operator manual](docs/preview/OPERATOR-MANUAL.zh-CN.md) and
-[release notes](docs/preview/RELEASE-NOTES.md). Local Win11 automated evidence
-does not qualify native Win10, native Win7, Word2010 or human acceptance.
+[release notes](docs/preview/RELEASE-NOTES.md). Real installer acceptance is
+recorded separately; Win11/Qt5 host evidence does not qualify native Win10,
+Win7, Word2010 or human acceptance.
 
 ## Product direction
 

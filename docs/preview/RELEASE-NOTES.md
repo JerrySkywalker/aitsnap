@@ -1,6 +1,7 @@
 # Preview release notes
 
-Current candidate: [0.7.1 repair and daily reporting](RELEASE-0.7.1.md).
+Current candidate: [0.7.2 startup and capture command repair](RELEASE-0.7.2.md).
+Previous candidate: [0.7.1 repair and daily reporting](RELEASE-0.7.1.md).
 Previous candidate: [0.7.0 visual workspace and appearance](RELEASE-0.7.0.md).
 
 Earlier installer candidates: [0.6.2](RELEASE-0.6.2.md), [0.6.1](RELEASE-0.6.1.md), [0.6.0 M3](RELEASE-0.6.0.md).
