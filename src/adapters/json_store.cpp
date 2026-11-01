@@ -78,9 +78,9 @@ bool loadSettings(const QString& path, Settings& s, QString& error)
     if (parse.error || !doc.isObject()) { error = "Invalid settings JSON; original file preserved"; return false; }
     const auto o = doc.object();
     const int settingsVersion = o["schemaVersion"].toInt();
-    if (settingsVersion < 1 || settingsVersion > 4) { error = "Unsupported settings version; file preserved"; return false; }
+    if (settingsVersion < 1 || settingsVersion > 5) { error = "Unsupported settings version; file preserved"; return false; }
     const QStringList known{"schemaVersion", "profiles", "activeProfile", "outputDirectory", "format", "filenameTemplate", "saveHotkey", "copyHotkey", "bothHotkey", "clipboardRegion", "testId", "device", "station", "operator", "sequence", "startInTray", "scenes", "selectedSceneIds", "outputMode", "wordReport", "appearance"};
-    for (auto it = o.begin(); it != o.end(); ++it) if (!known.contains(it.key())) { error = "Unknown settings field; file preserved: " + it.key(); return false; }
+    for (auto it = o.begin(); it != o.end(); ++it) if (!known.contains(it.key()) && it.key()!="alternateHotkeys" && it.key()!="hotkeysEnabled") { error = "Unknown settings field; file preserved: " + it.key(); return false; }
     Settings candidate = defaultSettings();
     const auto appearance = o["appearance"].toObject();
     candidate.language = appearance["language"].toString("system");
@@ -103,6 +103,13 @@ bool loadSettings(const QString& path, Settings& s, QString& error)
     candidate.saveHotkey = o["saveHotkey"].toString(candidate.saveHotkey);
     candidate.copyHotkey = o["copyHotkey"].toString(candidate.copyHotkey);
     candidate.bothHotkey = o["bothHotkey"].toString(candidate.bothHotkey);
+    const auto alternate=o["alternateHotkeys"].toObject();
+    candidate.saveHotkeyAlternate=alternate["save"].toString();candidate.copyHotkeyAlternate=alternate["copy"].toString();candidate.bothHotkeyAlternate=alternate["both"].toString();
+    if(o.contains("hotkeysEnabled")){
+        const auto enabled=o["hotkeysEnabled"].toArray();
+        if(enabled.size()!=3 || !enabled[0].isBool() || !enabled[1].isBool() || !enabled[2].isBool()){error="Invalid hotkey enable flags";return false;}
+        for(int i=0;i<3;++i)candidate.hotkeysEnabled[std::size_t(i)]=enabled[i].toBool();
+    }
     candidate.clipboardRegion = o["clipboardRegion"].toString();
     candidate.testId = o["testId"].toString(); candidate.device = o["device"].toString();
     candidate.station = o["station"].toString(); candidate.operatorName = o["operator"].toString();
@@ -142,9 +149,11 @@ bool saveSettings(const QString& path, const Settings& s, QString& error)
     QJsonArray scenes, selected;
     for (const auto& scene : s.scenes) scenes.append(sceneJson(scene));
     for (const auto& scene : s.selectedSceneIds) selected.append(scene);
-    QJsonObject o{{"schemaVersion", 4}, {"profiles", profiles}, {"activeProfile", s.activeProfile},
+    QJsonObject o{{"schemaVersion", 5}, {"profiles", profiles}, {"activeProfile", s.activeProfile},
         {"outputDirectory", s.outputDirectory}, {"format", s.format}, {"filenameTemplate", s.filenameTemplate},
         {"saveHotkey", s.saveHotkey}, {"copyHotkey", s.copyHotkey}, {"bothHotkey", s.bothHotkey},
+        {"alternateHotkeys",QJsonObject{{"save",s.saveHotkeyAlternate},{"copy",s.copyHotkeyAlternate},{"both",s.bothHotkeyAlternate}}},
+        {"hotkeysEnabled",QJsonArray{s.hotkeysEnabled[0],s.hotkeysEnabled[1],s.hotkeysEnabled[2]}},
         {"clipboardRegion", s.clipboardRegion}, {"testId", s.testId}, {"device", s.device},
         {"station", s.station}, {"operator", s.operatorName}, {"sequence", double(s.sequence)}, {"startInTray", s.startInTray},
         {"appearance", QJsonObject{{"language", s.language}, {"colorMode", s.colorMode}}},
@@ -153,7 +162,7 @@ bool saveSettings(const QString& path, const Settings& s, QString& error)
     if (!QDir().mkpath(QFileInfo(path).absolutePath())) { error = "Cannot create settings directory"; return false; }
     QFile previous(path); int previousVersion = 0;
     if (previous.open(QIODevice::ReadOnly)) { previousVersion = QJsonDocument::fromJson(previous.readAll()).object()["schemaVersion"].toInt(); previous.close(); }
-    if (previousVersion > 0 && previousVersion < 4) {
+    if (previousVersion > 0 && previousVersion < 5) {
         if (!QFile::copy(path, path + QString(".v%1-preserved-").arg(previousVersion) + QUuid::createUuid().toString(QUuid::WithoutBraces))) { error = "Cannot preserve old settings before migration"; return false; }
     }
     QSaveFile file(path);
