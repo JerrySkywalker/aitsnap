@@ -3,11 +3,13 @@ import ctypes as C
 from ctypes import wintypes as W
 from pathlib import Path
 import sys
+import hashlib
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
 from build_msi import function, ok, open_db, open_view, execute, close
 fetch = function('MsiViewFetch', [W.UINT, C.POINTER(W.UINT)])
 get_string = function('MsiRecordGetStringW', [W.UINT, W.UINT, W.LPWSTR, C.POINTER(W.DWORD)])
+read_stream = function('MsiRecordReadStream', [W.UINT, W.UINT, C.c_void_p, C.POINTER(W.DWORD)])
 db = W.UINT()
 ok(open_db(str(Path(sys.argv[1]).resolve()), None, C.byref(db)), 'open read-only MSI')
 def rows(table, columns):
@@ -28,6 +30,20 @@ def rows(table, columns):
             finally: close(record)
     finally: close(view)
     return result
+def icon_hash(table):
+    view = W.UINT(); record = W.UINT()
+    ok(open_view(db, f"SELECT `Data` FROM `{table}` WHERE `Name` = 'AITSnapIcon'", C.byref(view)), 'query icon')
+    try:
+        ok(execute(view, 0), 'execute icon'); ok(fetch(view, C.byref(record)), 'fetch icon')
+        digest = hashlib.sha256()
+        while True:
+            buffer = C.create_string_buffer(32768); size = W.DWORD(len(buffer))
+            ok(read_stream(record, 1, buffer, C.byref(size)), 'read icon stream')
+            if not size.value: return digest.hexdigest()
+            digest.update(buffer.raw[:size.value])
+    finally:
+        if record.value: close(record)
+        close(view)
 try:
     controls = rows('Control', ['Dialog_','Control','Type','Text','Control_Next','X','Y','Width','Height'])
     dialogs = rows('Dialog', ['Dialog','Control_First','Control_Default','Control_Cancel'])
@@ -59,5 +75,21 @@ try:
     assert any(r[:3]==['FolderDlg','Next','SetTargetPath'] for r in events)
     assert any(r[:3]==['ExitDlg','Finish','MsiLaunchApp'] and 'LAUNCH_AITSNAP' in r[4] and 'REMOVE' in r[4] for r in events)
     assert not any(r[0] in ['MsiLaunchApp','LaunchAITSnap'] for r in rows('InstallExecuteSequence',['Action']))
+    if properties['ProductVersion'] == '0.7.0':
+        main_key = next(r[0] for r in rows('File',['File','FileName']) if r[1].split('|')[-1] == 'aitsnap.exe')
+        assert any(r[:4] == ['ExitDlg','Finish','MsiLaunchApp',f'[#{main_key}] --show'] for r in events), 'Documented file token and explicit foreground intent'
+        for dialog,button in [('FolderDlg','Next'),('MaintenanceDlg','Repair'),('MaintenanceDlg','Remove')]:
+            assert any(r[:4] == [dialog,button,'NewDialog','ProgressDlg'] for r in events), 'Preparation must be visible before UI sequence resumes'
+        assert properties['ARPPRODUCTICON'] == 'AITSnapIcon'
+        assert any(r[0] == 'AITSnapIcon' for r in rows('Icon',['Name']))
+        assert any(r[0] == 'AITSnapIcon' for r in rows('Binary',['Name']))
+        assert all(r[1] == 'AITSnapIcon' for r in rows('Shortcut',['Shortcut','Icon_']))
+        expected = hashlib.sha256((Path(__file__).resolve().parents[1] / 'assets/brand/aitsnap.ico').read_bytes()).hexdigest()
+        assert icon_hash('Icon') == icon_hash('Binary') == expected, 'MSI ARP/shortcut/wizard use identical production ICO bytes'
+        conditions = [r[0] for r in rows('LaunchCondition',['Condition'])]
+        if 'table fixture' in properties['ProductName'].lower():
+            assert '0' in conditions and properties['UpgradeCode'] != '{476109B6-03EF-4F9D-A55D-E796AE147379}', 'Fixture cannot install or share release upgrade identity'
+        else:
+            assert '0' not in conditions, 'Release package must not contain the fixture-only launch block'
     print('MSI_WIZARD_TABLES_PASS dialogs='+str(len(dialogs))+' controls='+str(len(controls))+' tabcycles/localization/path/finish/launch/quiet-boundary')
 finally: close(db)

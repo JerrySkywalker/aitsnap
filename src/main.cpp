@@ -18,6 +18,7 @@
 #include <QGuiApplication>
 #include <QFile>
 #include <QFont>
+#include <QIcon>
 #include <QElapsedTimer>
 #include <windows.h>
 #include <psapi.h>
@@ -36,6 +37,26 @@ static QString modulePath(const QString& name)
     if (!module) return {}; wchar_t path[32768]{}; const auto size = GetModuleFileNameW(module, path, 32768);
     return size ? QFileInfo(QString::fromWCharArray(path, int(size))).canonicalFilePath() : QString{};
 }
+struct ExistingWindow { DWORD pid{}; HWND handle{}; };
+static BOOL CALLBACK findExistingWindow(HWND window, LPARAM parameter)
+{
+    auto& found = *reinterpret_cast<ExistingWindow*>(parameter); DWORD pid{};
+    GetWindowThreadProcessId(window, &pid);
+    if (pid != found.pid || GetWindow(window, GW_OWNER) || (GetWindowLongPtrW(window, GWL_EXSTYLE) & WS_EX_TOOLWINDOW)) return TRUE;
+    wchar_t title[256]{}; GetWindowTextW(window, title, 256);
+    if (QString::fromWCharArray(title).startsWith("AITSnap")) { found.handle = window; return FALSE; }
+    return TRUE;
+}
+static bool showExistingWindow(QLockFile& lock)
+{
+    qint64 pid{}; QString host, name;
+    if (!lock.getLockInfo(&pid, &host, &name) || pid <= 0) return false;
+    ExistingWindow found{DWORD(pid)}; EnumWindows(findExistingWindow, reinterpret_cast<LPARAM>(&found));
+    if (!found.handle) return false;
+    auto target = GetLastActivePopup(found.handle); if (!target || !IsWindowVisible(target)) target = found.handle;
+    AllowSetForegroundWindow(found.pid); ShowWindow(target, SW_RESTORE); SetForegroundWindow(target);
+    return IsWindowVisible(target);
+}
 
 int main(int argc, char* argv[])
 {
@@ -46,6 +67,7 @@ int main(int argc, char* argv[])
     QApplication::setApplicationVersion(QStringLiteral(AITSNAP_VERSION));
     QCommandLineParser parser; parser.addHelpOption(); parser.addVersionOption();
     parser.addOption(QCommandLineOption("tray", "Start in tray"));
+    parser.addOption(QCommandLineOption("show", "Open the main window, overriding the saved tray preference"));
     parser.addOption(QCommandLineOption("data-dir", "Explicit configuration/evidence directory", "directory"));
     parser.addOption(QCommandLineOption("smoke-report", "Hidden event-loop/dependency smoke; create a new JSON receipt", "new-json"));
     parser.addOption(QCommandLineOption("smoke-idle-ms", "Optional idle interval inside hidden smoke (1..60000 ms)", "milliseconds", "1"));
@@ -57,15 +79,20 @@ int main(int argc, char* argv[])
     aitsnap::Settings preferences = aitsnap::defaultSettings(); QString preferencesError;
     if (QFile::exists(configuration)) aitsnap::loadSettings(configuration, preferences, preferencesError);
     aitsnap::installLanguage(preferences.language); aitsnap::applyColorMode(preferences.colorMode);
+    QApplication::setWindowIcon(QIcon(":/brand/aitsnap.ico"));
     QLockFile lock(QFileInfo(configuration).absolutePath() + "/desktop.lock");
     lock.setStaleLockTime(0);
     if (!lock.tryLock(0)) {
+        if (parser.isSet("smoke-report")) return 2;
+        if ((!parser.isSet("tray") || parser.isSet("show")) && showExistingWindow(lock)) return 0;
+        if (parser.isSet("tray")) return 0;
         QMessageBox::information(nullptr, QStringLiteral("AITSnap"), aitsnap::uiText("AITSnap 已在运行。请从通知区域打开现有窗口。"));
         return 2;
     }
     QApplication::setQuitOnLastWindowClosed(false);
 
     aitsnap::MainWindow window(nullptr, configuration, parser.isSet("smoke-report") ? QStringLiteral("-") : QString{});
+    window.winId(); // Keep a native main window available for activation when initially hidden in the tray.
     quint64 cpuBefore{}; QElapsedTimer idleClock;
     if (parser.isSet("smoke-report")) {
         QTimer::singleShot(250, &app, [&] { cpuBefore = processCpuTime(); idleClock.start(); });
@@ -78,6 +105,6 @@ int main(int argc, char* argv[])
             QFile file(parser.value("smoke-report")); const auto bytes = QJsonDocument(report).toJson();
             const bool saved = file.open(QIODevice::WriteOnly | QIODevice::NewOnly) && file.write(bytes) == bytes.size(); file.close(); app.exit(saved ? 0 : 4);
         });
-    } else if (!window.startInTray() && !parser.isSet("tray")) window.show();
+    } else if (parser.isSet("show") || (!window.startInTray() && !parser.isSet("tray"))) window.show();
     return app.exec();
 }

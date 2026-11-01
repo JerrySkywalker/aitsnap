@@ -26,7 +26,8 @@ def author_ui(db, main_file):
     def event(d, button, kind, argument, condition='1', order=1):
         db.insert('ControlEvent', 'Dialog_ Control_ Event Argument Condition Ordering', d, button, kind, argument, condition, order)
     def heading(d, title, body, body_height=110):
-        control(d, 'Heading', 'Text', 24, 22, 392, 32, '{\\Heading}'+title)
+        control(d, 'Brand', 'Icon', 24, 22, 32, 32, 'AITSnapIcon')
+        control(d, 'Heading', 'Text', 68, 22, 348, 32, '{\\Heading}'+title)
         control(d, 'Body', 'Text', 24, 67, 392, body_height, body)
         control(d, 'Line', 'Line', 20, 252, 400, 0)
     def button(d, name, text, x, next=None):
@@ -37,7 +38,7 @@ def author_ui(db, main_file):
 
     dialog('WelcomeDlg')
     heading('WelcomeDlg', '欢迎安装 AITSnap',
-            '软件版本：[ProductVersion]\n\n多屏截图、托盘快捷操作、自由拼图与 Word 报告。\n\n支持 Windows 10 1809+ x64 / Windows 11 x64。Word 报告功能需要已安装 Microsoft Word。\n\n点击“下一步”继续。')
+            '软件版本：[ProductVersion]\n\n多屏截图、托盘快捷操作、自由拼图与 Word 报告。\n\n支持 Windows 10 1809+ x64 / Windows 11 x64。Word 报告功能需要已安装 Microsoft Word。\n\n升级前请从托盘退出旧版。点击“下一步”继续。', body_height=160)
     button('WelcomeDlg', 'Next', '下一步 >', 240, 'Cancel'); cancel('WelcomeDlg')
     event('WelcomeDlg', 'Next', 'NewDialog', 'FolderDlg', 'NOT Installed')
     event('WelcomeDlg', 'Next', 'NewDialog', 'MaintenanceDlg', 'Installed')
@@ -50,7 +51,8 @@ def author_ui(db, main_file):
     button('FolderDlg', 'Back', '< 上一步', 148, 'Next'); event('FolderDlg', 'Back', 'NewDialog', 'WelcomeDlg')
     button('FolderDlg', 'Next', '安装', 240, 'Cancel'); cancel('FolderDlg', 'Path')
     event('FolderDlg', 'Next', 'SetTargetPath', 'INSTALLDIR', order=1)
-    event('FolderDlg', 'Next', 'EndDialog', 'Return', order=2)
+    event('FolderDlg', 'Next', '[AITSNAP_PROGRESS_STARTED]', '1', order=2)
+    event('FolderDlg', 'Next', 'NewDialog', 'ProgressDlg', order=3)
 
     dialog('BrowseDlg', 'Path', 'OK', 'Cancel')
     control('BrowseDlg', 'Title', 'Text', 24, 16, 392, 24, '{\\Heading}浏览安装目录')
@@ -71,12 +73,14 @@ def author_ui(db, main_file):
     event('MaintenanceDlg', 'Cancel', 'EndDialog', 'Exit')
     event('MaintenanceDlg', 'Repair', '[REINSTALL]', 'ALL', order=1)
     event('MaintenanceDlg', 'Repair', '[REINSTALLMODE]', 'omus', order=2)
-    event('MaintenanceDlg', 'Repair', 'EndDialog', 'Return', order=3)
+    event('MaintenanceDlg', 'Repair', '[AITSNAP_PROGRESS_STARTED]', '1', order=3)
+    event('MaintenanceDlg', 'Repair', 'NewDialog', 'ProgressDlg', order=4)
     event('MaintenanceDlg', 'Remove', '[REMOVE]', 'ALL', order=1)
-    event('MaintenanceDlg', 'Remove', 'EndDialog', 'Return', order=2)
+    event('MaintenanceDlg', 'Remove', '[AITSNAP_PROGRESS_STARTED]', '1', order=2)
+    event('MaintenanceDlg', 'Remove', 'NewDialog', 'ProgressDlg', order=3)
 
     dialog('ProgressDlg', 'Cancel', 'Cancel', 'Cancel', attributes=1)
-    heading('ProgressDlg', '正在应用更改', 'Windows Installer 正在安装、修复或卸载 AITSnap。\n请等待完成提示。', body_height=80)
+    heading('ProgressDlg', '正在应用更改', '正在准备安装，可能需要片刻。Windows 可能创建系统还原点或准备安装服务。\n\n请等待下方实际操作信息和完成提示，无需重复点击安装。', body_height=80)
     control('ProgressDlg', 'Action', 'Text', 24, 170, 392, 28, '正在准备…')
     control('ProgressDlg', 'Progress', 'ProgressBar', 24, 210, 392, 16)
     control('ProgressDlg', 'Cancel', 'PushButton', 332, 267, 84, 22, '取消', next='Cancel')
@@ -93,7 +97,8 @@ def author_ui(db, main_file):
         for action in ['Hide','Disable']: db.insert('ControlCondition','Dialog_ Control_ Action Condition','ExitDlg',c,action,'REMOVE="ALL"')
     db.insert('ControlCondition','Dialog_ Control_ Action Condition','ExitDlg','Removed','Show','REMOVE="ALL"')
     db.insert('ControlCondition','Dialog_ Control_ Action Condition','ExitDlg','Removed','Hide','NOT (REMOVE="ALL")')
-    event('ExitDlg', 'Finish', 'MsiLaunchApp', f'"[#{main_file}]"', 'LAUNCH_AITSNAP AND NOT (REMOVE="ALL")', 1)
+    # Keep the documented [#filekey] token as the first field; arguments follow it.
+    event('ExitDlg', 'Finish', 'MsiLaunchApp', f'[#{main_file}] --show', 'LAUNCH_AITSNAP AND NOT (REMOVE="ALL")', 1)
     event('ExitDlg', 'Finish', 'EndDialog', 'Return', order=2)
 
     for d, title, body, seq in [
@@ -108,5 +113,5 @@ def author_ui(db, main_file):
     for name, label in [('ErrorAbort','终止'),('ErrorCancel','取消'),('ErrorIgnore','忽略'),('ErrorNo','否'),('ErrorOk','确定'),('ErrorRetry','重试'),('ErrorYes','是')]:
         control('ErrorDlg',name,'PushButton',178,263,84,24,label)
         event('ErrorDlg',name,'EndDialog',name)
-    for row in [('WelcomeDlg','NOT (REMOVE="ALL")',1100),('ProgressDlg',None,1250),('ExitDlg',None,-1)]:
+    for row in [('WelcomeDlg','NOT (REMOVE="ALL")',1100),('ProgressDlg','NOT AITSNAP_PROGRESS_STARTED',1250),('ExitDlg',None,-1)]:
         db.insert('InstallUISequence','Action Condition Sequence',*row)

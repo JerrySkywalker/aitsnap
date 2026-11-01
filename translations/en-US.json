@@ -310,5 +310,6 @@
   "时间未知": "Time unknown",
   "默认多屏": "Default multi-screen",
   "历史重排": "Historical recomposition",
-  "拼图 %1": "Scene %1"
+  "拼图 %1": "Scene %1",
+  "多屏截图、托盘操作、自由拼图与 Word 报告。Word 报告需要已安装 Microsoft Word。截图、配置和报告保存在本机。": "Multi-screen capture, tray actions, scene composition and Word reports. Microsoft Word is required for reports. Captures, settings and reports are stored locally."
 }

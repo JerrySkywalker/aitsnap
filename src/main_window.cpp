@@ -58,10 +58,7 @@ static QString qs(const std::string& s) { return QString::fromUtf8(s.c_str()); }
 static std::string id() { return QUuid::createUuid().toString(QUuid::WithoutBraces).toStdString(); }
 static QIcon appIcon()
 {
-    QPixmap pixmap(64, 64); pixmap.fill(Qt::transparent); QPainter p(&pixmap);
-    p.setRenderHint(QPainter::Antialiasing); p.setPen(Qt::NoPen); p.setBrush(QColor("#1967D2"));
-    p.drawRoundedRect(2, 2, 60, 60, 13, 13); p.setPen(QPen(Qt::white, 4)); p.setBrush(Qt::NoBrush);
-    p.drawRoundedRect(14, 18, 36, 28, 4, 4); p.drawEllipse(25, 25, 14, 14); return QIcon(pixmap);
+    return QIcon(":/brand/aitsnap.ico");
 }
 MainWindow::MainWindow(QWidget* parent, QString path, QString pipeName) : QMainWindow(parent), configurationPath_(path.isEmpty() ? settingsPath() : path)
 {

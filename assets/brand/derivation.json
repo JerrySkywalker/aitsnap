@@ -1,0 +1,28 @@
+{
+  "master": "aitsnap.svg",
+  "masterSha256": "b414446a6eb80fba5ef9afe35b7ed4dac141a1244d6e0fd33b21e826c7c1125b",
+  "sizes": [
+    16,
+    20,
+    24,
+    32,
+    40,
+    48,
+    64,
+    128,
+    256
+  ],
+  "license": "Apache-2.0",
+  "files": {
+    "aitsnap-128.png": "846242bcc6bb0cd903130b70384558f22dda57b94f7c206edfba3dd50265ebd8",
+    "aitsnap-16.png": "ef0b3734d6ba49f62ba727cee4642682004ef2c61e6a20257d2cb4d720c61b1a",
+    "aitsnap-20.png": "5f8cd3d4a9484ae95029b943a1d037cb83a999f51dce5c0bea322e2446cd2d8e",
+    "aitsnap-24.png": "bbd0ea10ec44fe5013780f936cf25ee0fa7f55e8e781d65958051226aecd510b",
+    "aitsnap-256.png": "7a93b81d60b94dda1623431fba699a59fd70d1026e10bb912bf51b7bfea0c727",
+    "aitsnap-32.png": "df53d118cc7d2c0f15f8382f19cb2e7a2b1529edbcbf7022a5224010ff37a62c",
+    "aitsnap-40.png": "275fcbb1feff0d49e47fac054f8758b84f4c3025974b526c9af8c1977b3cb544",
+    "aitsnap-48.png": "d6cdd4535920c6d1ed5ab5794f7858c182e09b13da21c4e0dedbb9cea4303a8d",
+    "aitsnap-64.png": "43d37230121aa3b25c5cf4561bae8ef2a322f3e670543e78f0238b317a788593",
+    "aitsnap.ico": "393ae7cb2ecfddac0b5dba0791eab678494e0a8475a64d78cffd9d6beeb191ea"
+  }
+}
