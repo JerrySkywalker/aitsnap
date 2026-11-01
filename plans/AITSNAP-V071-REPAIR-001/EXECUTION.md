@@ -47,3 +47,11 @@ host_controller补充停用规则允许保留已删除对象的引用，启用�
 Qt6与Qt5的core/appearance/management/scene/settings-commands各5项全PASS；管理完整动作链两路ASan exit0。覆盖确认/取消精确文件字节、规则路径写入故障无半成功UI、跨profile引用、全删空态/编号高水位、复制新身份、规则失效重启/取消不写、遗留恢复文件保持原状，以及真实offscreen菜单在palette刷新时保持空选择。localization 362条PASS，diff检查通过。上述是offscreen组件和Win11宿主Qt5检查，不能代替真实Win7、原生键鼠或Owner视觉资格。
 
 原始证据：out/AITSNAP-V1-GOAL-TRAIN-001/UX071-MANAGEMENT/{qt6,qt5}-final-tests.log及*-final-asan.{stdout,stderr}.log。源码仍未升版，完整0.7.1安装包未生成。下一步W05统一面板/关联与选中样式，再W06默认按日报告和W02启动源调查；最终W07版本集成、离线包与回执。桌面停止及msiexec限制保持。
+
+## PR29合并及W05面板
+
+PR29源码82808322aa2c6435003036fb4be5d9a6cb6493e3，merge cf14e7b7530b4f7e9fd02d24ac9dca0497b2f03b，同会话源审阅，无独立审查声明，GitHub未配置Actions检查。W03软件PASS，W04组件完成/原生键盘视觉HOLD。
+
+W05三列统一card容器、标题高度、8px内边距及间距，右列列表+预览保持一个完整Panel。关联输出/来源采用虚线描边，不再冒充实心选中背景；勾选继续表达启用。输出卡关闭横滚并等宽省略，完整名称有tooltip。Qt6/Qt5重建后的appearance/management各2/2 PASS；浅/深组件图已实际查看，三列上下边界和标题几何断言通过，导出像素不随主题改变的原有断言通过。
+
+首轮面板构建因测试漏include失败，之后误运行了旧二进制；该轮结果及图显式标记INVALID-FIRST-RUN，不计新源码资格。修复include后重新编译exit0，使用UX071-PANELS/final新目录生成最终组件图和两路final-tests.log。offscreen图不等于原生混合DPI或Owner视觉验收，后者继续HOLD。此分支未改截图、报告或历史字节。

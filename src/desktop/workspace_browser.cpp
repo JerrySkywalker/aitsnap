@@ -101,12 +101,12 @@ void MainWindow::refreshWorkspace()
         item->setData(Qt::UserRole, qs(region.id));
         auto* overviewItem = item->clone(); overviewSources_->addItem(overviewItem);
         const bool linked = std::find(outputSources.begin(), outputSources.end(), region.id) != outputSources.end();
-        if (linked) overviewItem->setBackground(palette().color(QPalette::Highlight));
+        if (linked) overviewItem->setData(linkedItemRole,true);
         if (region.enabled && candidate.outputMode != "composites") {
             auto* output = new QListWidgetItem(item->icon(), uiText("原图") + " · " + regionLabel(region) + QString("\n%1×%2").arg(region.rect.width).arg(region.rect.height), overviewOutputs_);
-            output->setData(Qt::UserRole, qs(region.id)); output->setSizeHint({210, 85});
+            output->setData(Qt::UserRole, qs(region.id)); output->setToolTip(output->text()); output->setSizeHint({210, 85});
             const bool referenced = !overviewOutputKey_.isEmpty() ? qs(region.id) == overviewOutputKey_ : regionIndex == selected;
-            if (referenced) output->setBackground(palette().color(QPalette::Highlight));
+            if (referenced) output->setData(linkedItemRole,true);
             if (qs(region.id) == overviewOutputKey_) overviewOutputs_->setCurrentItem(output);
         }
         ++regionIndex;
@@ -153,9 +153,9 @@ void MainWindow::refreshWorkspace()
         if (candidate.outputMode != "originals" && candidate.selectedSceneIds.contains(qs(scene->id))) {
             const bool missing = std::any_of(scene->layers.begin(), scene->layers.end(), [&](const auto& layer) { return layer.visible && std::none_of(profile.regions.begin(), profile.regions.end(), [&](const auto& r) { return r.id == layer.sourceRegionId && r.enabled; }); });
             auto* output = new QListWidgetItem(item->icon(), uiText("拼图") + " · " + qs(scene->name) + (missing ? uiText(" · 源未启用或缺失") : QString{}) + QString("\n%1×%2").arg(scene->width).arg(scene->height), overviewOutputs_);
-            output->setData(Qt::UserRole, sceneKey); output->setSizeHint({210, 100});
+            output->setData(Qt::UserRole, sceneKey); output->setToolTip(output->text()); output->setSizeHint({210, 100});
             if (sceneKey == overviewOutputKey_) { overviewOutputs_->setCurrentItem(output); scenes_->setCurrentRow(i); preview_->setImage(thumbnail, caption); }
-            else if (overviewOutputKey_.isEmpty() && selected >= 0 && std::any_of(scene->layers.begin(), scene->layers.end(), [&](const auto& l) { return l.visible && l.sourceRegionId == profile.regions[std::size_t(selected)].id; })) output->setBackground(palette().color(QPalette::Highlight));
+            else if (overviewOutputKey_.isEmpty() && selected >= 0 && std::any_of(scene->layers.begin(), scene->layers.end(), [&](const auto& l) { return l.visible && l.sourceRegionId == profile.regions[std::size_t(selected)].id; })) output->setData(linkedItemRole,true);
         }
         if (item == scenes_->currentItem()) scenePreview_->setImage(thumbnail, caption);
     }

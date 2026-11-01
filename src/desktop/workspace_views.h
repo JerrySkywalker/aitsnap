@@ -1,11 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
+#include <QStyledItemDelegate>
 #include "core/domain.h"
 #include <QWidget>
 #include <QImage>
 #include <QTransform>
 #include <functional>
 namespace aitsnap {
+inline constexpr int linkedItemRole = Qt::UserRole + 10;
+class LinkedItemDelegate final : public QStyledItemDelegate {
+public:
+    using QStyledItemDelegate::QStyledItemDelegate;
+    void paint(QPainter*, const QStyleOptionViewItem&, const QModelIndex&) const override;
+};
+
 class DisplayCanvas final : public QWidget {
 public:
     explicit DisplayCanvas(QWidget* parent = nullptr);

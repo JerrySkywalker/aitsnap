@@ -6,6 +6,14 @@
 #include <algorithm>
 
 namespace aitsnap {
+void LinkedItemDelegate::paint(QPainter* painter, const QStyleOptionViewItem& option, const QModelIndex& index) const
+{
+    QStyledItemDelegate::paint(painter,option,index);
+    if (!index.data(linkedItemRole).toBool()) return;
+    painter->save(); painter->setPen(QPen(option.palette.color(QPalette::Link),2,Qt::DashLine)); painter->setBrush(Qt::NoBrush);
+    painter->drawRoundedRect(option.rect.adjusted(2,2,-3,-3),4,4); painter->restore();
+}
+
 static QRectF physicalRect(core::Rect r) { return {double(r.x), double(r.y), double(r.width), double(r.height)}; }
 DisplayCanvas::DisplayCanvas(QWidget* parent) : QWidget(parent) { setMinimumSize(360, 240); setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding); }
 void DisplayCanvas::setLayout(core::CaptureProfile p, std::vector<core::Display> current, int selection)

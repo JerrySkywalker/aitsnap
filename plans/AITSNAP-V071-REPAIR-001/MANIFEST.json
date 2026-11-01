@@ -7,13 +7,13 @@
   "files": [
     {
       "path": "DEVELOPMENT-CHECKLIST.md",
-      "sha256": "604fd8b4f9bd2b97efb0616aa19cafefb0b069c62b3321bc3af62f08f0138269",
+      "sha256": "aa5e659eb88bc52c2fe92ed39090855b1126ea7483769f90fe882cb657682f96",
       "bytes": 5282
     },
     {
       "path": "EXECUTION.md",
-      "sha256": "2b0be81e1939c167cd0dbce719e14ff7aa3d90a39f318d0092e2aa072fec6894",
-      "bytes": 8300
+      "sha256": "8761154339fc78d5b0c783252083e4cb2c3ae6d8a066e2f196104ebe8dbdc443",
+      "bytes": 9430
     },
     {
       "path": "REVIEW-AND-PLAN.md",
