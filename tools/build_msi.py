@@ -60,7 +60,7 @@ def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--package',type=Path,required=True)
     p.add_argument('--destination',type=Path,required=True)
-    p.add_argument('--version',default='0.7.1')
+    p.add_argument('--version',default='0.7.2')
     p.add_argument('--table-fixture',action='store_true',help='Author non-installable test data with an unconditional launch block and separate product identity')
     a=p.parse_args(); package=a.package.resolve(); output=a.destination.resolve()
     if output.exists(): p.error('Choose a new destination directory')
