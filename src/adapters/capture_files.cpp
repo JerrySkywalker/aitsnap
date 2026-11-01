@@ -21,6 +21,7 @@ CaptureOutcome captureToFiles(core::ICaptureBackend& backend, const Settings& se
 {
     QElapsedTimer timer; timer.start();
     CaptureOutcome out; auto request = input;
+    request.captureSequence=settings.sequence;
     core::numberRegions(request.profile);
     request.profile.outputMode = settings.outputMode.toStdString(); request.profile.sceneIds.clear();
     for (const auto& id : settings.selectedSceneIds) request.profile.sceneIds.push_back(id.toStdString()); request.profile.clipboardSelection = settings.clipboardRegion.toStdString();

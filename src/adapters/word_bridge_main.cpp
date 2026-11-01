@@ -120,7 +120,8 @@ QJsonObject execute(const QJsonObject& job, bool recovery)
         // job-specific staging document and publishes by no-overwrite rename.
         stage = "save-prepared"; mutation = true; setMarker(session.document, marker, "PREPARED:" + fingerprint);
         if (create) session.document.call(L"SaveAs2", {filePath(staging), Value(12)}); else session.document.call(L"Save");
-        stage = "insert-heading"; endRange(session.document).call(L"InsertAfter", {Value("\r" + ext["heading"].toString() + "\r")});
+        const bool configurableText=ext.contains("textPolicy");
+        stage = "insert-heading"; if(!configurableText || !ext["heading"].toString().isEmpty())endRange(session.document).call(L"InsertAfter", {Value("\r" + ext["heading"].toString() + "\r")});
         stage = "insertion-section-page-setup";
         const auto page = endRange(session.document).get(L"Sections").object().invoke(L"Item", DISPATCH_METHOD | DISPATCH_PROPERTYGET, {Value(1)}).object().get(L"PageSetup").object();
         const double availableWidth = std::max(36.0, page.get(L"PageWidth").number() - page.get(L"LeftMargin").number() - page.get(L"RightMargin").number());
@@ -131,15 +132,16 @@ QJsonObject execute(const QJsonObject& job, bool recovery)
         for (int i = 0; i < items.size(); ++i) {
             stage = "insert-picture-" + QString::number(i);
             const auto caption = items[i].toObject()["caption"].toString() + "\r";
+            const bool writeCaption=!configurableText || (ext["textPolicy"].toObject()["captions"].toBool() && !items[i].toObject()["caption"].toString().isEmpty());
             if (table) {
                 auto cell = table.call(L"Cell", {Value(i / 2 + 1), Value(i % 2 + 1)}).object();
                 const int start = cell.get(L"Range").object().get(L"Start").integer();
                 insertPicture(session.document, session.document.call(L"Range", {Value(start), Value(start)}).object(), sources[i].toObject()["path"].toString(), availableWidth / 2 - 12, availableHeight);
                 const int end = cell.get(L"Range").object().get(L"End").integer() - 2;
-                session.document.call(L"Range", {Value(end), Value(end)}).object().call(L"InsertAfter", {Value("\r" + caption)});
+                if(writeCaption)session.document.call(L"Range", {Value(end), Value(end)}).object().call(L"InsertAfter", {Value("\r" + caption)});
             } else {
                 insertPicture(session.document, endRange(session.document), sources[i].toObject()["path"].toString(), availableWidth, availableHeight);
-                endRange(session.document).call(L"InsertAfter", {Value("\r" + caption)});
+                if(writeCaption)endRange(session.document).call(L"InsertAfter", {Value("\r" + caption)});
             }
         }
         stage = "save-committed"; setMarker(session.document, marker, "COMMITTED:" + fingerprint); session.document.call(L"Save");

@@ -409,5 +409,21 @@
   "恢复": "Resume",
   "迷你窗偏好未保存，请检查配置目录。": "Mini window preferences could not be saved. Check the configuration folder.",
   "迷你截图窗": "Mini capture window",
-  "迷你窗": "Mini window"
+  "迷你窗": "Mini window",
+  "报告文字模板最多 4096 个字符。": "Report text templates can contain up to 4096 characters.",
+  "报告模板有未闭合的花括号，位置 %1。": "Unclosed brace in report template at position %1.",
+  "报告模板有未知字段 {%1}，位置 %2。": "Unknown report field {%1} at position %2.",
+  "报告模板有多余的右花括号，位置 %1。": "Unexpected closing brace in report template at position %1.",
+  "保持原有图文": "Keep existing text format",
+  "仅名称": "Names only",
+  "名称与时间": "Names and time",
+  "自定义文字": "Custom text",
+  "只写图片": "Images only",
+  "写入文字": "Report text",
+  "批次标题": "Batch heading",
+  "图片说明": "Image caption",
+  "上下文信息": "Context information",
+  "文字预览": "Text preview",
+  "只写入图片，不插入可见文字。": "Write images only, with no visible text.",
+  "可直接输入固定文字。字段：{profile} {datetime} {sequence} {test} {device} {station} {operator} {run} {step} {command} {event}；图片说明还支持 {name} {label} {number} {kind} {scene_revision}。{{ 和 }} 表示字面花括号。": "Enter literal text or fields: {profile} {datetime} {sequence} {test} {device} {station} {operator} {run} {step} {command} {event}. Captions also support {name} {label} {number} {kind} {scene_revision}. Use {{ and }} for literal braces."
 }

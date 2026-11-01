@@ -133,6 +133,8 @@ bool loadSettings(const QString& path, Settings& s, QString& error)
     const auto report = o["wordReport"].toObject(); candidate.report.enabled = report["enabled"].toBool(); candidate.report.documentPath = report["documentPath"].toString();
     candidate.report.targetMode = report["targetMode"].toString(candidate.report.documentPath.isEmpty() ? "automatic" : "specified");
     candidate.report.itemMode = report["itemMode"].toString("both"); candidate.report.layout = report["layout"].toString("inline");
+    if(!reportTextFromJson(report["text"].toObject(),candidate.report.text,error))return false;
+    if(candidate.report.enabled && !validateReportText(candidate.report.text,error))return false;
     if ((candidate.report.targetMode != "automatic" && candidate.report.targetMode != "specified") ||
         (candidate.report.itemMode != "originals" && candidate.report.itemMode != "composites" && candidate.report.itemMode != "both") ||
         (candidate.report.layout != "inline" && candidate.report.layout != "table")) { error = "Invalid Word report policy"; return false; }
@@ -158,7 +160,7 @@ bool saveSettings(const QString& path, const Settings& s, QString& error)
         {"station", s.station}, {"operator", s.operatorName}, {"sequence", double(s.sequence)}, {"startInTray", s.startInTray},
         {"appearance", QJsonObject{{"language", s.language}, {"colorMode", s.colorMode}}},
         {"scenes", scenes}, {"selectedSceneIds", selected}, {"outputMode", s.outputMode},
-        {"wordReport", QJsonObject{{"enabled", s.report.enabled}, {"documentPath", s.report.documentPath}, {"targetMode", s.report.targetMode}, {"itemMode", s.report.itemMode}, {"layout", s.report.layout}}}};
+        {"wordReport", QJsonObject{{"enabled", s.report.enabled}, {"documentPath", s.report.documentPath}, {"targetMode", s.report.targetMode}, {"itemMode", s.report.itemMode}, {"layout", s.report.layout},{"text",reportTextJson(s.report.text)}}}};
     if (!QDir().mkpath(QFileInfo(path).absolutePath())) { error = "Cannot create settings directory"; return false; }
     QFile previous(path); int previousVersion = 0;
     if (previous.open(QIODevice::ReadOnly)) { previousVersion = QJsonDocument::fromJson(previous.readAll()).object()["schemaVersion"].toInt(); previous.close(); }
@@ -264,6 +266,7 @@ QJsonObject batchJson(const core::CaptureBatch& b)
     QJsonArray sceneRevisions;
     for (const auto& revision : b.request.sceneRevisions) sceneRevisions.append(QJsonObject{{"sceneId", qs(revision.first)}, {"revision", revision.second}});
     QJsonObject extensions{{"profileSnapshot", profileJson(b.request.profile)}, {"displayAcquisitions", displays}, {"outputs", outputs}, {"contextCorrelationStatus", qs(b.request.context.correlationStatus)}};
+    if(b.request.captureSequence>0)extensions["captureSequence"]=double(b.request.captureSequence);
     if (!b.request.contextSnapshotJson.empty()) extensions["executionContextSnapshot"] = QJsonDocument::fromJson(QByteArray::fromStdString(b.request.contextSnapshotJson)).object();
     return {{"schemaVersion", 1}, {"batchId", qs(b.batchId)}, {"requestId", qs(b.request.requestId)}, {"sceneRevisions", sceneRevisions},
         {"profileId", qs(b.request.profile.id)}, {"profileRevision", b.request.profile.revision},

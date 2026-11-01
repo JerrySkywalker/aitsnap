@@ -14,6 +14,7 @@ class QCheckBox; class QComboBox; class QLabel; class QLineEdit;
 class QMenu; class QSystemTrayIcon; class QTableWidget; class QListWidget;
 class QStackedWidget; class QTabWidget;
 class QPushButton; class QAction;
+class QPlainTextEdit;class QFormLayout;
 
 namespace aitsnap {
 class ReportQueue;
@@ -56,6 +57,11 @@ private:
     QCheckBox* reportEnabled_{};
     QLineEdit* reportPath_{};
     QComboBox *reportMode_{}, *reportLayout_{}, *reportTargetMode_{};
+    QComboBox* reportTextPreset_{};
+    QCheckBox* reportTextEnabled_[3]{};
+    QPlainTextEdit* reportTextTemplates_[3]{};
+    QLabel* reportTextPreview_{};
+    void buildReportTextUi(QFormLayout*);void refreshReportTextPreview();
     QLabel *reportStatus_{}, *reportTargetStatus_{};
     std::unique_ptr<ContextStore> contextStore_;
     core::Context selectedContext_;

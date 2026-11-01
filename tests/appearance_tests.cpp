@@ -24,6 +24,7 @@
 #include <QFontDatabase>
 #include <QLabel>
 #include <QLineEdit>
+#include <QPlainTextEdit>
 #include <QTableWidget>
 #include <QThread>
 #include <iostream>
@@ -165,6 +166,12 @@ int main(int argc, char** argv)
                 mini.findChild<QComboBox*>("miniCaptureMode")->setCurrentIndex(2);mini.findChild<QCheckBox*>("miniAlwaysOnTop")->setChecked(false);mini.findChild<QPushButton*>("miniCaptureButton")->click();check(action==2,"mini selects existing action identity");
                 mini.setState("Fixture","Busy",false,false);mini.findChild<QPushButton*>("miniCaptureButton")->click();check(action==2,"busy mini does not emit another capture");mini.close();check(!mini.isVisible(),"closing mini hides");}
             MiniCaptureWindow restarted(preferences);check(restarted.findChild<QComboBox*>("miniCaptureMode")->currentIndex()==2 && !restarted.findChild<QCheckBox*>("miniAlwaysOnTop")->isChecked(),"mini mode and topmost persist");
+        }
+        {
+            MainWindow window(nullptr,emptyPath,"-");settle();auto* preset=window.findChild<QComboBox*>("reportTextPreset");check(preset,"Word text settings available");
+            preset->setCurrentIndex(preset->findData("images"));check(window.findChild<QLabel*>("reportTextPreview")->text().contains("images",Qt::CaseInsensitive),"image-only preview localized");
+            window.findChild<QPushButton*>("applySettings")->click();Settings saved;check(loadSettings(emptyPath,saved,error) && !saved.report.text.titleEnabled && !saved.report.text.captionEnabled && !saved.report.text.contextEnabled,"image-only toggles persist");
+            window.findChild<QCheckBox*>("reportTextEnabled0")->setChecked(true);window.findChild<QPlainTextEdit*>("reportTextTemplate0")->setPlainText("Custom {profile}");check(preset->currentData()=="custom" && window.findChild<QLabel*>("reportTextPreview")->text().startsWith("Custom "),"editing switches to custom and previews resolved fields");
         }
         std::cout << "APPEARANCE_IDENTITY_MIGRATION_PASS\n"; return 0;
     } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
