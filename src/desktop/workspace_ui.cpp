@@ -53,8 +53,14 @@ void MainWindow::buildUi()
     auto page = [this] { auto* p = new QWidget; pages_->addWidget(p); return new QVBoxLayout(p); };
     auto subtitle = [](QVBoxLayout* layout, const QString& text) { auto* label = new QLabel(text); label->setWordWrap(true); label->setProperty("muted", true); layout->addWidget(label); return label; };
     auto* workbench = page(); overviewSummary_ = subtitle(workbench, {}); overviewSummary_->setObjectName("workspaceSummary");
-    auto* workSplit = new QSplitter; overviewTopology_ = new DisplayCanvas; overviewTopology_->setObjectName("overviewDisplayLayout"); workSplit->addWidget(overviewTopology_);
-    preview_ = new ImagePreview; preview_->setObjectName("latestCapturePreview"); preview_->setImage({}, uiText("最近一次截图 · 尚未采集")); workSplit->addWidget(preview_); workSplit->setSizes({700, 340}); workbench->addWidget(workSplit, 1);
+    auto* workSplit = new QSplitter;
+    auto* overviewSourcePanel = new QWidget; auto* overviewSourceLayout = new QVBoxLayout(overviewSourcePanel); overviewSourceLayout->setContentsMargins(0, 0, 0, 0);
+    overviewSourceLayout->addWidget(new QLabel(uiText("源区域"))); overviewSources_ = new QListWidget; overviewSources_->setObjectName("overviewSources"); overviewSources_->setIconSize({80, 50}); overviewSources_->setWordWrap(true); overviewSources_->setMinimumWidth(180); overviewSourceLayout->addWidget(overviewSources_, 1); workSplit->addWidget(overviewSourcePanel);
+    overviewTopology_ = new DisplayCanvas; overviewTopology_->setObjectName("overviewDisplayLayout"); workSplit->addWidget(overviewTopology_);
+    auto* overviewOutputPanel = new QWidget; auto* overviewOutputLayout = new QVBoxLayout(overviewOutputPanel); overviewOutputLayout->setContentsMargins(0, 0, 0, 0);
+    overviewOutputLayout->addWidget(new QLabel(uiText("下一次输出"))); overviewOutputs_ = new QListWidget; overviewOutputs_->setObjectName("overviewOutputs"); overviewOutputs_->setIconSize({96, 60}); overviewOutputs_->setMinimumWidth(220); overviewOutputs_->setWordWrap(true); overviewOutputLayout->addWidget(overviewOutputs_, 1);
+    preview_ = new ImagePreview; preview_->setObjectName("latestCapturePreview"); preview_->setMaximumHeight(190); preview_->setImage({}, uiText("最近一次截图 · 尚未采集")); overviewOutputLayout->addWidget(preview_); workSplit->addWidget(overviewOutputPanel);
+    workSplit->setSizes({200, 470, 260}); workbench->addWidget(workSplit, 1);
     auto* quick = new QHBoxLayout; auto* quickRegions = new QPushButton(uiText("查看源区域")); auto* quickScenes = new QPushButton(uiText("查看拼图输出")); auto* quickBatches = new QPushButton(uiText("浏览已保存批次"));
     quick->addWidget(quickRegions); quick->addWidget(quickScenes); quick->addWidget(quickBatches); quick->addStretch(); workbench->addLayout(quick);
     connect(quickRegions, &QPushButton::clicked, this, [this] { navigation_->setCurrentRow(1); }); connect(quickScenes, &QPushButton::clicked, this, [this] { navigation_->setCurrentRow(2); }); connect(quickBatches, &QPushButton::clicked, this, [this] { navigation_->setCurrentRow(3); });
@@ -71,9 +77,18 @@ void MainWindow::buildUi()
     regions_ = new QTableWidget(0, 6); regions_->setObjectName("regions"); regions_->setHorizontalHeaderLabels({uiText("启用"), uiText("名称"), "X", "Y", uiText("宽 px"), uiText("高 px")});
     regions_->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch); regions_->setSelectionBehavior(QAbstractItemView::SelectRows); regions_->setMaximumHeight(220); regions_->hide(); sources->addWidget(regions_);
     connect(advanced, &QCheckBox::toggled, regions_, &QWidget::setVisible);
-    auto chooseSource = [this](int row) { if (row >= 0 && row < regions_->rowCount()) { regions_->setCurrentCell(row, 1); sourceCards_->setCurrentRow(row); refreshWorkspace(); } };
-    topology_->selected = chooseSource; overviewTopology_->selected = [this, chooseSource](int row) { navigation_->setCurrentRow(1); chooseSource(row); };
+    auto chooseSource = [this](int row) { if (row >= 0 && row < regions_->rowCount()) { overviewOutputKey_.clear(); regions_->setCurrentCell(row, 1); QTimer::singleShot(0, this, [this] { refreshWorkspace(); }); } };
+    topology_->selected = chooseSource; overviewTopology_->selected = chooseSource;
     connect(sourceCards_, &QListWidget::currentRowChanged, this, chooseSource);
+    connect(overviewSources_, &QListWidget::currentRowChanged, this, chooseSource);
+    connect(overviewSources_, &QListWidget::itemDoubleClicked, this, [this] { navigation_->setCurrentRow(1); });
+    connect(overviewSources_, &QListWidget::itemChanged, this, [this](QListWidgetItem* item) { const int row = overviewSources_->row(item); if (row >= 0 && row < regions_->rowCount()) regions_->item(row, 0)->setCheckState(item->checkState()); });
+    connect(overviewOutputs_, &QListWidget::currentItemChanged, this, [this](QListWidgetItem* item) { overviewOutputKey_ = item ? item->data(Qt::UserRole).toString() : QString{}; QTimer::singleShot(0, this, [this] { refreshWorkspace(); }); });
+    connect(overviewOutputs_, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem* item) {
+        if (!item) return;
+        if (item->data(Qt::UserRole).toString().startsWith("scene:")) navigation_->setCurrentRow(2);
+        else { navigation_->setCurrentRow(1); sourceViews_->setCurrentIndex(1); }
+    });
     connect(sourceCards_, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem* item) {
         const int row = sourceCards_->row(item); if (row < 0 || row >= regions_->rowCount()) return;
         bool ok{}; const auto name = QInputDialog::getText(this, uiText("重命名区域"), uiText("名称"), QLineEdit::Normal, regions_->item(row, 1)->text(), &ok);
@@ -90,7 +105,7 @@ void MainWindow::buildUi()
     for (auto* screen : QGuiApplication::screens()) watchScreen(screen);
     connect(qApp, &QGuiApplication::screenAdded, this, [watchScreen, refreshTimer](QScreen* screen) { watchScreen(screen); refreshTimer->start(300); });
     connect(qApp, &QGuiApplication::screenRemoved, this, [refreshTimer] { refreshTimer->start(300); });
-    connect(regions_, &QTableWidget::currentCellChanged, this, [this] { refreshWorkspace(); });
+    connect(regions_, &QTableWidget::currentCellChanged, this, [this] { QTimer::singleShot(0, this, [this] { refreshWorkspace(); }); });
 
     auto* compositions = page(); subtitle(compositions, uiText("选择场景预览，再打开原有画布编辑；勾选用于下一次截图。"));
     auto* sceneSplit = new QSplitter; scenes_ = new QListWidget; scenes_->setObjectName("enabledScenes"); scenes_->setIconSize({160, 90}); scenes_->setSpacing(6); sceneSplit->addWidget(scenes_);
@@ -99,6 +114,8 @@ void MainWindow::buildUi()
     auto* history = new QPushButton(uiText("重排历史批次")); history->setObjectName("openHistoricalBatch"); auto* import = new QPushButton(uiText("导入场景")); auto* exportTemplate = new QPushButton(uiText("导出场景"));
     for (auto* button : {newScene, editSceneButton, history, import, exportTemplate}) sceneActions->addWidget(button); compositions->addLayout(sceneActions);
     outputMode_ = new QComboBox; outputMode_->setObjectName("outputMode"); outputMode_->addItem(uiText("保存原图"), "originals"); outputMode_->addItem(uiText("保存拼图（源图存入证据子目录）"), "composites"); outputMode_->addItem(uiText("原图 + 选中拼图"), "both"); compositions->addWidget(outputMode_);
+    connect(outputMode_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [refreshTimer] { refreshTimer->start(); });
+    connect(scenes_, &QListWidget::itemChanged, this, [refreshTimer] { refreshTimer->start(); });
     connect(newScene, &QPushButton::clicked, this, [this] { editScene(true); }); connect(editSceneButton, &QPushButton::clicked, this, [this] { editScene(false); }); connect(history, &QPushButton::clicked, this, [this] { editScene(false, true); });
     connect(import, &QPushButton::clicked, this, [this] { importScene(); }); connect(exportTemplate, &QPushButton::clicked, this, [this] { exportScene(); }); connect(scenes_, &QListWidget::currentRowChanged, this, [this] { refreshWorkspace(); });
 
@@ -109,6 +126,13 @@ void MainWindow::buildUi()
     reportCards_ = new QListWidget; reportCards_->setObjectName("reportCards"); reportCards_->setMinimumWidth(200); batchSplit->addWidget(reportCards_); batchSplit->setSizes({240, 560, 240}); batches->addWidget(batchSplit, 1);
     batchDetail_ = subtitle(batches, {}); auto* batchActions = new QHBoxLayout; auto* refresh = new QPushButton(uiText("刷新批次")); auto* batchFolder = new QPushButton(uiText("打开批次目录")); auto* queueButton = new QPushButton(uiText("查看 Word 任务 / 恢复核对"));
     auto* recomposeBatch = new QPushButton(uiText("用本批重排")); batchActions->addWidget(refresh); batchActions->addWidget(batchFolder); batchActions->addWidget(recomposeBatch); batchActions->addWidget(queueButton); batches->addLayout(batchActions); reportStatus_ = subtitle(batches, {});
+    appendBatch_ = new QPushButton(uiText("将本批加入报告")); appendBatch_->setObjectName("appendSelectedBatch"); batchActions->insertWidget(3, appendBatch_);
+    connect(appendBatch_, &QPushButton::clicked, this, [this] {
+        if (selectedBatchManifest_.isEmpty() || !applySettings()) return;
+        QString error;
+        if (reportQueue_->enqueueHistorical(selectedBatchManifest_, settings_.report, error)) { setStatus(uiText("报告任务已排队，截图可继续。")); refreshReportStatus(); }
+        else setStatus(error, true);
+    });
     connect(recomposeBatch, &QPushButton::clicked, this, [this] { if (!selectedBatchManifest_.isEmpty()) editScene(false, true, selectedBatchManifest_); });
     connect(refresh, &QPushButton::clicked, this, [this] { refreshBatches(); }); connect(batchCards_, &QListWidget::currentRowChanged, this, [this] { selectBatch(); }); connect(batchImages_, &QListWidget::currentRowChanged, this, [this] { selectBatchImage(); });
     connect(batchFolder, &QPushButton::clicked, this, [this] { if (!selectedBatchManifest_.isEmpty()) QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(selectedBatchManifest_).absolutePath())); }); connect(queueButton, &QPushButton::clicked, this, [this] { showReportQueue(); });
@@ -120,8 +144,8 @@ void MainWindow::buildUi()
     auto makeForm = [settingPages] { auto* content = new QWidget; auto* form = new QFormLayout(content); form->setContentsMargins(20, 16, 20, 16); form->setVerticalSpacing(14); form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
         auto* scroll = new QScrollArea; scroll->setWidgetResizable(true); scroll->setWidget(content); settingPages->addWidget(scroll); return form; };
     auto* commonForm = makeForm(); profileName_ = new QLineEdit; commonForm->addRow(uiText("配置名称"), profileName_); clipboard_ = new QComboBox; commonForm->addRow(uiText("复制哪张图"), clipboard_);
-    auto* appendLast = new QPushButton(uiText("将最近保存批次加入报告")); commonForm->addRow(appendLast);
-    connect(appendLast, &QPushButton::clicked, this, [this] { if (!lastOutcome_ || lastOutcome_->directory.isEmpty()) { setStatus(uiText("请先保存一批截图。"), true); return; } if (!applySettings()) return; QString error; if (!reportQueue_->enqueue(*lastOutcome_, settings_.report, error)) setStatus(error, true); else setStatus(uiText("报告任务已排队，截图可继续。")); });
+    auto* appendLast = new QPushButton(uiText("将最近保存批次加入报告")); appendLast_ = appendLast; appendLast_->setObjectName("appendLatestBatch"); commonForm->addRow(appendLast);
+    connect(appendLast, &QPushButton::clicked, this, [this] { if (!lastOutcome_ || lastOutcome_->directory.isEmpty()) { setStatus(uiText("请先保存一批截图。"), true); return; } if (!applySettings()) return; if (reportQueue_->hasBatchForDocument(qs(lastOutcome_->batch.batchId), settings_.report.documentPath)) { setStatus(uiText("本批已加入报告")); return; } QString error; if (!reportQueue_->enqueue(*lastOutcome_, settings_.report, error)) setStatus(error, true); else setStatus(uiText("报告任务已排队，截图可继续。")); });
     auto* appearanceForm = makeForm(); language_ = new QComboBox; language_->setObjectName("appearanceLanguage"); language_->addItem(uiText("跟随系统"), "system"); language_->addItem(QStringLiteral("简体中文"), "zh-CN"); language_->addItem("English", "en-US"); language_->setCurrentIndex(std::max(0, language_->findData(settings_.language))); appearanceForm->addRow(uiText("界面语言"), language_);
     colorMode_ = new QComboBox; colorMode_->setObjectName("appearanceColorMode"); colorMode_->addItem(uiText("跟随系统"), "system"); colorMode_->addItem(uiText("浅色"), "light"); colorMode_->addItem(uiText("深色"), "dark"); colorMode_->setCurrentIndex(std::max(0, colorMode_->findData(settings_.colorMode))); appearanceForm->addRow(uiText("色彩模式"), colorMode_);
     auto* appearanceNote = new QLabel(uiText("配色立即生效；语言更改将在重新启动 AITSnap 后生效。")); appearanceNote->setWordWrap(true); appearanceForm->addRow(appearanceNote);
@@ -137,6 +161,7 @@ void MainWindow::buildUi()
     auto* reportForm = makeForm(); reportEnabled_ = new QCheckBox(uiText("保存截图后自动追加 Word")); reportEnabled_->setChecked(settings_.report.enabled); reportForm->addRow(reportEnabled_);
     auto* reportPathRow = new QWidget; auto* reportPaths = new QHBoxLayout(reportPathRow); reportPaths->setContentsMargins(0, 0, 0, 0); reportPath_ = new QLineEdit(settings_.report.documentPath); reportPath_->setObjectName("reportDocumentPath"); reportPaths->addWidget(reportPath_); auto* reportBrowse = new QPushButton("…"); reportPaths->addWidget(reportBrowse); reportForm->addRow(uiText("Word 报告"), reportPathRow);
     connect(reportBrowse, &QPushButton::clicked, this, [this] { const auto path = QFileDialog::getSaveFileName(this, uiText("选择已有报告，或输入新 DOCX 文件名"), reportPath_->text(), "Word (*.docx)", nullptr, QFileDialog::DontConfirmOverwrite); if (!path.isEmpty()) reportPath_->setText(path); });
+    connect(reportPath_, &QLineEdit::textChanged, this, [this] { if (reportQueue_) refreshReportStatus(); });
     reportMode_ = new QComboBox; reportMode_->addItem(uiText("原图与拼图"), "both"); reportMode_->addItem(uiText("仅原图"), "originals"); reportMode_->addItem(uiText("仅拼图"), "composites"); reportMode_->setCurrentIndex(std::max(0, reportMode_->findData(settings_.report.itemMode))); reportForm->addRow(uiText("输出"), reportMode_);
     reportLayout_ = new QComboBox; reportLayout_->addItem(uiText("顺序图文"), "inline"); reportLayout_->addItem(uiText("两列表格"), "table"); reportLayout_->setCurrentIndex(std::max(0, reportLayout_->findData(settings_.report.layout))); reportForm->addRow(uiText("报告"), reportLayout_);
     auto* metadata = makeForm(); testId_ = new QLineEdit(settings_.testId); device_ = new QLineEdit(settings_.device); station_ = new QLineEdit(settings_.station); operator_ = new QLineEdit(settings_.operatorName); metadata->addRow(uiText("试验标识"), testId_); metadata->addRow(uiText("设备标识"), device_); metadata->addRow(uiText("工位"), station_); metadata->addRow(uiText("操作员"), operator_);

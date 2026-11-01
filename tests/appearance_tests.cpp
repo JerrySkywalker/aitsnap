@@ -14,13 +14,20 @@
 #include <QTabWidget>
 #include <QTemporaryDir>
 #include <QDir>
+#include <QDialogButtonBox>
+#include <QFontDatabase>
+#include <QLabel>
+#include <QTableWidget>
+#include <QThread>
 #include <iostream>
 #include <stdexcept>
 using namespace aitsnap;
 static void check(bool ok, const char* text) { if (!ok) throw std::runtime_error(text); }
+static void settle() { for (int i = 0; i < 10; ++i) { QCoreApplication::processEvents(); QThread::msleep(10); } }
 int main(int argc, char** argv)
 {
     QApplication app(argc, argv); app.setApplicationName("AITSnapAppearanceTests");
+    if (app.platformName() == "offscreen") { QFontDatabase::addApplicationFont("C:/Windows/Fonts/segoeui.ttf"); app.setFont(QFont("Segoe UI", 10)); }
     try {
         QTemporaryDir temp; check(temp.isValid(), "temporary directory");
         Settings settings = defaultSettings(); settings.outputDirectory = temp.path();
@@ -53,6 +60,10 @@ int main(int argc, char** argv)
         }}};
         check(saveBytesNew(QJsonDocument(manifest).toJson(), batchDirectory + "/batch.json", error), "gallery manifest");
         loaded.outputDirectory = temp.filePath("saved-batches"); check(saveSettings(path, loaded, error), "gallery configuration");
+        core::SceneTemplate fixtureScene; fixtureScene.id = "two-source-scene"; fixtureScene.name = "Comparison"; fixtureScene.width = 64; fixtureScene.height = 16;
+        for (int i = 0; i < 2; ++i) { core::Layer l; l.id = "layer" + std::to_string(i); l.sourceRegionId = loaded.profiles[0].regions[std::size_t(i)].id; l.destination = {double(i * 32), 0, 32, 16, 0}; fixtureScene.layers.push_back(l); }
+        loaded.scenes.push_back(fixtureScene); loaded.profiles[0].sceneIds = {fixtureScene.id}; loaded.profiles[0].outputMode = "both"; loaded.selectedSceneIds = QStringList{QString::fromStdString(fixtureScene.id)}; loaded.outputMode = "both";
+        check(saveSettings(path, loaded, error), "linked output fixture");
         check(uiText("截图并保存") == "Capture and save", "English catalog actually loaded");
         {
             MainWindow window(nullptr, path, "-");
@@ -61,12 +72,32 @@ int main(int argc, char** argv)
             check(!window.windowIcon().pixmap(16).isNull() && !window.windowIcon().pixmap(256).isNull(), "shipped multi-size icon loaded by Qt");
             auto* nav = window.findChild<QListWidget*>("workspaceNavigation"); auto* sourceTabs = window.findChild<QTabWidget*>("sourceViews");
             check(nav && nav->count() == 5 && sourceTabs, "visual navigation present");
+            auto* overviewSources = window.findChild<QListWidget*>("overviewSources"); auto* outputs = window.findChild<QListWidget*>("overviewOutputs"); auto* table = window.findChild<QTableWidget*>("regions");
+            check(overviewSources && outputs && outputs->count() == 3 && overviewSources->count() == 2, "next outputs enumerate two originals and one scene");
+            outputs->setCurrentRow(2); settle();
+            check(overviewSources->item(0)->background().style() != Qt::NoBrush && overviewSources->item(1)->background().style() != Qt::NoBrush, "scene output highlights both actual source cards");
+            overviewSources->setCurrentRow(1); settle(); check(table->currentRow() == 1 && window.findChild<QListWidget*>("sourceCards")->currentRow() == 1, "source selection synchronizes views");
+            window.findChild<QPushButton*>("applySettings")->click(); settle(); check(table->currentRow() == 1, "apply preserves selected region identity");
             nav->setCurrentRow(1); check(sourceTabs->currentIndex() == 0, "source default is display layout");
             sourceTabs->setCurrentIndex(1); nav->setCurrentRow(0); nav->setCurrentRow(1); check(sourceTabs->currentIndex() == 0, "source reentry resets to display layout");
             nav->setCurrentRow(3); check(window.findChild<QListWidget*>("batchCards")->count() == 1 && window.findChild<QListWidget*>("batchImages")->count() == 1, "gallery follows portable manifest paths and excludes invalid artifacts");
             check(window.findChild<QPushButton*>("captureSave")->text() == "Capture and save", "actual button localized");
             mode->setCurrentIndex(mode->findData("dark")); app.processEvents();
             check(activeColorMode() == "dark" && window.palette().color(QPalette::Window).lightness() < 90 && window.palette().color(QPalette::Text).lightness() > 190, "dark widgets have contrasting palette");
+            auto* status = window.findChild<QLabel*>("captureStatus"); const auto darkStatus = status->palette().color(QPalette::WindowText);
+            mode->setCurrentIndex(mode->findData("light")); settle(); check(status->palette().color(QPalette::WindowText).lightness() < 150 && status->palette().color(QPalette::WindowText) != darkStatus, "status color follows palette change");
+            const int evidence = app.arguments().indexOf("--evidence");
+            if (evidence >= 0 && evidence + 1 < app.arguments().size()) {
+                check(app.platformName() == "offscreen", "component evidence must not operate the desktop");
+                const auto folder = app.arguments()[evidence + 1]; check(QDir().mkpath(folder), "evidence folder");
+                QFontDatabase::addApplicationFont("C:/Windows/Fonts/segoeui.ttf"); window.resize(1500, 960); window.show();
+                for (const auto& theme : {"light", "dark"}) {
+                    mode->setCurrentIndex(mode->findData(theme));
+                    for (int page = 0; page < 5; ++page) { nav->setCurrentRow(page); settle(); check(window.grab().save(folder + QString("/component-%1-%2.png").arg(theme).arg(page)), "offscreen component image"); }
+                }
+                window.hide();
+            }
+            mode->setCurrentIndex(mode->findData("dark")); settle();
             language->setCurrentIndex(language->findData("en-US")); window.findChild<QPushButton*>("applySettings")->click();
         }
         check(loadSettings(path, loaded, error) && loaded.language == "en-US" && loaded.colorMode == "dark", "chosen appearance persisted");
@@ -81,6 +112,8 @@ int main(int argc, char** argv)
         for (auto* child : item.childItems()) independent |= bool(child->flags() & QGraphicsItem::ItemIgnoresTransformations);
         check(independent, "identity text is independent of image transforms");
         installLanguage("zh-CN"); check(uiText("外观") == QString::fromUtf8("外观"), "Chinese fallback");
+        QDialogButtonBox chinese(QDialogButtonBox::Cancel); check(chinese.button(QDialogButtonBox::Cancel)->text().contains(QString::fromUtf8("取消")), "Chinese standard dialog buttons translated");
+        installLanguage("en-US"); QDialogButtonBox english(QDialogButtonBox::Cancel); check(english.button(QDialogButtonBox::Cancel)->text().contains("Cancel"), "English standard dialog buttons restored");
         std::cout << "APPEARANCE_IDENTITY_MIGRATION_PASS\n"; return 0;
     } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
 }

@@ -14,6 +14,11 @@
 #include <set>
 namespace aitsnap {
 static QString utc() { return QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs); }
+static QString canonicalReportPath(const QString& path)
+{
+    const QFileInfo target(path);
+    return target.exists() ? target.canonicalFilePath() : QDir(target.absoluteDir().canonicalPath()).filePath(target.fileName());
+}
 QString reportFingerprint(const QJsonObject& job)
 {
     const auto ext = job["extensions"].toObject();
@@ -74,14 +79,23 @@ QJsonObject makeReportJob(const CaptureOutcome& outcome, const ReportOptions& op
         if (output.error || output.status != "SAVED" || (!original && !composite) ||
             (original && options.itemMode == "composites") || (composite && options.itemMode == "originals")) continue;
         const auto artifact = QString::fromStdString(outcome.batch.batchId + (original ? ":original:" + output.regionId : ":scene:" + output.sceneId));
-        const auto label = original ? "Source " + output.regionId : "Scene " + output.sceneId + " r" + std::to_string(output.sceneRevision);
+        std::string label = original ? "Original" : "Composite";
+        if (original) {
+            const auto& regions = outcome.batch.request.profile.regions;
+            const auto region = std::find_if(regions.begin(), regions.end(), [&](const auto& r) { return r.id == output.regionId; });
+            if (region != regions.end()) label = (region->displayNumber > 0 ? "#" + std::to_string(region->displayNumber) + " " : "") + region->name;
+        } else {
+            const auto scene = std::find_if(outcome.sceneSnapshots.begin(), outcome.sceneSnapshots.end(), [&](const auto& s) { return s.id == output.sceneId; });
+            if (scene != outcome.sceneSnapshots.end()) label = scene->name;
+            label += " r" + std::to_string(output.sceneRevision);
+        }
         items.append(QJsonObject{{"artifactId", artifact}, {"caption", QString::fromStdString(label) + " | " + QString::fromStdString(outcome.batch.request.issuedAtUtc)},
             {"renderAs", options.layout == "table" ? "table_cell" : "inline_image"}});
         sources.append(QJsonObject{{"artifactId", artifact}, {"path", QFileInfo(QString::fromStdString(output.path)).canonicalFilePath()}, {"sha256", QString::fromStdString(output.sha256)}});
     }
     const auto& context = outcome.batch.request.context;
     QJsonObject ext{{"sources", sources}, {"layout", options.layout}, {"batchManifest", QDir(outcome.directory).filePath("batch.json")},
-        {"heading", QString::fromStdString("AITSnap batch " + outcome.batch.batchId + " | test=" + context.testId + " device=" + context.deviceId + " station=" + context.stationId + " operator=" + context.operatorId + " run=" + context.sequenceRunId + " step=" + context.stepExecutionId + " command=" + context.commandInvocationId + " event=" + context.eventId)}};
+        {"heading", QString::fromStdString("AITSnap " + outcome.batch.request.profile.name + " | " + outcome.batch.request.issuedAtUtc + " | test=" + context.testId + " device=" + context.deviceId + " station=" + context.stationId + " operator=" + context.operatorId + " run=" + context.sequenceRunId + " step=" + context.stepExecutionId + " command=" + context.commandInvocationId + " event=" + context.eventId)}};
     QJsonObject job{{"schemaVersion", 1}, {"jobId", QUuid::createUuid().toString(QUuid::WithoutBraces)}, {"batchId", QString::fromStdString(outcome.batch.batchId)},
         {"createdAtUtc", utc()}, {"updatedAtUtc", utc()}, {"state", "QUEUED"}, {"attemptCount", 0},
         {"target", QJsonObject{{"documentPath", path}, {"mode", mode}}}, {"items", items}, {"extensions", ext}};
@@ -132,8 +146,7 @@ bool ReportQueue::enqueue(const CaptureOutcome& outcome, const ReportOptions& op
 {
     if (!ready_) { error = diagnostic_; return false; }
     QString mode = QFileInfo::exists(options.documentPath) ? "append" : "create";
-    const QFileInfo target(options.documentPath);
-    const auto canonicalTarget = target.exists() ? target.canonicalFilePath() : QDir(target.absoluteDir().canonicalPath()).filePath(target.fileName());
+    const auto canonicalTarget = canonicalReportPath(options.documentPath);
     double sequence = 1;
     for (const auto& job : jobs()) {
         sequence = std::max(sequence, job["extensions"].toObject()["enqueueSequence"].toDouble() + 1);
@@ -145,6 +158,54 @@ bool ReportQueue::enqueue(const CaptureOutcome& outcome, const ReportOptions& op
     if (QFile::exists(path)) { error = "Report job already exists"; return false; }
     if (!persist(job, path)) { error = diagnostic_; return false; }
     QTimer::singleShot(0, this, [this] { pump(); }); return true;
+}
+bool ReportQueue::hasBatchForDocument(const QString& batchId, const QString& documentPath) const
+{
+    const auto target = canonicalReportPath(documentPath);
+    for (const auto& job : jobs()) if (job["batchId"].toString() == batchId && job["target"].toObject()["documentPath"].toString().compare(target, Qt::CaseInsensitive) == 0) return true;
+    return false;
+}
+bool ReportQueue::enqueueHistorical(const QString& manifestPath, const ReportOptions& options, QString& error)
+{
+    if (!ready_) { error = diagnostic_; return false; }
+    // Read a saved batch for reporting only; never create a capture or rewrite the batch.
+    QFile file(manifestPath);
+    if (!file.open(QIODevice::ReadOnly) || file.size() > 8 * 1024 * 1024) { error = "Cannot read saved batch"; return false; }
+    QJsonParseError parse; const auto document = QJsonDocument::fromJson(file.readAll(), &parse); const auto saved = document.object();
+    if (parse.error || !document.isObject() || saved["schemaVersion"].toInt() != 1 || saved["batchId"].toString().isEmpty() ||
+        !QDateTime::fromString(saved["createdAtUtc"].toString(), Qt::ISODateWithMs).isValid()) { error = "Invalid saved batch identity or timestamp"; return false; }
+    if (hasBatchForDocument(saved["batchId"].toString(), options.documentPath)) { error = "This batch is already linked to this report; inspect or recover its existing job"; return false; }
+    CaptureOutcome input; input.directory = QFileInfo(manifestPath).absolutePath();
+    input.batch.batchId = saved["batchId"].toString().toStdString(); input.batch.request.requestId = saved["requestId"].toString().toStdString();
+    input.batch.request.issuedAtUtc = saved["createdAtUtc"].toString().toStdString();
+    const auto ext = saved["extensions"].toObject();
+    if (!profileFromJson(ext["profileSnapshot"].toObject(), input.batch.request.profile, error)) return false;
+    if (saved["profileId"].toString().toStdString() != input.batch.request.profile.id || saved["profileRevision"].toInt() != input.batch.request.profile.revision) { error = "Saved batch profile snapshot mismatch"; return false; }
+    for (const auto& value : ext["sceneSnapshots"].toArray()) {
+        core::SceneTemplate scene; if (!sceneFromJson(value.toObject(), scene, error)) return false; input.sceneSnapshots.push_back(std::move(scene));
+    }
+    const auto context = saved["context"].toObject(); auto& c = input.batch.request.context;
+    c.testId = context["testId"].toString().toStdString(); c.deviceId = context["deviceId"].toString().toStdString();
+    c.stationId = context["stationId"].toString().toStdString(); c.operatorId = context["operatorId"].toString().toStdString();
+    c.sequenceRunId = context["sequenceRunId"].toString().toStdString(); c.stepExecutionId = context["stepExecutionId"].toString().toStdString();
+    c.commandInvocationId = context["commandInvocationId"].toString().toStdString(); c.eventId = context["eventId"].toString().toStdString();
+    const auto root = QDir(input.directory).canonicalPath() + '/';
+    for (const auto& value : saved["artifacts"].toArray()) {
+        const auto artifact = value.toObject(); const auto kind = artifact["kind"].toString();
+        if (artifact["saveStatus"] != "SAVED" || (kind != "ORIGINAL" && kind != "COMPOSITE") ||
+            (options.itemMode == "originals" && kind != "ORIGINAL") || (options.itemMode == "composites" && kind != "COMPOSITE")) continue;
+        const auto path = QFileInfo(QDir(input.directory).filePath(artifact["relativePath"].toString())).canonicalFilePath();
+        if (path.isEmpty() || !path.startsWith(root, Qt::CaseInsensitive)) { error = "Saved report artifact is missing or outside its batch"; return false; }
+        QFile image(path); QCryptographicHash hash(QCryptographicHash::Sha256);
+        if (!image.open(QIODevice::ReadOnly) || !hash.addData(&image) || hash.result().toHex() != artifact["sha256"].toString().toLatin1()) { error = "Saved report artifact changed; not queued"; return false; }
+        core::OutputResult output{kind.toStdString(), path.toStdString(), "SAVED", {}};
+        output.regionId = artifact["regionId"].toString().toStdString(); output.sceneId = artifact["sceneId"].toString().toStdString();
+        output.sceneRevision = artifact["sceneRevision"].toInt(); output.sha256 = artifact["sha256"].toString().toStdString();
+        const auto expectedId = input.batch.batchId + (kind == "ORIGINAL" ? ":original:" + output.regionId : ":scene:" + output.sceneId);
+        if (artifact["artifactId"].toString().toStdString() != expectedId) { error = "Saved artifact identity does not match its batch"; return false; }
+        input.batch.outputs.push_back(std::move(output));
+    }
+    return enqueue(input, options, error);
 }
 void ReportQueue::pump()
 {

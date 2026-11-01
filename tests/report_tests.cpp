@@ -39,6 +39,7 @@ static CaptureOutcome fixture(const QString& directory)
     core::OutputResult output{"ORIGINAL", path.toStdString(), "SAVED", {}}; output.regionId = "r0";
     output.sha256 = QCryptographicHash::hash(file.readAll(), QCryptographicHash::Sha256).toHex().toStdString();
     CaptureOutcome result; result.directory = directory; result.batch.batchId = "synthetic-report-batch";
+    result.batch.request.profile.id = "report-profile"; result.batch.request.profile.name = "Synthetic profile"; result.batch.request.profile.regions.push_back({"r0", "Voltage", {0, 0, 300, 120}, true, 1});
     result.batch.request.issuedAtUtc = "2026-10-31T10:00:00.000Z"; result.batch.outputs.push_back(output); return result;
 }
 static void behavior(ReportQueue& queue, const QString& directory, const QString& kind)
@@ -55,10 +56,35 @@ int main(int argc, char** argv)
         const auto root = temporary.path(); const auto outcome = fixture(root);
         ReportOptions options; options.documentPath = root + "/synthetic.docx";
         QString error; auto job = makeReportJob(outcome, options, "create", error); check(!job.isEmpty(), "make schema job");
+        check(job["items"].toArray()[0].toObject()["caption"].toString().startsWith("#1 Voltage | ") && !job["extensions"].toObject()["heading"].toString().contains("synthetic-report-batch"), "report names are readable rather than internal ids");
         auto corrupt = job; auto items = corrupt["items"].toArray(); auto item = items[0].toObject(); item["caption"] = "changed"; items[0] = item; corrupt["items"] = items;
         check(!validateReportJob(corrupt, error), "immutable instructions fingerprint"); error.clear();
         const auto serialized = root + "/serialized.json"; check(storeReportJob(serialized, job, error), "persist job"); QJsonObject restored;
         check(readReportJob(serialized, restored, error) && restored == job, "exact queue roundtrip");
+        {
+            auto legacy = job; auto legacyItems = legacy["items"].toArray(); auto first = legacyItems[0].toObject();
+            first["caption"] = "Source r0 | 2026-10-31T10:00:00.000Z"; legacyItems[0] = first; legacy["items"] = legacyItems;
+            auto ext = legacy["extensions"].toObject(); ext["heading"] = "AITSnap batch synthetic-report-batch"; legacy["extensions"] = ext;
+            ext["fingerprint"] = reportFingerprint(legacy); legacy["extensions"] = ext;
+            check(storeReportJob(root + "/legacy.json", legacy, error) && readReportJob(root + "/legacy.json", restored, error) && restored == legacy, "legacy immutable instructions remain exactly readable");
+        }
+        {
+            const auto historyRoot = root + "/history"; check(QDir().mkpath(historyRoot), "history directory");
+            const auto historical = fixture(historyRoot); check(writeBatchManifest(historical, error), "saved batch manifest");
+            const auto manifestPath = historyRoot + "/batch.json"; QFile manifest(manifestPath);
+            check(manifest.open(QIODevice::ReadOnly), "read frozen manifest"); const auto before = manifest.readAll(); manifest.close();
+            ReportQueue queue(root + "/history-queue", app.applicationFilePath());
+            check(queue.enqueueHistorical(manifestPath, options, error), "report saved batch without recapture");
+            check(queue.hasBatchForDocument("synthetic-report-batch", options.documentPath), "batch target association");
+            check(!queue.enqueueHistorical(manifestPath, options, error), "same batch target cannot accidentally append twice"); error.clear();
+            check(await([&] { return queue.jobs()[0]["state"] == "COMMITTED"; }), "historical job fake helper ack");
+            check(queue.jobs()[0]["items"].toArray()[0].toObject()["caption"].toString().startsWith("#1 Voltage | "), "historical name from frozen snapshot");
+            check(manifest.open(QIODevice::ReadOnly) && manifest.readAll() == before, "reporting never rewrites saved manifest"); manifest.close();
+            QFile source(QString::fromStdString(historical.batch.outputs[0].path)); check(source.open(QIODevice::Append), "tamper fixture only"); source.write("changed"); source.close();
+            auto other = options; other.documentPath = root + "/tampered.docx";
+            check(!queue.enqueueHistorical(manifestPath, other, error) && error.contains("changed"), "changed historical bytes are rejected before queueing"); error.clear();
+            check(queue.jobs().size() == 1, "tampered batch creates no second job");
+        }
         {
             const auto queueRoot = root + "/commit"; ReportQueue queue(queueRoot, app.applicationFilePath());
             check(queue.enqueue(outcome, options, error), "enqueue independent of Office");

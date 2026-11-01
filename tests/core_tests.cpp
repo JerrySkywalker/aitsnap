@@ -36,6 +36,9 @@ int main()
         check(bool(validateProfile(req.profile)), "duplicate region rejected");
         check(bool(validateVersion(2)) && !validateVersion(1), "migration guard");
         check(safeSegment("../x:y") == ".._x_y" && safeSegment("CON.txt") == "_CON.txt" && safeSegment("..") == "unnamed", "safe segments");
+        std::string longName; for (int i = 0; i < 40; ++i) longName += "\xe4\xb8\xad";
+        const auto shortened = safeSegment(longName);
+        check(shortened.size() == 99 && shortened == longName.substr(0, 99), "long Chinese names truncate only at UTF8 character boundaries");
         check(canTransition(ReportState::Running, ReportState::Uncertain) &&
               !canTransition(ReportState::Committed, ReportState::Running), "report transition guards");
         SceneTemplate scene; scene.id = "s"; scene.name = "Synthetic scene"; scene.layers.push_back({"l", "span"});

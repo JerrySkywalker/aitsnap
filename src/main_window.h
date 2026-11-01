@@ -13,6 +13,7 @@
 class QCheckBox; class QComboBox; class QLabel; class QLineEdit;
 class QMenu; class QSystemTrayIcon; class QTableWidget; class QListWidget;
 class QStackedWidget; class QTabWidget;
+class QPushButton;
 
 namespace aitsnap {
 class ReportQueue;
@@ -30,6 +31,7 @@ public:
     std::function<void(std::shared_ptr<CaptureOutcome>)> captureFinished;
 protected:
     void closeEvent(QCloseEvent*) override;
+    void changeEvent(QEvent*) override;
 private:
     Settings settings_;
     QString configurationPath_;
@@ -63,9 +65,12 @@ private:
     ImagePreview *preview_{}, *sourcePreview_{}, *scenePreview_{}, *batchPreview_{};
     DisplayCanvas *topology_{}, *overviewTopology_{}, *appearanceTopology_{};
     QListWidget *navigation_{}, *sourceCards_{}, *batchCards_{}, *batchImages_{}, *reportCards_{};
+    QListWidget *overviewSources_{}, *overviewOutputs_{};
+    QString overviewOutputKey_;
     QStackedWidget* pages_{};
     QTabWidget* sourceViews_{};
     QString selectedBatchManifest_;
+    QPushButton *appendLast_{}, *appendBatch_{};
     void refreshWorkspace(); void refreshBatches(); void selectBatch(); void selectBatchImage();
     bool busy_{}, paused_{}, configurationBlocked_{}, editingRegions_{}, editingScene_{}, refreshingWorkspace_{};
     void buildUi(); void setupTray(); void loadProfile();

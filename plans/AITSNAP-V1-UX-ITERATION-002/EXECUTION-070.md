@@ -45,3 +45,9 @@ Computer Use 收到物理 Esc 停止信号：**停止桌面输入，未经 Owner
 已恢复原预算，并仅清理精确匹配自己路径/独立数据目录的 PID 25444；没有操作原安装实例。九尺寸母版/ICO、Qt 小/大尺寸载入、四个 PE 目标的实际图标资源及 MSI Icon/Binary 流哈希全部匹配。Qt6/Qt5 外观检查在 offscreen 环境通过；不冒充新的桌面验收。
 
 表夹具现使用独立产品身份及恒假 LaunchCondition，禁止安装；原始松散夹具字节改以 `.testdata` 后缀保存。受保护夹具的 Setup 在中文/空格路径提取后哈希匹配，未调用安装。详见 `docs/architecture/UX070-INSTALLER-BRAND.md`。下一步为合并此源检查点，补齐工作台来源/输出联动与框选内改名，再构建完整候选。
+
+## 集成检查点
+
+PR #25 已合并：源码 `caccff8d6ab9b29f489a9ac6cb347fc059f0978a`，合并 `a68a00e5f5fb8dc5354f663c51f5c0dfae10596b`。当前 `codex/aitsnap-070-integration` 补齐来源/输出互相高亮、应用后保留选择、框选 F2 改名、历史批次加入报告、冻结名称图注及中文标准按钮。Owner 原安装实例未动；仅精确清理自建测试实例 PID 25444。
+
+Qt6/Qt5 offscreen 外观及报告针对性检查通过；10 张组件浅/深色渲染位于 `out/AITSNAP-V1-GOAL-TRAIN-001/UX070-INTEGRATION/components/`，仅是隐藏组件/合成夹具证据。补修小区域标签遮挡；完整源回归和离线包检查继续。桌面控制停止约束不变，安装新装/升级/修复/卸载与完成页启动仍 HOLD，不能用包提取或静态表检查清除。

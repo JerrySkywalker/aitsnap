@@ -4,5 +4,6 @@
   </qresource>
   <qresource prefix="/i18n">
     <file alias="en-US.json">../translations/en-US.json</file>
+    <file alias="zh-CN.json">../translations/zh-CN.json</file>
   </qresource>
 </RCC>

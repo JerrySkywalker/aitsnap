@@ -7,8 +7,11 @@ and associating them with test execution records.
 
 ## Status
 
-The 0.6.0 candidate implements capture, tray/hotkeys, region/scene editors,
-durable Word jobs and read-only execution-context integration. See the
+The 0.7.0 candidate adds a visual workspace, source/display and scene browsers,
+batch/report browsing, readable region identities and filenames, a shared multi-size
+icon, and Settings → Appearance with Chinese/English and system/light/dark modes.
+It retains capture, tray/hotkeys, scene editing, durable Word jobs and read-only
+execution-context integration. See the
 [operator manual](docs/preview/OPERATOR-MANUAL.zh-CN.md) and
 [release notes](docs/preview/RELEASE-NOTES.md). Local Win11 automated evidence
 does not qualify native Win10, native Win7, Word2010 or human acceptance.
@@ -71,7 +74,8 @@ the current platform matrix supersedes their earlier policy statements.
 CMakeLists.txt        Build definition
 CMakePresets.json     Portable Qt 5/6 / MSVC / vcpkg configurations
 src/main.cpp          Application entry point
-src/main_window.*     Minimal window placeholder
+src/main_window.*     Workspace controller
+src/desktop/         Workspace views, editors, appearance
 src/compat/           Small Qt-version adapter
 probes/               Optional compatibility probe, not product functionality
 docs/                 Build instructions and validation history
@@ -82,7 +86,8 @@ docs/                 Build instructions and validation history
 AITSnap source is licensed under [Apache-2.0](LICENSE), using the
 [official Apache license text](https://www.apache.org/licenses/LICENSE-2.0.txt).
 Qt is an external dependency and retains its own license; it is not relicensed
-by this repository. No Qt binaries or other third-party dependencies are bundled.
+by this repository. Repository source excludes Qt binaries. Offline candidate packages include the
+selected Qt runtime, app-local CRT and their license/provenance records.
 
 ## Architecture and development plan
 

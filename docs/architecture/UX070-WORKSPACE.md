@@ -15,3 +15,13 @@ Qt6 x64 targeted appearance/desktop/scene tests pass, including default-source n
 The first gallery observation is persisted privately at `out/AITSNAP-V1-GOAL-TRAIN-001/UX070-NATIVE/gallery-aspect-observed.png`; its observed executable SHA256 was `5f98acf44ac33db9fe47603035ad969ec9fbdfb7cdba5a26a646857622620867` before the final human-readable batch-label refinement. This is development evidence, not final packaged acceptance. The current Owner installation was not terminated or rewritten; only the isolated development process was stopped for rebuilding.
 
 Final package verification, installer Finish launch, native Win10/Win7, Word2010 and Owner visual approval remain separate. This checkpoint does not assert those gates passed.
+
+## Integration completion
+
+Workbench now links source cards, topology and the enumerated next outputs in both directions. Selecting a scene highlights all its visible source regions; selecting a source highlights originals and scenes that use it. Selection survives Apply by stable identity. Small topology labels avoid one another with leader lines. Palette changes refresh generated placeholders without changing image data.
+
+Region overlays accept F2/button rename of the selected region in the edit copy; Finish commits and Cancel retains the original. Scene missing-source choices are localized labels backed by unchanged policy values. New report captions use the frozen region number/name or scene name, while the fingerprint algorithm and existing persisted instructions remain unchanged.
+
+The selected historical batch can be appended to an explicitly chosen report through the existing queue. This adapter reads the saved profile/scene/context snapshots, checks canonical artifact containment, exact artifact identity and SHA256, and never rewrites the batch or recaptures. Duplicate batch/target association opens the existing status instead of creating another job; retry/UNCERTAIN behavior is unchanged. Qt Chinese standard-button translations are shipped for Qt6, with a small embedded fallback for the observed Qt5 kit that lacks QM files.
+
+Hidden/offscreen Qt6/Qt5 component checks cover linked sources/outputs, selection persistence, status contrast after theme changes and Chinese standard buttons. Report tests cover frozen legacy-job roundtrip, historical enqueue/ack using a fake worker, manifest-byte preservation, duplicate prevention and changed-source rejection. Offscreen component PNGs are synthetic-fixture renderings and do not qualify native desktop, installation, Office or Owner acceptance.

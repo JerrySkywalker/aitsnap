@@ -5,6 +5,8 @@
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QLibraryInfo>
+#include <QDir>
 #include <QLocale>
 #include <QPalette>
 #include <QSettings>
@@ -79,6 +81,7 @@ public:
 };
 ColorController* colors{};
 CatalogTranslator* translator{};
+QTranslator* standardTranslator{};
 }
 
 QString effectiveLanguage(const QString& preference)
@@ -90,11 +93,28 @@ void installLanguage(const QString& preference)
 {
     initializeAitsnapResources();
     if (translator) { qApp->removeTranslator(translator); delete translator; translator = nullptr; }
+    if (standardTranslator) { qApp->removeTranslator(standardTranslator); delete standardTranslator; standardTranslator = nullptr; }
     if (effectiveLanguage(preference) == "en-US") {
         translator = new CatalogTranslator; translator->setParent(qApp);
         QFile f(":/i18n/en-US.json");
         if (f.open(QIODevice::ReadOnly)) translator->catalog = QJsonDocument::fromJson(f.readAll()).object();
         qApp->installTranslator(translator);
+    } else {
+        standardTranslator = new QTranslator(qApp);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+        const auto sdkTranslations = QLibraryInfo::path(QLibraryInfo::TranslationsPath);
+#else
+        const auto sdkTranslations = QLibraryInfo::location(QLibraryInfo::TranslationsPath);
+#endif
+        bool loaded = standardTranslator->load("qtbase_zh_CN", QCoreApplication::applicationDirPath() + "/translations");
+        if (!loaded) loaded = standardTranslator->load("qtbase_zh_CN", sdkTranslations);
+        if (loaded) qApp->installTranslator(standardTranslator);
+        else {
+            // The installed Qt5 host kit lacks translations; keep used standard controls coherent.
+            translator = new CatalogTranslator; translator->setParent(qApp); QFile f(":/i18n/zh-CN.json");
+            if (f.open(QIODevice::ReadOnly)) translator->catalog = QJsonDocument::fromJson(f.readAll()).object();
+            qApp->installTranslator(translator);
+        }
     }
 }
 void applyColorMode(const QString& mode)
