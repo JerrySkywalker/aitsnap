@@ -20,6 +20,7 @@
 #include <QFont>
 #include <QIcon>
 #include <QElapsedTimer>
+#include <QEvent>
 #include <windows.h>
 #include <psapi.h>
 
@@ -58,8 +59,20 @@ static bool showExistingWindow(QLockFile& lock)
     return IsWindowVisible(target);
 }
 
+// Opt-in, append-only phase evidence. It records no configuration/document contents.
+class StartupTrace final : public QObject {
+public:
+    QElapsedTimer clock;QFile file;
+    StartupTrace(){clock.start();}
+    bool open(const QString& path){file.setFileName(path);return file.open(QIODevice::WriteOnly|QIODevice::NewOnly);}
+    void stage(const QString& name){if(!file.isOpen())return;const auto bytes=QJsonDocument(QJsonObject{{"stage",name},{"elapsedMs",clock.elapsed()},{"pid",qint64(GetCurrentProcessId())},{"version",AITSNAP_VERSION}}).toJson(QJsonDocument::Compact)+'\n';file.write(bytes);file.flush();}
+    bool eventFilter(QObject* object,QEvent* event) override {
+        if(event->type()==QEvent::Paint){stage("main-first-paint-dispatched");object->removeEventFilter(this);}return false;
+    }
+};
 int main(int argc, char* argv[])
 {
+    StartupTrace trace;
     aitsnap::compat::configureHighDpi();
     QApplication app(argc, argv);
     auto font = app.font(); font.setPointSize(10); app.setFont(font);
@@ -69,9 +82,12 @@ int main(int argc, char* argv[])
     parser.addOption(QCommandLineOption("tray", "Start in tray"));
     parser.addOption(QCommandLineOption("show", "Open the main window, overriding the saved tray preference"));
     parser.addOption(QCommandLineOption("data-dir", "Explicit configuration/evidence directory", "directory"));
+    parser.addOption(QCommandLineOption("startup-trace", "Write startup phase evidence to a new JSONL file (no content capture)", "new-jsonl"));
     parser.addOption(QCommandLineOption("smoke-report", "Hidden event-loop/dependency smoke; create a new JSON receipt", "new-json"));
     parser.addOption(QCommandLineOption("smoke-idle-ms", "Optional idle interval inside hidden smoke (1..60000 ms)", "milliseconds", "1"));
     parser.process(app);
+    if(parser.isSet("startup-trace") && !trace.open(parser.value("startup-trace")))return 4;
+    trace.stage("application-ready-arguments-parsed");
     bool durationOk{}; const auto idleMs = parser.value("smoke-idle-ms").toInt(&durationOk);
     if (!durationOk || idleMs < 1 || idleMs > 60000) return 2;
     const auto configuration = parser.isSet("data-dir") ? QDir(parser.value("data-dir")).absoluteFilePath("settings-v1.json") : aitsnap::settingsPath();
@@ -79,20 +95,26 @@ int main(int argc, char* argv[])
     aitsnap::Settings preferences = aitsnap::defaultSettings(); QString preferencesError;
     if (QFile::exists(configuration)) aitsnap::loadSettings(configuration, preferences, preferencesError);
     aitsnap::installLanguage(preferences.language); aitsnap::applyColorMode(preferences.colorMode);
+    trace.stage(preferencesError.isEmpty()?"preferences-loaded":"preferences-invalid-preserved");
     QApplication::setWindowIcon(QIcon(":/brand/aitsnap.ico"));
     QLockFile lock(QFileInfo(configuration).absolutePath() + "/desktop.lock");
     lock.setStaleLockTime(0);
     if (!lock.tryLock(0)) {
+        trace.stage("existing-instance-lock-held");
         if (parser.isSet("smoke-report")) return 2;
         if ((!parser.isSet("tray") || parser.isSet("show")) && showExistingWindow(lock)) return 0;
         if (parser.isSet("tray")) return 0;
         QMessageBox::information(nullptr, QStringLiteral("AITSnap"), aitsnap::uiText("AITSnap 已在运行。请从通知区域打开现有窗口。"));
         return 2;
     }
+    trace.stage("single-instance-lock-acquired");
     QApplication::setQuitOnLastWindowClosed(false);
 
-    aitsnap::MainWindow window(nullptr, configuration, parser.isSet("smoke-report") ? QStringLiteral("-") : QString{});
+    aitsnap::MainWindow window(nullptr, configuration, parser.isSet("smoke-report") ? QStringLiteral("-") : QString{}, [&trace](const QString& stage){trace.stage(stage);});
+    window.installEventFilter(&trace);
     window.winId(); // Keep a native main window available for activation when initially hidden in the tray.
+    trace.stage("main-native-handle-ready");
+    QTimer::singleShot(0,&app,[&trace]{trace.stage("event-loop-first-turn");});
     quint64 cpuBefore{}; QElapsedTimer idleClock;
     if (parser.isSet("smoke-report")) {
         QTimer::singleShot(250, &app, [&] { cpuBefore = processCpuTime(); idleClock.start(); });
@@ -106,5 +128,6 @@ int main(int argc, char* argv[])
             const bool saved = file.open(QIODevice::WriteOnly | QIODevice::NewOnly) && file.write(bytes) == bytes.size(); file.close(); app.exit(saved ? 0 : 4);
         });
     } else if (parser.isSet("show") || (!window.startInTray() && !parser.isSet("tray"))) window.show();
-    return app.exec();
+    trace.stage("event-loop-enter");
+    const auto result=app.exec();trace.stage("event-loop-exit");return result;
 }

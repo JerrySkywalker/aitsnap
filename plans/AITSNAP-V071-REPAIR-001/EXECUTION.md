@@ -67,3 +67,16 @@ Qt6/Qt5 report-queue、appearance、management各3/3 PASS；新增探针后重�
 真实现代Word16.0合成实验：独立native/8b088216-e0f1-4195-bac6-fdf216e05aa1，常规ReportQueue/aitsnap-word-bridge先create，队列对象重启后append，同一中文空格截图根目录报告。两个job COMMITTED、DOCX ZIP回读drawingCount2/committedMarkers2、source SHA不变；DOCX SHA9483121c62caee0be090df420cc882e18e1fbb01bbb38118b4225cc09dddc745。没有桌面输入/现有文档实验，不构成Word2010、Win10/Win7或人工版式验收。原始证据UX071-REPORT/{qt6,qt5}-final-tests.log、*-probe-final-tests.log、native.stdout.log及该实验receipt.json/docx-readback.json。
 
 完整0.7.1包尚未生成，W02真实Finish首次启动仍HOLD；下一步完成同会话源审阅/正常PR，再继续W02源取证与W07版本/包集成。原预算持续计费，不延长120h。
+
+## PR31合并与W02启动取证边界
+
+PR31源码243b00d42505517faa052c4444291cac393e6360，merge 4b4d7a2da741f7269b5e59ed987ffd46ecfcdf1d。W06软件及本机Word16合成PASS，其余原生资格保持HOLD。
+
+W02源核对：ExitDlg使用MsiLaunchApp [#filekey] --show，条件含LAUNCH_AITSNAP和非卸载，启动不在InstallExecuteSequence；与Microsoft官方MsiLaunchApp参数定义一致（https://learn.microsoft.com/en-us/windows/win32/msi/msilaunchapp-controlevent）。不能据此声称实际Finish、中文路径或首帧已验证，也不能直接认定这行是白屏根因。原生桌面输入已被Owner停止，msiexec控制限制仍生效，无替代执行绕过。
+
+新增显式--startup-trace NEW.jsonl选项：仅新文件，逐阶段flush，不记录配置/文档正文。记录QApplication之后的参数解析、配置、实例锁、主窗构造分段、原生句柄、事件循环与首次Paint分发。首个记录前QApplication失败不在其覆盖内；Paint分发不等于屏幕像素或人工响应。默认运行不创建诊断文件、不改变启动行为。
+
+独立offscreen最小新配置实测本轮进程PID49528：构造29→65ms、首事件循环69ms、hidden smoke退出0；没有show/first-paint证据，白屏未复现，不能关闭P0。完整保存生命周期在构建全部结束后重跑PASS（lifecycle-final.log），较早构建尚运行时的旧lifecycle二进制结果不计该源码资格。下一步完成Qt5启动smoke，随后W07集成升版/离线候选包；W02保留根因UNPROVEN及原生HOLD。
+
+
+追加W02只读隔离检查：从默认AppLocalData的Owner配置复制到独立目录，只复制settings、不复制原Word作业。Qt6 offscreen复制配置smoke exit0、原配置SHA前后一致；构造33ms/首loop68ms。Qt5最小配置offscreen exit0，构造71ms/首loop135ms。三组日志都明确没有first-paint记录，phase-readback.json未伪造首帧。原机文档/原队列和已装应用未作实验，实际Finish白屏仍根因UNPROVEN、验收HOLD。完成现有安全源调查后进入W07候选集成，不能把诊断功能当白屏修复。
