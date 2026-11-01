@@ -90,3 +90,9 @@ PR32源码94f8034888bbf881e538cfd58945962fc2303458，merge 3c52c830fe755e29acca8
 最终源审阅发现删除当前配置后动态“当前配置”规则可能转到缺源备用配置。新增定向回归修复前exit1，修复后检查：有效备用保留规则，无来源空容器及缺少场景源的备用停用规则。修正f50172c4e1b349ad5ca68d150aba9624a43feb99，未改历史身份。两路完整受影响目标已重建exit0；Qt6/Qt5 core/context/appearance/scene-lifecycle/management/scene/report-queue/settings-commands各8/8 PASS，localization369及Python构建脚本语法/diff检查PASS。PE读取aitsnap显示FileVersion/ProductVersion均0.7.1。
 
 证据UX071-STARTUP/{qt6,qt5}-071-final-{build,tests}.log及dynamic-rule-before.log。冻结后只做候选包构建、文件回读、隔离隐藏smoke与回执，不重复无变化CI。真实桌面/安装Finish、OS/旧Word和人工边界继续HOLD，尚不能正式声称0.7.1全验收完成。
+
+## 完整候选交付检查点
+
+PR33 merge080d62e66b41e918e20c4a68bfc2f9d612b776ad为干净打包源码。Setup/MSI/ZIP已生成、版本0.7.1，完整哈希/PR/里程碑/预算/阻断见DELIVERY-RECEIPT.md。124文件MSI CAB、Setup提取MSI、123文件ZIP读回通过；普通/中文空格路径offscreen包内Qt模块通过；实际包内WordBridge在Unicode路径对独立合成Word16报告create→重启→append及DOCX2图2标记回读通过。原生白屏根因未取得，不标完成。
+
+预算快照累计14.1133h、剩105.8867h，原120h不续期。已审计独立路线耗尽，最终停在原生/Owner HOLD，保留原安装、原配置和所有历史证据。回执PR只改文档，不改变安装候选来源SHA。
