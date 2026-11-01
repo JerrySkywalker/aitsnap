@@ -39,6 +39,7 @@
 #include <QMap>
 #include <QPainter>
 #include <QPointer>
+#include <QPlainTextEdit>
 #include <QPushButton>
 #include <QRunnable>
 #include <QSplitter>
@@ -199,6 +200,7 @@ bool MainWindow::collectSettings(Settings& c, QString& e)
     for (int i = 0; i < scenes_->count(); ++i) if (scenes_->item(i)->checkState() == Qt::Checked) c.selectedSceneIds.append(scenes_->item(i)->data(Qt::UserRole).toString());
     p.outputMode = c.outputMode.toStdString(); p.sceneIds.clear(); for (const auto& id : c.selectedSceneIds) p.sceneIds.push_back(id.toStdString()); p.clipboardSelection = c.clipboardRegion.toStdString();
     c.report = selectedReportOptions();
+    if(c.report.enabled && !validateReportText(c.report.text,e))return false;
     core::CaptureRequest sample; sample.issuedAtUtc = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs).toStdString(); sample.profile = p;
     core::Region example{"", uiText("区域").toStdString(), {0, 0, 1, 1}, true, 1};
     expandFilename(c, sample, p.regions.empty() ? example : p.regions.front(), e); return e.isEmpty();
@@ -337,7 +339,8 @@ void MainWindow::changeEvent(QEvent* event)
 ReportOptions MainWindow::selectedReportOptions() const
 {
     ReportOptions options; options.enabled=reportEnabled_->isChecked();options.targetMode=reportTargetMode_->currentData().toString();
-    options.documentPath=reportPath_->text().trimmed();options.itemMode=reportMode_->currentData().toString();options.layout=reportLayout_->currentData().toString();return options;
+    options.documentPath=reportPath_->text().trimmed();options.itemMode=reportMode_->currentData().toString();options.layout=reportLayout_->currentData().toString();
+    if(reportTextPreset_){options.text.preset=reportTextPreset_->currentData().toString();options.text.titleEnabled=reportTextEnabled_[0]->isChecked();options.text.captionEnabled=reportTextEnabled_[1]->isChecked();options.text.contextEnabled=reportTextEnabled_[2]->isChecked();options.text.titleTemplate=reportTextTemplates_[0]->toPlainText();options.text.captionTemplate=reportTextTemplates_[1]->toPlainText();options.text.contextTemplate=reportTextTemplates_[2]->toPlainText();}return options;
 }
 QString MainWindow::reportTarget(const QString& batchDirectory,const QString& issuedAtUtc,QString* diagnostic) const
 {

@@ -72,6 +72,7 @@ add_library(aitsnap-adapters STATIC
     src/adapters/hotkeys.cpp
     src/adapters/capture_files.cpp
     src/adapters/report_queue.cpp
+    src/adapters/report_text.cpp
     src/adapters/context_store.cpp
     src/adapters/host_journal.cpp
     src/adapters/local_pipe.cpp
@@ -90,7 +91,7 @@ add_executable(aitsnap-word-bridge src/adapters/word_bridge_main.cpp)
 target_link_libraries(aitsnap-word-bridge PRIVATE aitsnap-adapters ole32 oleaut32 psapi)
 add_executable(aitsnap-cli src/cli_main.cpp)
 target_link_libraries(aitsnap-cli PRIVATE aitsnap-adapters)
-set(aitsnap_ui_sources src/main_window.cpp src/desktop/host_controller.cpp src/desktop/workspace_ui.cpp src/desktop/workspace_browser.cpp src/desktop/workspace_commands.cpp)
+set(aitsnap_ui_sources src/main_window.cpp src/desktop/host_controller.cpp src/desktop/workspace_ui.cpp src/desktop/workspace_browser.cpp src/desktop/workspace_commands.cpp src/desktop/report_text_ui.cpp)
 add_executable(aitsnap WIN32
     src/main.cpp
     ${aitsnap_ui_sources}
@@ -124,6 +125,10 @@ endif()
 target_link_libraries(aitsnap PRIVATE aitsnap-adapters psapi)
 set(aitsnap_targets aitsnap aitsnap-adapters aitsnap-word-bridge aitsnap-cli)
 if(BUILD_TESTING)
+    add_executable(aitsnap-report-text-tests tests/report_text_tests.cpp)
+    target_link_libraries(aitsnap-report-text-tests PRIVATE aitsnap-adapters)
+    add_test(NAME report-text COMMAND aitsnap-report-text-tests)
+    list(APPEND aitsnap_targets aitsnap-report-text-tests)
     add_executable(aitsnap-hotkey-tests tests/hotkey_tests.cpp)
     target_link_libraries(aitsnap-hotkey-tests PRIVATE aitsnap-adapters)
     add_test(NAME dual-hotkeys COMMAND aitsnap-hotkey-tests)

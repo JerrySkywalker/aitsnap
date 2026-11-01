@@ -22,8 +22,10 @@ static QString canonicalReportPath(const QString& path)
 QString reportFingerprint(const QJsonObject& job)
 {
     const auto ext = job["extensions"].toObject();
-    const QJsonObject stable{{"jobId", job["jobId"]}, {"batchId", job["batchId"]}, {"target", job["target"]},
+    QJsonObject stable{{"jobId", job["jobId"]}, {"batchId", job["batchId"]}, {"target", job["target"]},
         {"items", job["items"]}, {"sources", ext["sources"]}, {"layout", ext["layout"]}, {"heading", ext["heading"]}};
+    // Legacy jobs have no textPolicy: their byte-for-byte fingerprint input is unchanged.
+    if(ext.contains("textPolicy"))stable["textPolicy"]=ext["textPolicy"];
     return QString::fromLatin1(QCryptographicHash::hash(QJsonDocument(stable).toJson(QJsonDocument::Compact), QCryptographicHash::Sha256).toHex());
 }
 bool validateReportJob(const QJsonObject& job, QString& error)
@@ -40,6 +42,10 @@ bool validateReportJob(const QJsonObject& job, QString& error)
         error = "Invalid ReportJob version, identity, state, target or layout"; return false;
     }
     const auto items = job["items"].toArray(), sources = ext["sources"].toArray();
+    if(ext.contains("textPolicy")){
+        const auto policy=ext["textPolicy"].toObject();
+        if(policy["version"].toInt()!=1 || !policy["captions"].isBool()){error="Invalid immutable report text policy";return false;}
+    }
     if (items.isEmpty() || items.size() > 1000 || items.size() != sources.size()) { error = "Report requires 1..1000 ordered source items"; return false; }
     std::set<QString> ids;
     for (int i = 0; i < items.size(); ++i) {
@@ -69,6 +75,7 @@ bool storeReportJob(const QString& path, const QJsonObject& job, QString& error)
 }
 QJsonObject makeReportJob(const CaptureOutcome& outcome, const ReportOptions& options, const QString& mode, QString& error)
 {
+    if(!validateReportText(options.text,error))return {};
     const QFileInfo target(options.documentPath); const auto parent = target.absoluteDir().canonicalPath();
     if (parent.isEmpty() || target.suffix().compare("docx", Qt::CaseInsensitive) ||
         (options.itemMode != "both" && options.itemMode != "originals" && options.itemMode != "composites")) { error = "Select a .docx target in an existing directory and a valid item mode"; return {}; }
@@ -79,23 +86,28 @@ QJsonObject makeReportJob(const CaptureOutcome& outcome, const ReportOptions& op
         if (output.error || output.status != "SAVED" || (!original && !composite) ||
             (original && options.itemMode == "composites") || (composite && options.itemMode == "originals")) continue;
         const auto artifact = QString::fromStdString(outcome.batch.batchId + (original ? ":original:" + output.regionId : ":scene:" + output.sceneId));
-        std::string label = original ? "Original" : "Composite";
+        std::string label = original ? "Original" : "Composite",name=label;int number=0;
         if (original) {
             const auto& regions = outcome.batch.request.profile.regions;
             const auto region = std::find_if(regions.begin(), regions.end(), [&](const auto& r) { return r.id == output.regionId; });
-            if (region != regions.end()) label = (region->displayNumber > 0 ? "#" + std::to_string(region->displayNumber) + " " : "") + region->name;
+            if (region != regions.end()){name=region->name;number=region->displayNumber;label = (region->displayNumber > 0 ? "#" + std::to_string(region->displayNumber) + " " : "") + region->name;}
         } else {
             const auto scene = std::find_if(outcome.sceneSnapshots.begin(), outcome.sceneSnapshots.end(), [&](const auto& s) { return s.id == output.sceneId; });
             if (scene != outcome.sceneSnapshots.end()) label = scene->name;
+            name=label;
             label += " r" + std::to_string(output.sceneRevision);
         }
-        items.append(QJsonObject{{"artifactId", artifact}, {"caption", QString::fromStdString(label) + " | " + QString::fromStdString(outcome.batch.request.issuedAtUtc)},
+        auto values=reportTextValues(outcome.batch.request);values["name"]=QString::fromStdString(name);values["label"]=QString::fromStdString(label);values["number"]=number>0?QString::number(number):QString{};values["kind"]=original?"ORIGINAL":"COMPOSITE";values["scene_revision"]=composite?QString::number(output.sceneRevision):QString{};
+        const auto caption=options.text.captionEnabled?expandReportText(options.text.captionTemplate,values,error):QString{};if(!error.isEmpty())return {};
+        items.append(QJsonObject{{"artifactId", artifact}, {"caption",caption},
             {"renderAs", options.layout == "table" ? "table_cell" : "inline_image"}});
         sources.append(QJsonObject{{"artifactId", artifact}, {"path", QFileInfo(QString::fromStdString(output.path)).canonicalFilePath()}, {"sha256", QString::fromStdString(output.sha256)}});
     }
-    const auto& context = outcome.batch.request.context;
+    const auto values=reportTextValues(outcome.batch.request);QStringList headingParts;
+    if(options.text.titleEnabled){const auto text=expandReportText(options.text.titleTemplate,values,error);if(!error.isEmpty())return {};if(!text.isEmpty())headingParts<<text;}
+    if(options.text.contextEnabled){const auto text=expandReportText(options.text.contextTemplate,values,error);if(!error.isEmpty())return {};if(!text.isEmpty())headingParts<<text;}
     QJsonObject ext{{"sources", sources}, {"layout", options.layout}, {"batchManifest", QDir(outcome.directory).filePath("batch.json")},
-        {"heading", QString::fromStdString("AITSnap " + outcome.batch.request.profile.name + " | " + outcome.batch.request.issuedAtUtc + " | test=" + context.testId + " device=" + context.deviceId + " station=" + context.stationId + " operator=" + context.operatorId + " run=" + context.sequenceRunId + " step=" + context.stepExecutionId + " command=" + context.commandInvocationId + " event=" + context.eventId)}};
+        {"heading",headingParts.join(" | ")},{"textPolicy",QJsonObject{{"version",1},{"captions",options.text.captionEnabled}}}};
     QJsonObject job{{"schemaVersion", 1}, {"jobId", QUuid::createUuid().toString(QUuid::WithoutBraces)}, {"batchId", QString::fromStdString(outcome.batch.batchId)},
         {"createdAtUtc", utc()}, {"updatedAtUtc", utc()}, {"state", "QUEUED"}, {"attemptCount", 0},
         {"target", QJsonObject{{"documentPath", path}, {"mode", mode}}}, {"items", items}, {"extensions", ext}};
@@ -229,6 +241,7 @@ bool ReportQueue::enqueueHistorical(const QString& manifestPath, const ReportOpt
     input.batch.batchId = saved["batchId"].toString().toStdString(); input.batch.request.requestId = saved["requestId"].toString().toStdString();
     input.batch.request.issuedAtUtc = saved["createdAtUtc"].toString().toStdString();
     const auto ext = saved["extensions"].toObject();
+    input.batch.request.captureSequence=qint64(ext["captureSequence"].toDouble());
     if (!profileFromJson(ext["profileSnapshot"].toObject(), input.batch.request.profile, error)) return false;
     if (saved["profileId"].toString().toStdString() != input.batch.request.profile.id || saved["profileRevision"].toInt() != input.batch.request.profile.revision) { error = "Saved batch profile snapshot mismatch"; return false; }
     for (const auto& value : ext["sceneSnapshots"].toArray()) {

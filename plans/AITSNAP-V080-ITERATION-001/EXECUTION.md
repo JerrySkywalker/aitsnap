@@ -29,3 +29,15 @@ W01源 `d4c5b4a60db7b8625b1e3dcf4410360718944cc3` 已经PR40正常合并，merge
 Qt6界面/双热键2/2，Qt5界面1/1通过。两路Win11原生四屏五合成来源验证通过：三动作新采集副作用、序号、无copy-only Word任务；迷你窗覆盖测试来源时，触发后已隐藏，成图指定像素仍为已知红色，完成后恢复；暂停/恢复及返回真实主窗通过。Qt5仅为宿主兼容，不是Win7。
 
 一次测试编译因对未声明Q_OBJECT的子类调用Qt6 findChild模板失败，改为查找QWidget再dynamic_cast；保留失败日志。第一次原生测试与appearance并行占相同全局键，首批超时；改为串行后Qt6/Qt5均通过，未把此并发测试冲突隐藏。原始记录 `UX080/w03-*`。Owner物理输入、全部DPI/断屏视觉验收仍独立HOLD。
+
+W03源 `a4175360423d2da965fb02ab061f75182ad29f70` 已经PR41正常合并，merge `adaaa4b03275debc1b9dac6224c7111ab8a068d6`。
+
+## W02 — Word 文字配置
+
+标题/说明/上下文独立开关及固定字符串/字段模板，原格式/仅名称/名称时间/自定义/只写图片预设；无需Office的样例预览。模板支持字面花括号、换行、缺值为空和有限字段；捕获序号随批次扩展冻结并可历史读取，旧无序号批次显示空值。
+
+新任务冻结解析后的文字及textPolicy，helper在关闭文字时跳过InsertAfter而非写空串段落。旧无textPolicy任务保留原fingerprint输入与执行语义，新policy纳入指纹；隐藏提交标记/源哈希、FIFO/UNCERTAIN和按日路由未移除。旧设置默认保留原文字格式。
+
+Qt6产品/helper与Qt5宿主helper及相关测试编译通过；两路各 report-text/report-queue/appearance 3/3通过。新增测试验证转义/中文/固定字符串、范围不适用字段拒绝、空值、无递归替换、解析快照、纯图指令、旧指纹算法、policy篡改拒绝、来源不变、UI预设/自定义及设置持久化。原始日志 `UX080/w02-*`。Qt5最初因QString空初始化赋值歧义失败，改显式QString后通过，失败日志保留。
+
+SOURCE/HOST_COMPONENT=PASS；**新版真实Word布局/追加证明仍NOT_RUN/TOOL_POLICY_HOLD**：未重放先前被自动审批拒绝的包内Word探针，也未换入口绕过。旧版真实现代Word证据保留其范围，不能替代本次新文字分支。Word2010及Owner文档视觉仍HOLD，继续W04/W05独立工作。

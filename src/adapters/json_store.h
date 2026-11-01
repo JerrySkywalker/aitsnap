@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 #include "core/domain.h"
+#include "report_text.h"
 #include <QImage>
 #include <QJsonObject>
 #include <QString>
@@ -11,6 +12,7 @@ struct ReportOptions {
     bool enabled{};
     QString documentPath, itemMode{"both"}, layout{"inline"};
     QString targetMode{"specified"}; // Adapter callers retain explicit-target behavior.
+    ReportTextSpec text;
 };
 struct Settings {
     std::vector<core::CaptureProfile> profiles;
