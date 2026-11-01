@@ -4,6 +4,7 @@
 #include "compat/qt_widgets_compat.h"
 #include "desktop/scene_editor.h"
 #include <QApplication>
+#include <QAction>
 #include <QCryptographicHash>
 #include <QDateTime>
 #include <QDoubleSpinBox>
@@ -132,6 +133,10 @@ int main(int argc, char** argv)
         editor.findChild<QPushButton*>("duplicateLayer")->click(); const auto duplicated = editor.sceneTemplate();
         check(duplicated.layers.size() == 3 && duplicated.layers.back().sourceRegionId == "r0" && duplicated.layers.back().groupId.empty(), "source reuse without shared group mutation");
         editor.findChild<QPushButton*>("undoScene")->click(); check(editor.sceneTemplate().layers.size() == 2, "undo duplicate");
+        const auto beforeDelete = renderScene(editor.sceneTemplate(), historical).image;
+        const auto layerCount = editor.sceneTemplate().layers.size();layerList->selectAll();editor.findChild<QAction*>("layer.delete")->trigger();
+        check(editor.sceneTemplate().layers.empty(), "context action deletes all selected layers");
+        editor.findChild<QPushButton*>("undoScene")->click();check(editor.sceneTemplate().layers.size()==layerCount && renderScene(editor.sceneTemplate(),historical).image==beforeDelete,"undo batch deletion restores rendered scene");
         check(editor.exportDerived(QDir(outcome.directory).filePath("widget-derived.png"), error) && QFile::exists(QDir(outcome.directory).filePath("widget-derived.png.derivation.json")), "editor export with derivation provenance");
         for (const auto& output : outcome.batch.outputs) if (output.kind == "ORIGINAL") check(hash(QString::fromStdString(output.path)).toStdString() == output.sha256, "original SHA unchanged after two scenes and rerender");
         const auto settingsFile = QDir(directory).filePath("scene-settings.json"); check(saveSettings(settingsFile, settings, error), "settings v2 save"); Settings loaded;

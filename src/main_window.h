@@ -85,6 +85,11 @@ private:
     void showContextStore();
     QString startCapture(int mode, const QJsonObject& options = {}, const QJsonObject& eventSnapshot = {});
     void startHost(QString pipeName); void editEventRules();
+    enum class ObjectKind { Region, Scene, Profile, Output };
+    bool managingObjects_{}, objectMenuOpen_{};
+    void setupObjectActions(); void updateObjectActions(); void showProfileManager();
+    void objectAction(ObjectKind, const QString& operation, const QStringList& ids = {});
+    bool commitObjects(const Settings&, const QJsonArray&);
     QJsonObject hostRequest(const QString&, const QJsonObject&, bool preflight);
     bool validateHostOptions(const QJsonObject&, QString& error) const;
     bool validateEventRule(const QJsonObject&, QString& error) const;

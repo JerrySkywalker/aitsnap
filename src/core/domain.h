@@ -98,6 +98,8 @@ std::string toString(ReportState state);
 bool canTransition(ReportState from, ReportState to);
 Error validateVersion(int version);
 Error validateProfile(const CaptureProfile& profile);
+// Structural validation for editable/persisted profiles, including empty drafts.
+Error validateProfileDefinition(const CaptureProfile& profile);
 Error validateScene(const SceneTemplate& scene);
 std::string safeSegment(const std::string& value);
 bool sameTopology(std::vector<Display> a, std::vector<Display> b);

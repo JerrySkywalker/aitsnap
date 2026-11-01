@@ -76,6 +76,7 @@ MainWindow::MainWindow(QWidget* parent, QString path, QString pipeName) : QMainW
         }
         core::numberRegions(p); settings_.profiles.push_back(p);
     }
+    if (QFile::exists(configurationPath_ + ".before-management.json")) loadError = "Previous management operation needs recovery: " + configurationPath_ + ".before-management.json";
     configurationBlocked_ = !loadError.isEmpty();
     buildUi(); setupTray(); loadProfile(); qApp->installNativeEventFilter(&hotkeys_);
     reportQueue_ = new ReportQueue(QFileInfo(configurationPath_).absolutePath() + "/report-jobs", QCoreApplication::applicationDirPath() + "/aitsnap-word-bridge.exe", this);
@@ -172,7 +173,7 @@ bool MainWindow::collectSettings(Settings& c, QString& e)
         for (int i = 0; i < 4; ++i) { bool ok{}; const auto* item = regions_->item(row, i + 2); v[i] = item ? item->text().toInt(&ok) : 0; if (!ok) { e = aitsnap::uiText("第 %1 行需要整数物理坐标和尺寸").arg(row + 1); return false; } }
         const auto* name = regions_->item(row, 1); p.regions.push_back({name->data(Qt::UserRole).toString().toStdString(), name->text().trimmed().toStdString(), {v[0], v[1], v[2], v[3]}, regions_->item(row, 0)->checkState() == Qt::Checked, name->data(Qt::UserRole + 1).toInt()});
     }
-    if (auto err = core::validateProfile(p); err) { e = qs(err.message); return false; }
+    if (auto err = core::validateProfileDefinition(p); err) { e = qs(err.message); return false; }
     ++p.revision; c.outputDirectory = QDir(directory_->text().trimmed()).absolutePath(); c.format = format_->currentText(); c.filenameTemplate = filename_->text();
     c.saveHotkey = saveKey_->text(); c.copyHotkey = copyKey_->text(); c.bothHotkey = bothKey_->text(); c.clipboardRegion = clipboard_->currentData().toString();
     c.testId = testId_->text(); c.device = device_->text(); c.station = station_->text(); c.operatorName = operator_->text(); c.startInTray = startTray_->isChecked();
@@ -183,11 +184,13 @@ bool MainWindow::collectSettings(Settings& c, QString& e)
     c.report.enabled = reportEnabled_->isChecked(); c.report.documentPath = reportPath_->text().trimmed(); c.report.itemMode = reportMode_->currentData().toString(); c.report.layout = reportLayout_->currentData().toString();
     if (c.report.enabled && (!QDir::isAbsolutePath(c.report.documentPath) || QFileInfo(c.report.documentPath).suffix().compare("docx", Qt::CaseInsensitive))) { e = aitsnap::uiText("自动报告需要明确的 DOCX 完整路径。"); return false; }
     core::CaptureRequest sample; sample.issuedAtUtc = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs).toStdString(); sample.profile = p;
-    expandFilename(c, sample, p.regions.front(), e); return e.isEmpty();
+    core::Region example{"", uiText("区域").toStdString(), {0, 0, 1, 1}, true, 1};
+    expandFilename(c, sample, p.regions.empty() ? example : p.regions.front(), e); return e.isEmpty();
 }
 bool MainWindow::applySettings()
 {
     Settings c = settings_; QString e;
+    if (QFile::exists(configurationPath_ + ".before-management.json")) { setStatus("Previous management operation needs recovery: " + configurationPath_ + ".before-management.json", true); return false; }
     if (configurationBlocked_ && QFile::exists(configurationPath_)) {
         const auto backup = configurationPath_ + ".preserved-" + QString::fromStdString(id());
         if (!QFile::copy(configurationPath_, backup)) { setStatus(aitsnap::uiText("无法保留旧配置，配置未改写。"), true); return false; }
@@ -209,6 +212,7 @@ void MainWindow::triggerCapture(int mode)
 }
 QString MainWindow::startCapture(int mode, const QJsonObject& options, const QJsonObject& eventSnapshot)
 {
+    if (managingObjects_) { setStatus(uiText("正在修改配置，请稍候。"), true); return {}; }
     if (editingScene_) { setStatus(aitsnap::uiText("拼图编辑中，截图热键暂停；保存或取消后恢复。"), true); return {}; }
     if (editingRegions_) { setStatus(aitsnap::uiText("区域编辑中，截图未接受；请完成或取消框选。"), true); return {}; }
     if (configurationBlocked_) { setStatus(aitsnap::uiText("原配置无法读取。核对并应用配置后才能截图。"), true); return {}; }
@@ -220,6 +224,9 @@ QString MainWindow::startCapture(int mode, const QJsonObject& options, const QJs
         if (found == snapshot.profiles.end()) return {}; snapshot.activeProfile = int(found - snapshot.profiles.begin()); snapshot.outputMode = qs(found->outputMode); snapshot.clipboardRegion = qs(found->clipboardSelection); snapshot.selectedSceneIds.clear(); for (const auto& scene : found->sceneIds) snapshot.selectedSceneIds.append(qs(scene));
     }
     if (options.contains("sceneIds")) { snapshot.selectedSceneIds.clear(); for (const auto& scene : options["sceneIds"].toArray()) snapshot.selectedSceneIds.append(scene.toString()); snapshot.outputMode = snapshot.selectedSceneIds.empty() ? "originals" : "both"; if (!snapshot.selectedSceneIds.empty()) snapshot.clipboardRegion = "scene:" + snapshot.selectedSceneIds.front(); else snapshot.clipboardRegion.clear(); }
+    if (auto error = core::validateProfile(snapshot.profiles[std::size_t(snapshot.activeProfile)]); error) {
+        setStatus(error.code == "NO_REGIONS" ? uiText("请先添加并启用源区域。") : qs(error.message), true); return {};
+    }
     auto persistent = settings_; persistent.sequence = snapshot.sequence;
     if (!saveSettings(configurationPath_, persistent, e)) { setStatus(aitsnap::uiText("序号未持久化：") + e, true); return {}; }
     settings_.sequence = snapshot.sequence; core::CaptureRequest request;
@@ -336,6 +343,7 @@ void MainWindow::showReportQueue()
 }
 void MainWindow::rebuildScenes()
 {
+    const QSignalBlocker block(scenes_);
     const auto current = scenes_->currentItem() ? scenes_->currentItem()->data(Qt::UserRole).toString() : QString{};
     scenes_->clear(); const auto& profile = settings_.profiles[std::size_t(settings_.activeProfile)];
     for (const auto& scene : settings_.scenes) {
