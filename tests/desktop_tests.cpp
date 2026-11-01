@@ -115,6 +115,12 @@ int main(int argc, char** argv)
             const auto evidence = app.arguments().indexOf("--evidence");
             if (evidence >= 0 && evidence + 1 < app.arguments().size()) { settings.outputDirectory = app.arguments()[evidence + 1]; check(saveSettings(path, settings, error), "evidence config"); }
             if(app.arguments().contains("--live")){settings.scenes={core::presetScene(profile,"live-scene","实时拼图",160,100,core::LayoutPreset::Grid)};check(saveSettings(path,settings,error),"live scene fixture");}
+            if(app.arguments().contains("--review-fixture")){
+                for(auto window:windows){ShowWindow(window,SW_SHOWNOACTIVATE);UpdateWindow(window);}DwmFlush();
+                const auto data=QDir(settings.outputDirectory).absolutePath();settings.outputDirectory=data+"/captures";settings.profiles={profile};settings.scenes={core::presetScene(profile,"review-scene","拼图体验",1600,900,core::LayoutPreset::Grid)};settings.selectedSceneIds=QStringList{"review-scene"};settings.outputMode="both";
+                settings.saveHotkey="Ctrl+Alt+Shift+F9";settings.copyHotkey="Ctrl+Alt+Shift+F10";settings.bothHotkey="Ctrl+Alt+Shift+F11";settings.saveHotkeyAlternate="F9";settings.copyHotkeyAlternate="F10";settings.bothHotkeyAlternate="F11";settings.language="zh-CN";settings.colorMode="dark";
+                check(saveSettings(data+"/settings-v1.json",settings,error),"review fixture settings");std::cout<<"REVIEW_FIXTURE_READY "<<data.toStdString()<<std::endl;QTimer::singleShot(900000,&app,&QCoreApplication::quit);const auto code=app.exec();for(auto window:windows)DestroyWindow(window);return code;
+            }
             MainWindow host(nullptr, path);int extraCaptures=0;
             if(app.arguments().contains("--live")){
                 auto settle=[](int ms){QEventLoop loop;QTimer::singleShot(ms,&loop,&QEventLoop::quit);loop.exec();};
@@ -123,6 +129,7 @@ int main(int argc, char** argv)
                 check(!QDir(settings.outputDirectory).exists() || QDir(settings.outputDirectory).entryList({"*Synthetic*"},QDir::Dirs|QDir::NoDotAndDotDot).empty(),"live frames create no batch directory");
                 check(QDir(temp.filePath("report-jobs")).entryList({"*.json"},QDir::Files).empty(),"live frames enqueue no Word jobs");
                 check(live->snapshot().sources.at("r0").image.pixelColor(4,4)==QColor(Qt::red),"workspace live pixels match known source");
+                host.showMinimized();settle(120);check(!live->active(),"minimized workspace unsubscribes");host.showNormal();settle(1300);check(live->active() && live->snapshot().sources.size()==5,"restored workspace resumes live frames");
                 host.findChild<QPushButton*>("openLiveOutput")->click();settle(1500);auto* output=dynamic_cast<LiveOutputWindow*>(host.findChild<QWidget*>("liveOutputWindow"));check(output && output->isVisible(),"selected source opens independent live window");
                 output->findChild<QAction*>("copyPreview")->trigger();check(QApplication::clipboard()->image().pixelColor(4,4)==QColor(Qt::red),"independent live window displays actual source pixels");
                 std::shared_ptr<CaptureOutcome> fresh;QEventLoop freshWait;host.captureFinished=[&](auto result){fresh=result;freshWait.quit();};host.triggerCapture(1);check(!output->isVisible(),"formal capture hides live output windows");QTimer::singleShot(10000,&freshWait,&QEventLoop::quit);freshWait.exec();check(fresh && fresh->directory.isEmpty() && output->isVisible() && toQImage(fresh->batch.captures.front().image).pixelColor(4,4)==QColor(Qt::red),"formal capture uses fresh correct pixels and restores output");extraCaptures=1;

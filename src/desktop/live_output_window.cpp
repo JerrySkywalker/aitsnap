@@ -22,5 +22,6 @@ bool LiveOutputWindow::paused()const{return pause_->isChecked();}
 void LiveOutputWindow::displayFrame(QImage image,QString caption){if(paused())return;image_=std::move(image);caption_=std::move(caption);preview_->setImage(image_,caption_);}
 void LiveOutputWindow::setCaptureEnabled(bool enabled){capture_->setEnabled(enabled);}
 void LiveOutputWindow::showEvent(QShowEvent* event){QWidget::showEvent(event);excludeOwnCaptureWindow(*this);if(subscriptionChanged)subscriptionChanged();}
+void LiveOutputWindow::changeEvent(QEvent* event){QWidget::changeEvent(event);if(event->type()==QEvent::WindowStateChange && subscriptionChanged)subscriptionChanged();}
 void LiveOutputWindow::closeEvent(QCloseEvent* event){hide();image_=QImage{};preview_->setImage({},uiText("预览已暂停"));event->ignore();if(subscriptionChanged)subscriptionChanged();}
 }

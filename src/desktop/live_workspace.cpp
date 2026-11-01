@@ -24,8 +24,8 @@ void MainWindow::hideEvent(QHideEvent* e){QMainWindow::hideEvent(e);QTimer::sing
 void MainWindow::syncLivePreview(const core::CaptureProfile& profile)
 {
     if(!livePreview_)return;
-    const bool workspace=livePreviewEnabled_->isChecked() && ((isVisible() && pages_->currentIndex()<=2) || liveEditor_);
-    const bool output=std::any_of(liveOutputs_.begin(),liveOutputs_.end(),[](const auto* window){return window->isVisible() && !window->paused();});
+    const bool workspace=livePreviewEnabled_->isChecked() && ((isVisible() && !isMinimized() && pages_->currentIndex()<=2) || liveEditor_);
+    const bool output=std::any_of(liveOutputs_.begin(),liveOutputs_.end(),[](const auto* window){return window->isVisible() && !window->isMinimized() && !window->paused();});
     livePreview_->setFps(livePreviewRate_->currentData().toInt());livePreview_->configure(profile,unexcludedOwnWindowRects());
     livePreview_->setActive((workspace || output) && QGuiApplication::platformName()=="windows" && !busy_ && !paused_ && !editingRegions_ && !managingObjects_ && !configurationBlocked_);
     const auto& snapshot=livePreview_->snapshot();

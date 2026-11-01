@@ -219,10 +219,14 @@ bool MainWindow::applySettings()
         const auto backup = configurationPath_ + ".preserved-" + QString::fromStdString(id());
         if (!QFile::copy(configurationPath_, backup)) { setStatus(aitsnap::uiText("无法保留旧配置，配置未改写。"), true); return false; }
     }
-    if (!collectSettings(c, e) || !hotkeys_.configureBindings(hotkeyBindings(c), e)) { setStatus(e, true); return false; }
+    if(!collectSettings(c,e)){setStatus(e,true);return false;}
+    // Field editing temporarily releases keys. Still test OS conflicts before
+    // committing an enabled configuration; explicit user pause remains deferred.
+    if(editingHotkey_ && !paused_){Hotkeys validation;if(!validation.configureBindings(hotkeyBindings(c),e)){setStatus(e,true);return false;}}
+    if (!hotkeys_.configureBindings(hotkeyBindings(c), e)) { setStatus(e, true); return false; }
     if (paused_ || editingHotkey_) hotkeys_.pause(true, e);
     if (!saveSettings(configurationPath_, c, e)) { QString restore; if(!hotkeys_.configureBindings(hotkeyBindings(settings_), restore))e+="; "+restore; if (paused_ || editingHotkey_) hotkeys_.pause(true, restore); setStatus(e, true); return false; }
-    settings_ = c; configurationBlocked_ = false; profiles_->setItemText(settings_.activeProfile, qs(c.profiles[std::size_t(c.activeProfile)].name)); rebuildProfileMenu(); loadProfile(); setStatus(aitsnap::uiText("配置已保存 · 热键已应用")); return true;
+    settings_ = c; configurationBlocked_ = false; profiles_->setItemText(settings_.activeProfile, qs(c.profiles[std::size_t(c.activeProfile)].name)); rebuildProfileMenu(); loadProfile(); setStatus(paused_?uiText("配置已保存 · 截图已暂停，恢复时注册热键"):aitsnap::uiText("配置已保存 · 热键已应用")); return true;
 }
 void MainWindow::setStatus(const QString& text, bool error)
 {
@@ -249,7 +253,6 @@ void MainWindow::updateCaptureActions(bool canCapture)
 }
 void MainWindow::triggerCapture(int mode)
 {
-    if(editingHotkey_)return;
     if(mode<0 || mode>2){setStatus(uiText("无效的截图动作。"),true);return;}
     // Every UI entry commits the same draft before taking its immutable snapshot.
     if(busy_ || paused_ || configurationBlocked_ || editingRegions_ || editingScene_ || managingObjects_){startCapture(mode);return;}
@@ -261,7 +264,7 @@ bool MainWindow::eventFilter(QObject* object,QEvent* event)
         const bool keyField=object==saveKey_ || object==copyKey_ || object==bothKey_ || object==alternateKeys_[0] || object==alternateKeys_[1] || object==alternateKeys_[2];
         if(keyField){
             if(event->type()==QEvent::FocusIn){editingHotkey_=true;QString error;hotkeys_.pause(true,error);}
-            else QTimer::singleShot(0,this,[this]{auto* focus=QApplication::focusWidget();if(focus==saveKey_ || focus==copyKey_ || focus==bothKey_ || focus==alternateKeys_[0] || focus==alternateKeys_[1] || focus==alternateKeys_[2])return;editingHotkey_=false;QString error;if(!hotkeys_.pause(paused_,error))setStatus(error,true);});
+            else QTimer::singleShot(0,this,[this]{auto* focus=QApplication::focusWidget();if(focus && focus->isVisible() && focus->window()->isActiveWindow() && (focus==saveKey_ || focus==copyKey_ || focus==bothKey_ || focus==alternateKeys_[0] || focus==alternateKeys_[1] || focus==alternateKeys_[2]))return;editingHotkey_=false;QString error;if(!hotkeys_.pause(paused_,error))setStatus(error,true);});
         }
     }
     return QMainWindow::eventFilter(object,event);
@@ -340,7 +343,7 @@ void MainWindow::closeEvent(QCloseEvent* e)
 void MainWindow::changeEvent(QEvent* event)
 {
     QMainWindow::changeEvent(event);
-    if (event->type() == QEvent::PaletteChange && overviewSources_)
+    if ((event->type() == QEvent::PaletteChange || event->type()==QEvent::WindowStateChange) && overviewSources_)
         QTimer::singleShot(0, this, [this] { refreshWorkspace(); });
 }
 ReportOptions MainWindow::selectedReportOptions() const

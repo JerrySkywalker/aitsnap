@@ -16,6 +16,7 @@ public:
 protected:
     void closeEvent(QCloseEvent*)override;
     void showEvent(QShowEvent*)override;
+    void changeEvent(QEvent*)override;
 private:
     QString key_,caption_;QImage image_;ImagePreview* preview_{};
     QPushButton *pause_{},*capture_{};
