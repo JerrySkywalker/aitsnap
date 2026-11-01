@@ -5,6 +5,7 @@
 #include <QJsonObject>
 #include <QString>
 #include <QStringList>
+#include <array>
 namespace aitsnap {
 struct ReportOptions {
     bool enabled{};
@@ -16,6 +17,8 @@ struct Settings {
     int activeProfile{};
     QString outputDirectory, format{"PNG"}, filenameTemplate{"{datetime}_{sequence}_{region}"};
     QString saveHotkey{"Ctrl+Alt+S"}, copyHotkey{"Ctrl+Alt+C"}, bothHotkey{"Ctrl+Alt+A"};
+    QString saveHotkeyAlternate, copyHotkeyAlternate, bothHotkeyAlternate;
+    std::array<bool, 3> hotkeysEnabled{true, true, true};
     QString clipboardRegion, testId, device, station, operatorName;
     qint64 sequence{};
     bool startInTray{};

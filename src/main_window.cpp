@@ -90,7 +90,7 @@ MainWindow::MainWindow(QWidget* parent, QString path, QString pipeName, std::fun
     hotkeys_.triggered = [this](int mode) { if(mode>=0 && mode<3)captureActions_[mode]->trigger(); };
     hotkeys_.taskbarCreated = [this] { QTimer::singleShot(250, this, [this] { tray_->hide(); tray_->show(); }); };
     QString e;
-    if (!hotkeys_.configure({settings_.saveHotkey, settings_.copyHotkey, settings_.bothHotkey}, e)) setStatus(e, true);
+    if (!hotkeys_.configureBindings(hotkeyBindings(settings_), e)) setStatus(e, true);
     else setStatus(aitsnap::uiText("就绪 · %1 保存，%2 复制，%3 保存并复制").arg(settings_.saveHotkey, settings_.copyHotkey, settings_.bothHotkey));
     if (!loadError.isEmpty()) setStatus(aitsnap::uiText("配置未载入，原文件保留：") + loadError + aitsnap::uiText("。核对后应用配置。"), true);
     stage("main-context-hotkeys-loaded");
@@ -115,7 +115,7 @@ void MainWindow::setupTray()
     auto* sceneEdit = menu->addAction(aitsnap::uiText("打开自由拼图")); connect(sceneEdit, &QAction::triggered, this, [this] { QTimer::singleShot(180, this, [this] { editScene(false); }); });
     auto* pause = menu->addAction(aitsnap::uiText("暂停截图热键")); pause->setCheckable(true);
     connect(pause, &QAction::toggled, this, [this, pause](bool checked) {
-        QString e; if (hotkeys_.pause(checked, e)) { paused_ = checked; setStatus(checked ? aitsnap::uiText("截图已暂停") : aitsnap::uiText("截图已恢复")); }
+        QString e; if (hotkeys_.pause(checked || editingHotkey_, e)) { paused_ = checked; setStatus(checked ? aitsnap::uiText("截图已暂停") : aitsnap::uiText("截图已恢复")); }
         else { pause->blockSignals(true); pause->setChecked(true); pause->blockSignals(false); paused_ = true; setStatus(e, true); }
         refreshWorkspace();
     });
@@ -181,6 +181,10 @@ bool MainWindow::collectSettings(Settings& c, QString& e)
     if (auto err = core::validateProfileDefinition(p); err) { e = qs(err.message); return false; }
     ++p.revision; c.outputDirectory = QDir(directory_->text().trimmed()).absolutePath(); c.format = format_->currentText(); c.filenameTemplate = filename_->text();
     c.saveHotkey = saveKey_->text(); c.copyHotkey = copyKey_->text(); c.bothHotkey = bothKey_->text(); c.clipboardRegion = clipboard_->currentData().toString();
+    c.saveHotkeyAlternate=alternateKeys_[0]->text();c.copyHotkeyAlternate=alternateKeys_[1]->text();c.bothHotkeyAlternate=alternateKeys_[2]->text();
+    for(int mode=0;mode<3;++mode){c.hotkeysEnabled[std::size_t(mode)]=hotkeyEnabled_[mode]->isChecked();}
+    const QString primary[]{c.saveHotkey,c.copyHotkey,c.bothHotkey};const QString alternate[]{c.saveHotkeyAlternate,c.copyHotkeyAlternate,c.bothHotkeyAlternate};
+    for(int mode=0;mode<3;++mode)if(c.hotkeysEnabled[std::size_t(mode)] && primary[mode].trimmed().isEmpty() && alternate[mode].trimmed().isEmpty()){e=uiText("动作 %1 至少需要一个快捷键，或关闭该动作的热键。").arg(mode+1);return false;}
     c.testId = testId_->text(); c.device = device_->text(); c.station = station_->text(); c.operatorName = operator_->text(); c.startInTray = startTray_->isChecked();
     c.language = language_->currentData().toString(); c.colorMode = colorMode_->currentData().toString();
     c.outputMode = outputMode_->currentData().toString(); c.selectedSceneIds.clear();
@@ -199,9 +203,9 @@ bool MainWindow::applySettings()
         const auto backup = configurationPath_ + ".preserved-" + QString::fromStdString(id());
         if (!QFile::copy(configurationPath_, backup)) { setStatus(aitsnap::uiText("无法保留旧配置，配置未改写。"), true); return false; }
     }
-    if (!collectSettings(c, e) || !hotkeys_.configure({c.saveHotkey, c.copyHotkey, c.bothHotkey}, e)) { setStatus(e, true); return false; }
-    if (paused_) hotkeys_.pause(true, e);
-    if (!saveSettings(configurationPath_, c, e)) { QString ignored; hotkeys_.configure({settings_.saveHotkey, settings_.copyHotkey, settings_.bothHotkey}, ignored); if (paused_) hotkeys_.pause(true, ignored); setStatus(e, true); return false; }
+    if (!collectSettings(c, e) || !hotkeys_.configureBindings(hotkeyBindings(c), e)) { setStatus(e, true); return false; }
+    if (paused_ || editingHotkey_) hotkeys_.pause(true, e);
+    if (!saveSettings(configurationPath_, c, e)) { QString restore; if(!hotkeys_.configureBindings(hotkeyBindings(settings_), restore))e+="; "+restore; if (paused_ || editingHotkey_) hotkeys_.pause(true, restore); setStatus(e, true); return false; }
     settings_ = c; configurationBlocked_ = false; profiles_->setItemText(settings_.activeProfile, qs(c.profiles[std::size_t(c.activeProfile)].name)); rebuildProfileMenu(); loadProfile(); setStatus(aitsnap::uiText("配置已保存 · 热键已应用")); return true;
 }
 void MainWindow::setStatus(const QString& text, bool error)
@@ -214,16 +218,30 @@ void MainWindow::updateCaptureActions(bool canCapture)
 {
     if(!captureActions_[0])return;
     const QStringList labels{uiText("截图并保存"),uiText("截图并复制"),uiText("截图、保存并复制")};
-    const QStringList keys{saveKey_->text().trimmed(),copyKey_->text().trimmed(),bothKey_->text().trimmed()};
+    const QStringList primary{saveKey_->text().trimmed(),copyKey_->text().trimmed(),bothKey_->text().trimmed()};
+    QStringList keys;
+    for(int mode=0;mode<3;++mode){QStringList labels;if(hotkeyEnabled_[mode]->isChecked()){if(!primary[mode].isEmpty())labels<<primary[mode];const auto alternate=alternateKeys_[mode]->text().trimmed();if(!alternate.isEmpty() && !labels.contains(alternate,Qt::CaseInsensitive))labels<<alternate;}keys<<(labels.isEmpty()?uiText("未启用热键"):labels.join(" / "));}
     const QStringList descriptions{uiText("重新采集启用区域并保存原图/拼图；启用时加入 Word 报告。"),uiText("重新采集启用区域，只复制所选输出；不保存文件、不加入 Word。"),uiText("重新采集、保存原图/拼图并复制所选输出；启用时加入 Word。")};
     for(int i=0;i<3;++i){auto* action=captureActions_[i];action->setText(labels[i]+"\t"+keys[i]);action->setToolTip(descriptions[i]+"\n"+uiText("快捷键：%1（全局）").arg(keys[i]));action->setEnabled(canCapture && !busy_ && !paused_ && !configurationBlocked_);}
 }
 void MainWindow::triggerCapture(int mode)
 {
+    if(editingHotkey_)return;
     if(mode<0 || mode>2){setStatus(uiText("无效的截图动作。"),true);return;}
     // Every UI entry commits the same draft before taking its immutable snapshot.
     if(busy_ || paused_ || configurationBlocked_ || editingRegions_ || editingScene_ || managingObjects_){startCapture(mode);return;}
     if(applySettings())startCapture(mode);
+}
+bool MainWindow::eventFilter(QObject* object,QEvent* event)
+{
+    if(event->type()==QEvent::FocusIn || event->type()==QEvent::FocusOut){
+        const bool keyField=object==saveKey_ || object==copyKey_ || object==bothKey_ || object==alternateKeys_[0] || object==alternateKeys_[1] || object==alternateKeys_[2];
+        if(keyField){
+            if(event->type()==QEvent::FocusIn){editingHotkey_=true;QString error;hotkeys_.pause(true,error);}
+            else QTimer::singleShot(0,this,[this]{auto* focus=QApplication::focusWidget();if(focus==saveKey_ || focus==copyKey_ || focus==bothKey_ || focus==alternateKeys_[0] || focus==alternateKeys_[1] || focus==alternateKeys_[2])return;editingHotkey_=false;QString error;if(!hotkeys_.pause(paused_,error))setStatus(error,true);});
+        }
+    }
+    return QMainWindow::eventFilter(object,event);
 }
 QString MainWindow::startCapture(int mode, const QJsonObject& options, const QJsonObject& eventSnapshot)
 {

@@ -32,6 +32,7 @@ public:
 protected:
     void closeEvent(QCloseEvent*) override;
     void changeEvent(QEvent*) override;
+    bool eventFilter(QObject*, QEvent*) override;
 private:
     Settings settings_;
     QString configurationPath_;
@@ -42,6 +43,9 @@ private:
     QComboBox *profiles_{}, *format_{}, *clipboard_{};
     QComboBox *language_{}, *colorMode_{};
     QLineEdit *profileName_{}, *directory_{}, *filename_{}, *saveKey_{}, *copyKey_{}, *bothKey_{};
+    QLineEdit* alternateKeys_[3]{};
+    QCheckBox* hotkeyEnabled_[3]{};
+    bool editingHotkey_{};
     QLineEdit *testId_{}, *device_{}, *station_{}, *operator_{};
     QCheckBox* startTray_{};
     QTableWidget* regions_{};
