@@ -443,5 +443,6 @@
   "%1 帧/秒": "%1 fps",
   "打开实时图窗": "Open live view",
   " · 实时缺帧": " · Live frame unavailable",
-  "配置已保存 · 截图已暂停，恢复时注册热键": "Settings saved · Capture paused; hotkeys register when resumed"
+  "配置已保存 · 截图已暂停，恢复时注册热键": "Settings saved · Capture paused; hotkeys register when resumed",
+  "图层 %1 的来源不可用": "Layer %1 source unavailable"
 }

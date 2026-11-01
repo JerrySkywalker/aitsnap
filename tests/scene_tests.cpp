@@ -62,6 +62,13 @@ int main(int argc, char** argv)
         auto missing = row; missing.layers[0].sourceRegionId = "absent";
         check(renderScene(missing, sources).error.code == "MISSING_SOURCE", "missing source fails");
         missing.layers[0].missingSourcePolicy = "placeholder"; auto incomplete = renderScene(missing, sources); check(!incomplete.error && !incomplete.complete && !incomplete.warnings.empty(), "placeholder labelled incomplete");
+        auto opaqueMissing = missing; opaqueMissing.layers[0].sourceRegionId = "b7d4aead-9d51-4811-bf03-65e5c882b221";
+        const auto opaqueResult = renderScene(opaqueMissing, sources);
+        check(opaqueResult.image == incomplete.image && opaqueResult.warnings == incomplete.warnings,
+              "missing source presentation independent of opaque identity");
+        opaqueMissing.layers[0].missingSourcePolicy = "fail";
+        check(renderScene(opaqueMissing, sources).error.message.find(opaqueMissing.layers[0].sourceRegionId) == std::string::npos,
+              "missing source diagnostic does not expose opaque identity");
         auto alpha = row; alpha.layers.clear(); alpha.background = "#12345678"; check(renderScene(alpha, sources).image.pixelColor(0, 0).alpha() == 0x78, "trailing alpha semantics");
         check(sources["r0"].image == pattern, "renderer never mutates source image");
         auto rotated = crop; rotated.layers[0].crop = {}; rotated.layers[0].destination = {0, 8, 32, 16, 90}; rotated.layers[0].preserveAspect = false;
