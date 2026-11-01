@@ -61,8 +61,10 @@ static QIcon appIcon()
 {
     return QIcon(":/brand/aitsnap.ico");
 }
-MainWindow::MainWindow(QWidget* parent, QString path, QString pipeName) : QMainWindow(parent), configurationPath_(path.isEmpty() ? settingsPath() : path)
+MainWindow::MainWindow(QWidget* parent, QString path, QString pipeName, std::function<void(const QString&)> startupStage) : QMainWindow(parent), configurationPath_(path.isEmpty() ? settingsPath() : path)
 {
+    const auto stage=[&](const char* name){if(startupStage)startupStage(QString::fromLatin1(name));};
+    stage("main-constructor-enter");
     setWindowTitle(aitsnap::uiText("AITSnap · 多屏截图")); resize(1120, 780); setWindowIcon(appIcon());
     settings_ = defaultSettings(); QString loadError;
     settings_.outputDirectory = QFileInfo(configurationPath_).absolutePath() + "/captures";
@@ -78,9 +80,11 @@ MainWindow::MainWindow(QWidget* parent, QString path, QString pipeName) : QMainW
     }
     if (QFile::exists(configurationPath_ + ".before-management.json")) loadError = "Previous management operation needs recovery: " + configurationPath_ + ".before-management.json";
     configurationBlocked_ = !loadError.isEmpty();
-    buildUi(); setupTray(); loadProfile(); qApp->installNativeEventFilter(&hotkeys_);
+    stage("main-settings-loaded");
+    buildUi(); stage("main-ui-built"); setupTray(); stage("main-tray-created"); loadProfile(); stage("main-profile-loaded"); qApp->installNativeEventFilter(&hotkeys_);
     reportQueue_ = new ReportQueue(QFileInfo(configurationPath_).absolutePath() + "/report-jobs", QCoreApplication::applicationDirPath() + "/aitsnap-word-bridge.exe", this);
     reportQueue_->changed = [this] { refreshReportStatus(); }; refreshReportStatus();
+    stage("main-report-queue-loaded");
     contextStore_ = std::make_unique<ContextStore>(QFileInfo(configurationPath_).absolutePath() + "/context");
     if (!contextStore_->diagnostic().isEmpty()) contextStatus_->setText(contextStore_->diagnostic());
     hotkeys_.triggered = [this](int mode) { triggerCapture(mode); };
@@ -89,7 +93,8 @@ MainWindow::MainWindow(QWidget* parent, QString path, QString pipeName) : QMainW
     if (!hotkeys_.configure({settings_.saveHotkey, settings_.copyHotkey, settings_.bothHotkey}, e)) setStatus(e, true);
     else setStatus(aitsnap::uiText("就绪 · %1 保存，%2 复制，%3 保存并复制").arg(settings_.saveHotkey, settings_.copyHotkey, settings_.bothHotkey));
     if (!loadError.isEmpty()) setStatus(aitsnap::uiText("配置未载入，原文件保留：") + loadError + aitsnap::uiText("。核对后应用配置。"), true);
-    startHost(std::move(pipeName));
+    stage("main-context-hotkeys-loaded");
+    startHost(std::move(pipeName)); stage("main-constructor-return");
 }
 MainWindow::~MainWindow()
 {

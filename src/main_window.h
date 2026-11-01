@@ -24,7 +24,7 @@ class DisplayCanvas; class ImagePreview;
 class MainWindow final : public QMainWindow
 {
 public:
-    explicit MainWindow(QWidget* parent = nullptr, QString configurationPath = {}, QString pipeName = {});
+    explicit MainWindow(QWidget* parent = nullptr, QString configurationPath = {}, QString pipeName = {}, std::function<void(const QString&)> startupStage = {});
     ~MainWindow() override;
     void triggerCapture(int mode);
     bool startInTray() const { return settings_.startInTray; }
