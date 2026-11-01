@@ -4,7 +4,7 @@
 
 ## 启动与安装
 
-MSI 用户从开始菜单运行 AITSnap，标准数据目录是用户本地应用数据目录下的 AITSnap。便携体验可运行 `Launch-Preview.ps1`，使用独立的 `AITSnap-preview-0.6` 目录。也可直接运行 `aitsnap.exe`，或使用 `--tray` 启动到托盘、`--data-dir D:\AITSnapDemo` 隔离设置、队列、上下文及初始截图输出。已保存配置中的输出路径保持原值，可在窗口中调整。
+MSI 用户从开始菜单运行 AITSnap，标准数据目录是用户本地应用数据目录下的 AITSnap。便携体验可运行 `Launch-Preview.ps1`，使用独立的 `AITSnap-preview-0.7` 目录。也可直接运行 `aitsnap.exe`，或使用 `--tray` 启动到托盘、`--data-dir D:\AITSnapDemo` 隔离设置、队列、上下文及初始截图输出。已保存配置中的输出路径保持原值，可在窗口中调整。
 
 正式安装候选使用 `AITSnap-0.7.0-windows-x64.msi`，提供开始菜单、修复、升级和 Windows 标准卸载。目标为 Win10 1809+ x64 / Win11；当前 Win10 原生验收仍 HOLD，详见安装说明。
 
