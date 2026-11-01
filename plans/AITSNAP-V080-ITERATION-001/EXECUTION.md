@@ -19,3 +19,13 @@ Owner 于 2026-11-01 明确授权开始，授予本轮48小时执行上限；嵌
 Qt6 Release产品及相关测试编译通过；dual-hotkeys/desktop-adapters/appearance 3/3通过。Qt5 v143 x64宿主dual-hotkeys/appearance 2/2通过。新定向测试验证六槽映射、实际系统注册冲突/回退、pause→configure→resume、关闭后释放、v4迁移备份字节；模拟WM_HOTKEY消息不标为物理键验收。原始日志在ignored `UX080/w01-*`。
 
 初次裸cmake命令命中Strawberry安装，与旧缓存的Qt CMake模块混用导致再生成失败；失败日志保留，随后用既有Qt Tools内确切CMake执行并成功，未重装工具链。编译有局部同名变量warning，后续窄改整理。原生Win7和Owner物理键验收不由本次宿主结果关闭。
+
+W01源 `d4c5b4a60db7b8625b1e3dcf4410360718944cc3` 已经PR40正常合并，merge `315b0fa294549bf485438a7d2ac6255aeb17aa87`。分支规则查询为空，PR预期head及mergeable已核对，未使用admin/force选项。
+
+## W03 — 迷你截图窗
+
+主窗/托盘入口、三动作选择、状态、暂停恢复、可选置顶、位置与动作偏好记忆、主窗返回。共用既有QAction和startCapture；正式捕获前同步隐藏迷你窗，worker在采集前DwmFlush，完成后恢复。单独view偏好文件不改截图证据。补全新增中英文文案，消除前述同名变量warning。
+
+Qt6界面/双热键2/2，Qt5界面1/1通过。两路Win11原生四屏五合成来源验证通过：三动作新采集副作用、序号、无copy-only Word任务；迷你窗覆盖测试来源时，触发后已隐藏，成图指定像素仍为已知红色，完成后恢复；暂停/恢复及返回真实主窗通过。Qt5仅为宿主兼容，不是Win7。
+
+一次测试编译因对未声明Q_OBJECT的子类调用Qt6 findChild模板失败，改为查找QWidget再dynamic_cast；保留失败日志。第一次原生测试与appearance并行占相同全局键，首批超时；改为串行后Qt6/Qt5均通过，未把此并发测试冲突隐藏。原始记录 `UX080/w03-*`。Owner物理输入、全部DPI/断屏视觉验收仍独立HOLD。

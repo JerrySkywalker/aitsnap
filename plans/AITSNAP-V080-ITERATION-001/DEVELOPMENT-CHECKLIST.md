@@ -1,6 +1,6 @@
 # AITSnap 0.8.0 开发与验收清单
 
-日期：2026-11-01。依据：[审计与路线](REVIEW-AND-ROADMAP.md)。状态 **PLAN_READY / 全部开发项 NOT_STARTED**；以下未勾选框不代表重新否定 0.7.2 已有能力，仅列下一轮新增或增量检查。未执行测试不得预填 PASS。
+日期：2026-11-01。依据：[审计与路线](REVIEW-AND-ROADMAP.md)。Owner已授权48h执行，实际分项状态见 [EXECUTION.md](EXECUTION.md)及累计账本。未勾选框为待收敛/证明项，不代表重新否定0.7.2已有能力。未执行测试不得预填PASS。
 
 ## W00 — 基线、计费与契约（≤2h）
 

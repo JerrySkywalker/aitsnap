@@ -2,6 +2,7 @@
 // Copyright 2026 AITSnap contributors
 #define NOMINMAX
 #include <windows.h>
+#include <dwmapi.h>
 #include "main_window.h"
 #include "adapters/win_capture.h"
 #include "adapters/report_queue.h"
@@ -11,6 +12,7 @@
 #include "desktop/scene_editor.h"
 #include "desktop/appearance.h"
 #include "desktop/workspace_views.h"
+#include "desktop/mini_capture_window.h"
 #include "core/scene_geometry.h"
 #include <QAction>
 #include <QApplication>
@@ -81,7 +83,12 @@ MainWindow::MainWindow(QWidget* parent, QString path, QString pipeName, std::fun
     if (QFile::exists(configurationPath_ + ".before-management.json")) loadError = "Previous management operation needs recovery: " + configurationPath_ + ".before-management.json";
     configurationBlocked_ = !loadError.isEmpty();
     stage("main-settings-loaded");
-    buildUi(); stage("main-ui-built"); setupTray(); stage("main-tray-created"); loadProfile(); stage("main-profile-loaded"); qApp->installNativeEventFilter(&hotkeys_);
+    buildUi(); stage("main-ui-built");
+    mini_=new MiniCaptureWindow(QFileInfo(configurationPath_).absolutePath()+"/mini-window.json",this);
+    mini_->captureRequested=[this](int mode){captureActions_[mode]->trigger();};
+    mini_->openMain=[this]{restoreMiniAfterCapture_=false;showNormal();raise();activateWindow();};
+    mini_->pauseRequested=[this](bool paused){if(pauseCaptureAction_)pauseCaptureAction_->setChecked(paused);};
+    setupTray(); stage("main-tray-created"); loadProfile(); stage("main-profile-loaded"); qApp->installNativeEventFilter(&hotkeys_);
     reportQueue_ = new ReportQueue(QFileInfo(configurationPath_).absolutePath() + "/report-jobs", QCoreApplication::applicationDirPath() + "/aitsnap-word-bridge.exe", this);
     reportQueue_->changed = [this] { refreshReportStatus(); }; refreshReportStatus();
     stage("main-report-queue-loaded");
@@ -108,12 +115,13 @@ void MainWindow::setupTray()
 {
     tray_ = new QSystemTrayIcon(windowIcon(), this); auto* menu = new QMenu(this);
     auto* show = menu->addAction(aitsnap::uiText("打开区域与输出设置")); connect(show, &QAction::triggered, this, [this] { showNormal(); raise(); activateWindow(); });
+    auto* mini=menu->addAction(uiText("迷你截图窗"));mini->setObjectName("showMiniWindow");connect(mini,&QAction::triggered,this,[this]{showMiniWindow();});
     menu->addAction(regionEditAction_);
     for(auto* action:captureActions_)menu->addAction(action);
     profileMenu_ = menu->addMenu(aitsnap::uiText("切换截图配置")); rebuildProfileMenu();
     sceneMenu_ = menu->addMenu(aitsnap::uiText("拼图场景 / 启用切换")); rebuildSceneMenu();
     auto* sceneEdit = menu->addAction(aitsnap::uiText("打开自由拼图")); connect(sceneEdit, &QAction::triggered, this, [this] { QTimer::singleShot(180, this, [this] { editScene(false); }); });
-    auto* pause = menu->addAction(aitsnap::uiText("暂停截图热键")); pause->setCheckable(true);
+    auto* pause = menu->addAction(aitsnap::uiText("暂停截图热键")); pause->setCheckable(true);pauseCaptureAction_=pause;
     connect(pause, &QAction::toggled, this, [this, pause](bool checked) {
         QString e; if (hotkeys_.pause(checked || editingHotkey_, e)) { paused_ = checked; setStatus(checked ? aitsnap::uiText("截图已暂停") : aitsnap::uiText("截图已恢复")); }
         else { pause->blockSignals(true); pause->setChecked(true); pause->blockSignals(false); paused_ = true; setStatus(e, true); }
@@ -213,6 +221,12 @@ void MainWindow::setStatus(const QString& text, bool error)
     status_->setText(text); status_->setProperty("statusError", error);
     status_->style()->unpolish(status_); status_->style()->polish(status_); status_->update();
     if (tray_) tray_->setToolTip("AITSnap · " + text.left(100));
+    if(mini_)mini_->setState(profiles_->currentText(),text,captureActions_[0]->isEnabled(),paused_);
+}
+void MainWindow::showMiniWindow()
+{
+    if(!applySettings())return;
+    hide();mini_->setState(profiles_->currentText(),status_->text(),captureActions_[0]->isEnabled(),paused_);mini_->showMini();
 }
 void MainWindow::updateCaptureActions(bool canCapture)
 {
@@ -220,9 +234,10 @@ void MainWindow::updateCaptureActions(bool canCapture)
     const QStringList labels{uiText("截图并保存"),uiText("截图并复制"),uiText("截图、保存并复制")};
     const QStringList primary{saveKey_->text().trimmed(),copyKey_->text().trimmed(),bothKey_->text().trimmed()};
     QStringList keys;
-    for(int mode=0;mode<3;++mode){QStringList labels;if(hotkeyEnabled_[mode]->isChecked()){if(!primary[mode].isEmpty())labels<<primary[mode];const auto alternate=alternateKeys_[mode]->text().trimmed();if(!alternate.isEmpty() && !labels.contains(alternate,Qt::CaseInsensitive))labels<<alternate;}keys<<(labels.isEmpty()?uiText("未启用热键"):labels.join(" / "));}
+    for(int mode=0;mode<3;++mode){QStringList bindings;if(hotkeyEnabled_[mode]->isChecked()){if(!primary[mode].isEmpty())bindings<<primary[mode];const auto alternate=alternateKeys_[mode]->text().trimmed();if(!alternate.isEmpty() && !bindings.contains(alternate,Qt::CaseInsensitive))bindings<<alternate;}keys<<(bindings.isEmpty()?uiText("未启用热键"):bindings.join(" / "));}
     const QStringList descriptions{uiText("重新采集启用区域并保存原图/拼图；启用时加入 Word 报告。"),uiText("重新采集启用区域，只复制所选输出；不保存文件、不加入 Word。"),uiText("重新采集、保存原图/拼图并复制所选输出；启用时加入 Word。")};
     for(int i=0;i<3;++i){auto* action=captureActions_[i];action->setText(labels[i]+"\t"+keys[i]);action->setToolTip(descriptions[i]+"\n"+uiText("快捷键：%1（全局）").arg(keys[i]));action->setEnabled(canCapture && !busy_ && !paused_ && !configurationBlocked_);}
+    if(mini_)mini_->setState(profiles_->currentText(),status_->text(),captureActions_[0]->isEnabled(),paused_);
 }
 void MainWindow::triggerCapture(int mode)
 {
@@ -270,8 +285,11 @@ QString MainWindow::startCapture(int mode, const QJsonObject& options, const QJs
     if (!selectedContextSnapshot_.isEmpty()) { request.context = selectedContext_; request.context.stationId = snapshot.station.toStdString(); request.context.operatorId = snapshot.operatorName.toStdString(); request.contextSnapshotJson = QJsonDocument(selectedContextSnapshot_).toJson(QJsonDocument::Compact).toStdString(); }
     if (!eventSnapshot.isEmpty()) { const auto event = eventSnapshot["event"].toObject(); request.context = contextStore_->context(event["sourceSystem"].toString(), event["eventId"].toString()); request.context.stationId = snapshot.station.toStdString(); request.context.operatorId = snapshot.operatorName.toStdString(); request.contextSnapshotJson = QJsonDocument(eventSnapshot).toJson(QJsonDocument::Compact).toStdString(); }
     currentRequestId_ = qs(request.requestId);
+    restoreMiniAfterCapture_=mini_ && mini_->isVisible();if(restoreMiniAfterCapture_)mini_->hide();
     busy_ = true; updateCaptureActions(true); setStatus(aitsnap::uiText("正在后台采集 %1 个源区域…").arg(request.profile.regions.size())); QPointer<MainWindow> self(this);
-    QThreadPool::globalInstance()->start(QRunnable::create([self, snapshot, request, mode] {
+    const bool flushWindow=restoreMiniAfterCapture_;
+    QThreadPool::globalInstance()->start(QRunnable::create([self, snapshot, request, mode,flushWindow] {
+        if(flushWindow)DwmFlush();
         WinCaptureBackend backend; auto result = std::make_shared<CaptureOutcome>(captureToFiles(backend, snapshot, request, mode != 1, mode != 0));
         if (self) QMetaObject::invokeMethod(self, [self, result, snapshot, mode] { if (self) self->completeCapture(result, snapshot, mode); }, Qt::QueuedConnection);
     }));
@@ -300,7 +318,7 @@ void MainWindow::completeCapture(const std::shared_ptr<CaptureOutcome>& result, 
     for (const auto& o : result->batch.outputs) { if (o.status == "SAVED") ++saved; if (o.error) { ++failed; detail = qs(o.error.code + ": " + o.error.message); } }
     setStatus(aitsnap::uiText("已采集 %1 张 · 已保存 %2 张 · %3 ms%4").arg(captured).arg(saved).arg(result->elapsedMs, 0, 'f', 1).arg(failed ? " · " + detail : aitsnap::uiText(" · 完成")), failed > 0);
     for (const auto& c : result->batch.captures) if (c.image.valid()) { preview_->setImage(toQImage(c.image), regionLabel(c.region) + uiText(" · 最近批次")); break; }
-    busy_ = false; lastOutcome_ = result; if (captureFinished) captureFinished(result);
+    busy_ = false; lastOutcome_ = result;if(restoreMiniAfterCapture_){restoreMiniAfterCapture_=false;mini_->showMini();} if (captureFinished) captureFinished(result);
     refreshWorkspace(); refreshBatches();
     if (mode != 1 && snapshot.report.enabled && !result->directory.isEmpty()) {
         QString error; if (!reportQueue_->enqueue(*result, snapshot.report, error)) { reportStatus_->setText(aitsnap::uiText("截图已完成，报告未入队：") + error); }

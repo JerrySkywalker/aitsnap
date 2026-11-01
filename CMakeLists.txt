@@ -79,6 +79,7 @@ add_library(aitsnap-adapters STATIC
     src/adapters/scene_render.cpp
     src/desktop/scene_editor.cpp
     src/desktop/desktop_activation.cpp
+    src/desktop/mini_capture_window.cpp
     src/desktop/appearance.cpp
     src/desktop/workspace_views.cpp
     resources/aitsnap.qrc

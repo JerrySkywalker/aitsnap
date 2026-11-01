@@ -2,6 +2,7 @@
 #include "desktop/appearance.h"
 #include "desktop/workspace_views.h"
 #include "desktop/scene_layer_item.h"
+#include "desktop/mini_capture_window.h"
 #include "main_window.h"
 #include <QApplication>
 #include <QAction>
@@ -157,6 +158,13 @@ int main(int argc, char** argv)
             check(window.findChild<QPushButton*>("captureSave")->isEnabled(), "adding source makes actions available");
             window.findChild<QPushButton*>("applySettings")->click();
             check(loadSettings(emptyPath, empty, error) && empty.profiles[0].regions.size() == 1 && empty.profiles[0].regions[0].displayNumber >= 4, "empty draft can add a source without number reuse");
+        }
+        {
+            const auto preferences=temp.filePath("mini-preferences.json");
+            {MiniCaptureWindow mini(preferences);int action=-1;mini.captureRequested=[&](int mode){action=mode;};mini.setState("Fixture","Ready",true,false);mini.showMini();
+                mini.findChild<QComboBox*>("miniCaptureMode")->setCurrentIndex(2);mini.findChild<QCheckBox*>("miniAlwaysOnTop")->setChecked(false);mini.findChild<QPushButton*>("miniCaptureButton")->click();check(action==2,"mini selects existing action identity");
+                mini.setState("Fixture","Busy",false,false);mini.findChild<QPushButton*>("miniCaptureButton")->click();check(action==2,"busy mini does not emit another capture");mini.close();check(!mini.isVisible(),"closing mini hides");}
+            MiniCaptureWindow restarted(preferences);check(restarted.findChild<QComboBox*>("miniCaptureMode")->currentIndex()==2 && !restarted.findChild<QCheckBox*>("miniAlwaysOnTop")->isChecked(),"mini mode and topmost persist");
         }
         std::cout << "APPEARANCE_IDENTITY_MIGRATION_PASS\n"; return 0;
     } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }

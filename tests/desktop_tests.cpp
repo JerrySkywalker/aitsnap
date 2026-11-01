@@ -5,6 +5,7 @@
 #include "main_window.h"
 #include "adapters/win_capture.h"
 #include "compat/qt_widgets_compat.h"
+#include "desktop/mini_capture_window.h"
 #include <QApplication>
 #include <QAction>
 #include <QCheckBox>
@@ -147,6 +148,19 @@ int main(int argc, char** argv)
                     Settings captured;check(loadSettings(path,captured,error) && captured.sequence==mode+2 && captured.outputDirectory==destination,"every UI action commits the current draft and advances exactly one sequence");
                 }
                 std::cout<<"CAPTURE_ACTION_CONTRACT_PASS save/copy/both fresh side effects draft routing exact sequence no copy Word job\n";
+            }
+            if(app.arguments().contains("--mini")){
+                host.findChild<QPushButton*>("openMiniWindow")->click();
+                auto* mini=dynamic_cast<MiniCaptureWindow*>(host.findChild<QWidget*>("miniCaptureWindow"));check(mini && mini->isVisible() && !host.isVisible(),"mini mode entered");
+                const auto area=profile.regions.front().rect;mini->move(area.x,area.y);QApplication::processEvents();DwmFlush();
+                mini->findChild<QComboBox*>("miniCaptureMode")->setCurrentIndex(1);
+                outcome.reset();QEventLoop miniWait;host.captureFinished=[&](auto result){outcome=result;miniWait.quit();};
+                mini->findChild<QPushButton*>("miniCaptureButton")->click();check(!mini->isVisible(),"mini hides before asynchronous capture");
+                QTimer::singleShot(10000,&miniWait,&QEventLoop::quit);miniWait.exec();check(bool(outcome) && mini->isVisible(),"mini restored after capture");
+                check(outcome->directory.isEmpty() && outcome->batch.captures.front().image.valid() && toQImage(outcome->batch.captures.front().image).pixelColor(4,4)==QColor(Qt::red),"mini does not obscure source pixels or change copy-only semantics");
+                auto* pause=mini->findChild<QPushButton*>("miniPause");pause->click();check(!mini->findChild<QPushButton*>("miniCaptureButton")->isEnabled(),"mini pause shares capture gate");pause->click();check(mini->findChild<QPushButton*>("miniCaptureButton")->isEnabled(),"mini resume shares capture gate");
+                mini->findChild<QPushButton*>("miniOpenMain")->click();check(host.isVisible() && !mini->isVisible(),"mini returns to actual main window");host.hide();
+                std::cout<<"MINI_NATIVE_PASS shared-copy hidden-before-acquire exact-source-pixel restored pause resume main-return\n";
             }
             if (app.arguments().contains("--editor")) {
                 const auto before = outcome;
