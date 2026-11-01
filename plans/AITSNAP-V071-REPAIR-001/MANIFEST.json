@@ -1,24 +1,31 @@
 {
   "package": "AITSNAP-V071-REPAIR-001",
-  "status": "APPROVED_EXECUTION_IN_PROGRESS",
+  "status": "CANDIDATE_DELIVERED_NATIVE_HOLD",
   "sourceBaseline": "7c6a717a1234204bebf01ea2c4fc50cd5a04bebe",
   "targetVersion": "0.7.1",
   "implementationStarted": true,
   "files": [
     {
+      "path": "DELIVERY-RECEIPT.md",
+      "sha256": "9579be70ca57903ff51aaed0f7133ccf85fabf6efd13729e40a2e10aee6dae62",
+      "bytes": 7328
+    },
+    {
       "path": "DEVELOPMENT-CHECKLIST.md",
-      "sha256": "bf99581eb18f93afebd35291af5de1280653279d7e0dd154ad25fff758ca9225",
+      "sha256": "ab85d7bf8ddd926468e10aa14e79ce4b71c092b0dffd88df3600a0837b2b1b47",
       "bytes": 5282
     },
     {
       "path": "EXECUTION.md",
-      "sha256": "692825d6968b4369164a3859e95c4ad14d61135cf0baada64640febda160826a",
-      "bytes": 15126
+      "sha256": "e83ed1c563b7268cd34f409b4cd1d714045fb7e189d2cd3084dc36744229272e",
+      "bytes": 15858
     },
     {
       "path": "REVIEW-AND-PLAN.md",
       "sha256": "ce2615e30645bb135bcbd0815d53882f533550a7612c4f09167c91e4d9fe6304",
       "bytes": 22602
     }
-  ]
+  ],
+  "candidateSourceCommit": "080d62e66b41e918e20c4a68bfc2f9d612b776ad",
+  "deliveryReceipt": "DELIVERY-RECEIPT.md"
 }
