@@ -55,3 +55,9 @@ PR35 merge78ddc0bfeb49d506ff1235316193f9c1c9daa9ce，PR36 merge de710f66ac43da20
 0.7.2两路全部受影响目标构建完成exit0。Qt6/Qt5各8/8定向集成PASS；两路原生activation及四屏5源capture-contract也均exit0，native-qt6/native-qt5保留合成源PNG和batch清单。产品PE、CLI、WordBridge统一0.7.2。377条本地化、Python构建工具语法、diff检查通过。
 
 仅文档在c50fcd8后更新，产品src/CMake/tools/tests无差异；下一步从干净合并源码生成完整离线候选，真实安装完成/首次UI另验收，不因源码绿灯提前标完成。现场0.7.1进程UI线程响应且无队列作业；安装前会保存原设置证据，不改动捕获历史。当前Owner允许桌面/安装，旧的桌面停止文档已更新，工具拒绝仍不得绕过。
+
+## 安装器实际能力边界与人工接续
+
+从完整Setup实际打开0.7.2系统向导后，Computer Use读取msiexec窗口被产品策略拒绝，原文product policy blocks this app: msiexec.exe。已向Owner发出人工退出旧版/完成安装/保留Launch选项的异步问题，尚无回答；最后核对安装EXE仍0.7.1，不能填安装PASS。额外独立Word探针命令被自动审批blocked by policy在进程创建前拒绝，未执行，不写PASS，也未换入口。非UI只读检查和预算记录可继续。实际Win32插件包内smoke已通过，不受该额外探针影响。
+
+候选源ec82339c78304e67e5d8b3b5937134608ba39972，完整包和阶段/阻断/接续见DELIVERY-RECEIPT.md；安装后第一次窗口必须先观察，不能通过主动第二次运行掩盖。下一步唯一依赖是Owner手动安装后的实际证据；没有普通技术决策待问。
