@@ -17,6 +17,7 @@
 #include <QTimer>
 #include <QGuiApplication>
 #include <QFile>
+#include <QFont>
 #include <QElapsedTimer>
 #include <windows.h>
 #include <psapi.h>
@@ -40,6 +41,7 @@ int main(int argc, char* argv[])
 {
     aitsnap::compat::configureHighDpi();
     QApplication app(argc, argv);
+    auto font = app.font(); font.setPointSize(10); app.setFont(font);
     QApplication::setApplicationName(QStringLiteral("AITSnap"));
     QApplication::setApplicationVersion(QStringLiteral(AITSNAP_VERSION));
     QCommandLineParser parser; parser.addHelpOption(); parser.addVersionOption();

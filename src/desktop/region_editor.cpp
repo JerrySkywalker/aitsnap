@@ -102,7 +102,7 @@ protected:
             if (state_->selected < 0) {
                 state_->mode = core::RegionDrag::Create; state_->selected = int(state_->profile.regions.size());
                 state_->profile.regions.push_back({QUuid::createUuid().toString(QUuid::WithoutBraces).toStdString(),
-                    "区域 " + std::to_string(state_->profile.nextRegionNumber), {p.x, p.y, 1, 1}, true, state_->profile.nextRegionNumber++});
+                    uiText("区域 %1").arg(state_->profile.nextRegionNumber).toStdString(), {p.x, p.y, 1, 1}, true, state_->profile.nextRegionNumber++});
             }
         }
         state_->original = state_->profile.regions[std::size_t(state_->selected)].rect;

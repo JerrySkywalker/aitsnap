@@ -12,11 +12,13 @@
 
 class QCheckBox; class QComboBox; class QLabel; class QLineEdit;
 class QMenu; class QSystemTrayIcon; class QTableWidget; class QListWidget;
+class QStackedWidget; class QTabWidget;
 
 namespace aitsnap {
 class ReportQueue;
 class ContextStore;
 class LocalPipeServer;
+class DisplayCanvas; class ImagePreview;
 
 class MainWindow final : public QMainWindow
 {
@@ -57,14 +59,21 @@ private:
     QLabel* hostStatus_{};
     QString currentRequestId_;
     std::shared_ptr<CaptureOutcome> lastOutcome_;
-    QLabel *status_{}, *preview_{};
-    bool busy_{}, paused_{}, configurationBlocked_{}, editingRegions_{}, editingScene_{};
+    QLabel *status_{}, *overviewSummary_{}, *sourceDetail_{}, *batchDetail_{}, *filenamePreview_{};
+    ImagePreview *preview_{}, *sourcePreview_{}, *scenePreview_{}, *batchPreview_{};
+    DisplayCanvas *topology_{}, *overviewTopology_{}, *appearanceTopology_{};
+    QListWidget *navigation_{}, *sourceCards_{}, *batchCards_{}, *batchImages_{}, *reportCards_{};
+    QStackedWidget* pages_{};
+    QTabWidget* sourceViews_{};
+    QString selectedBatchManifest_;
+    void refreshWorkspace(); void refreshBatches(); void selectBatch(); void selectBatchImage();
+    bool busy_{}, paused_{}, configurationBlocked_{}, editingRegions_{}, editingScene_{}, refreshingWorkspace_{};
     void buildUi(); void setupTray(); void loadProfile();
     bool collectSettings(Settings&, QString& error);
     bool applySettings(); void addRegion(); void rebuildProfileMenu();
     void setStatus(const QString&, bool error = false);
     void editRegions();
-    void editScene(bool createNew, bool historical = false);
+    void editScene(bool createNew, bool historical = false, const QString& manifestOverride = {});
     void rebuildScenes(); void rebuildSceneMenu(); void importScene(); void exportScene();
     void completeCapture(const std::shared_ptr<CaptureOutcome>&, const Settings&, int mode);
     void showReportQueue(); void refreshReportStatus();

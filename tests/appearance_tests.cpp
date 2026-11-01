@@ -9,6 +9,9 @@
 #include <QJsonDocument>
 #include <QJsonArray>
 #include <QPushButton>
+#include <QListWidget>
+#include <QStackedWidget>
+#include <QTabWidget>
 #include <QTemporaryDir>
 #include <QDir>
 #include <iostream>
@@ -41,11 +44,25 @@ int main(int argc, char** argv)
         const auto backups = QDir(temp.path()).entryList({"settings.json.v3-preserved-*"}, QDir::Files); check(backups.size() == 1, "one exact legacy backup");
         QFile backup(temp.filePath(backups.front())); check(backup.open(QIODevice::ReadOnly) && backup.readAll() == originalBytes, "legacy bytes preserved");
         installLanguage("en-US"); applyColorMode("light");
+        const auto batchDirectory = temp.filePath("saved-batches/legacy-batch"); check(QDir().mkpath(batchDirectory), "gallery fixture directory");
+        QImage galleryImage(40, 20, QImage::Format_ARGB32); galleryImage.fill(Qt::green);
+        check(saveImageNew(galleryImage, batchDirectory + "/source.png", "PNG", error), "gallery image");
+        QJsonObject manifest{{"batchId", "gallery-fixture"}, {"artifacts", QJsonArray{
+            QJsonObject{{"kind", "ORIGINAL"}, {"saveStatus", "SAVED"}, {"relativePath", "source.png"}},
+            QJsonObject{{"kind", "ORIGINAL"}, {"saveStatus", "SAVED"}, {"relativePath", "../../settings.json"}}
+        }}};
+        check(saveBytesNew(QJsonDocument(manifest).toJson(), batchDirectory + "/batch.json", error), "gallery manifest");
+        loaded.outputDirectory = temp.filePath("saved-batches"); check(saveSettings(path, loaded, error), "gallery configuration");
         check(uiText("截图并保存") == "Capture and save", "English catalog actually loaded");
         {
             MainWindow window(nullptr, path, "-");
             auto* mode = window.findChild<QComboBox*>("appearanceColorMode"); auto* language = window.findChild<QComboBox*>("appearanceLanguage");
             check(mode && language, "appearance controls present");
+            auto* nav = window.findChild<QListWidget*>("workspaceNavigation"); auto* sourceTabs = window.findChild<QTabWidget*>("sourceViews");
+            check(nav && nav->count() == 5 && sourceTabs, "visual navigation present");
+            nav->setCurrentRow(1); check(sourceTabs->currentIndex() == 0, "source default is display layout");
+            sourceTabs->setCurrentIndex(1); nav->setCurrentRow(0); nav->setCurrentRow(1); check(sourceTabs->currentIndex() == 0, "source reentry resets to display layout");
+            nav->setCurrentRow(3); check(window.findChild<QListWidget*>("batchCards")->count() == 1 && window.findChild<QListWidget*>("batchImages")->count() == 1, "gallery follows portable manifest paths and excludes invalid artifacts");
             check(window.findChild<QPushButton*>("captureSave")->text() == "Capture and save", "actual button localized");
             mode->setCurrentIndex(mode->findData("dark")); app.processEvents();
             check(activeColorMode() == "dark" && window.palette().color(QPalette::Window).lightness() < 90 && window.palette().color(QPalette::Text).lightness() > 190, "dark widgets have contrasting palette");

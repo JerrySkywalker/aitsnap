@@ -77,6 +77,7 @@ add_library(aitsnap-adapters STATIC
     src/adapters/scene_render.cpp
     src/desktop/scene_editor.cpp
     src/desktop/appearance.cpp
+    src/desktop/workspace_views.cpp
     resources/aitsnap.qrc
 )
 target_link_libraries(aitsnap-adapters PUBLIC aitsnap-capture aitsnap-scene aitsnap-context Qt${AITSNAP_QT_MAJOR}::Widgets PRIVATE gdi32 user32 dwmapi wtsapi32 advapi32)
@@ -85,10 +86,10 @@ add_executable(aitsnap-word-bridge src/adapters/word_bridge_main.cpp)
 target_link_libraries(aitsnap-word-bridge PRIVATE aitsnap-adapters ole32 oleaut32 psapi)
 add_executable(aitsnap-cli src/cli_main.cpp)
 target_link_libraries(aitsnap-cli PRIVATE aitsnap-adapters)
+set(aitsnap_ui_sources src/main_window.cpp src/desktop/host_controller.cpp src/desktop/workspace_ui.cpp src/desktop/workspace_browser.cpp)
 add_executable(aitsnap WIN32
     src/main.cpp
-    src/main_window.cpp
-    src/desktop/host_controller.cpp
+    ${aitsnap_ui_sources}
     src/main_window.h
     src/compat/qt_widgets_compat.h
 )
@@ -96,11 +97,11 @@ add_executable(aitsnap WIN32
 target_link_libraries(aitsnap PRIVATE aitsnap-adapters psapi)
 set(aitsnap_targets aitsnap aitsnap-adapters aitsnap-word-bridge aitsnap-cli)
 if(BUILD_TESTING)
-    add_executable(aitsnap-desktop-tests tests/desktop_tests.cpp src/main_window.cpp src/desktop/host_controller.cpp)
+    add_executable(aitsnap-desktop-tests tests/desktop_tests.cpp ${aitsnap_ui_sources})
     target_link_libraries(aitsnap-desktop-tests PRIVATE aitsnap-adapters dwmapi)
     add_test(NAME desktop-adapters COMMAND aitsnap-desktop-tests)
     list(APPEND aitsnap_targets aitsnap-desktop-tests)
-    add_executable(aitsnap-appearance-tests tests/appearance_tests.cpp src/main_window.cpp src/desktop/host_controller.cpp)
+    add_executable(aitsnap-appearance-tests tests/appearance_tests.cpp ${aitsnap_ui_sources})
     target_link_libraries(aitsnap-appearance-tests PRIVATE aitsnap-adapters)
     add_test(NAME appearance COMMAND aitsnap-appearance-tests)
     list(APPEND aitsnap_targets aitsnap-appearance-tests)
@@ -128,7 +129,7 @@ if(BUILD_TESTING)
     target_link_libraries(aitsnap-host-tests PRIVATE aitsnap-adapters)
     add_test(NAME local-host COMMAND aitsnap-host-tests)
     list(APPEND aitsnap_targets aitsnap-host-tests)
-    add_executable(aitsnap-ipc-capture-tests tests/ipc_capture_tests.cpp src/main_window.cpp src/desktop/host_controller.cpp)
+    add_executable(aitsnap-ipc-capture-tests tests/ipc_capture_tests.cpp ${aitsnap_ui_sources})
     target_link_libraries(aitsnap-ipc-capture-tests PRIVATE aitsnap-adapters dwmapi)
     add_dependencies(aitsnap-ipc-capture-tests aitsnap-cli aitsnap-word-bridge)
     list(APPEND aitsnap_targets aitsnap-ipc-capture-tests)
