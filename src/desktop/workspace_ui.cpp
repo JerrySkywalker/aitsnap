@@ -54,13 +54,20 @@ void MainWindow::buildUi()
     auto page = [this] { auto* p = new QWidget; pages_->addWidget(p); return new QVBoxLayout(p); };
     auto subtitle = [](QVBoxLayout* layout, const QString& text) { auto* label = new QLabel(text); label->setWordWrap(true); label->setProperty("muted", true); layout->addWidget(label); return label; };
     auto* workbench = page(); overviewSummary_ = subtitle(workbench, {}); overviewSummary_->setObjectName("workspaceSummary");
-    auto* workSplit = new QSplitter;
-    auto* overviewSourcePanel = new QWidget; auto* overviewSourceLayout = new QVBoxLayout(overviewSourcePanel); overviewSourceLayout->setContentsMargins(0, 0, 0, 0);
-    overviewSourceLayout->addWidget(new QLabel(uiText("源区域"))); overviewSources_ = new QListWidget; overviewSources_->setObjectName("overviewSources"); overviewSources_->setIconSize({80, 50}); overviewSources_->setWordWrap(true); overviewSources_->setMinimumWidth(180); overviewSourceLayout->addWidget(overviewSources_, 1); workSplit->addWidget(overviewSourcePanel);
-    overviewTopology_ = new DisplayCanvas; overviewTopology_->setObjectName("overviewDisplayLayout"); workSplit->addWidget(overviewTopology_);
-    auto* overviewOutputPanel = new QWidget; auto* overviewOutputLayout = new QVBoxLayout(overviewOutputPanel); overviewOutputLayout->setContentsMargins(0, 0, 0, 0);
-    overviewOutputLayout->addWidget(new QLabel(uiText("下一次输出"))); overviewOutputs_ = new QListWidget; overviewOutputs_->setObjectName("overviewOutputs"); overviewOutputs_->setIconSize({96, 60}); overviewOutputs_->setMinimumWidth(220); overviewOutputs_->setWordWrap(true); overviewOutputLayout->addWidget(overviewOutputs_, 1);
-    preview_ = new ImagePreview; preview_->setObjectName("latestCapturePreview"); preview_->setMaximumHeight(190); preview_->setImage({}, uiText("最近一次截图 · 尚未采集")); overviewOutputLayout->addWidget(preview_); workSplit->addWidget(overviewOutputPanel);
+    auto* workSplit = new QSplitter; workSplit->setObjectName("workbenchColumns");
+    auto panel = [workSplit](const QString& name, const QString& title) {
+        auto* frame = new QWidget; frame->setObjectName(name); frame->setProperty("card",true);
+        auto* layout = new QVBoxLayout(frame); layout->setContentsMargins(8,8,8,8); layout->setSpacing(8);
+        auto* header = new QLabel(title); header->setObjectName(name+"Title"); header->setFixedHeight(header->fontMetrics().height()+16); layout->addWidget(header);
+        workSplit->addWidget(frame); return layout;
+    };
+    auto* overviewSourceLayout = panel("workbenchSources",uiText("源区域"));
+    overviewSources_ = new QListWidget; overviewSources_->setObjectName("overviewSources"); overviewSources_->setIconSize({80,50}); overviewSources_->setWordWrap(false); overviewSources_->setMinimumWidth(180); overviewSources_->setItemDelegate(new LinkedItemDelegate(overviewSources_)); overviewSourceLayout->addWidget(overviewSources_,1);
+    auto* overviewLayout = panel("workbenchLayout",uiText("显示器布局"));
+    overviewTopology_ = new DisplayCanvas; overviewTopology_->setObjectName("overviewDisplayLayout"); overviewLayout->addWidget(overviewTopology_,1);
+    auto* overviewOutputLayout = panel("workbenchOutputs",uiText("下一次输出"));
+    overviewOutputs_ = new QListWidget; overviewOutputs_->setObjectName("overviewOutputs"); overviewOutputs_->setIconSize({96,60}); overviewOutputs_->setMinimumWidth(220); overviewOutputs_->setWordWrap(false); overviewOutputs_->setItemDelegate(new LinkedItemDelegate(overviewOutputs_)); overviewOutputLayout->addWidget(overviewOutputs_,1);
+    preview_ = new ImagePreview; preview_->setObjectName("latestCapturePreview"); preview_->setMaximumHeight(190); preview_->setImage({},uiText("最近一次截图 · 尚未采集")); overviewOutputLayout->addWidget(preview_);
     workSplit->setSizes({200, 470, 260}); workbench->addWidget(workSplit, 1);
     auto* quick = new QHBoxLayout; auto* quickRegions = new QPushButton(uiText("查看源区域")); auto* quickScenes = new QPushButton(uiText("查看拼图输出")); auto* quickBatches = new QPushButton(uiText("浏览已保存批次"));
     quick->addWidget(quickRegions); quick->addWidget(quickScenes); quick->addWidget(quickBatches); quick->addStretch(); workbench->addLayout(quick);

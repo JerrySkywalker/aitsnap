@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "desktop/appearance.h"
+#include "desktop/workspace_views.h"
 #include "desktop/scene_layer_item.h"
 #include "main_window.h"
 #include <QApplication>
@@ -75,13 +76,21 @@ int main(int argc, char** argv)
             auto* overviewSources = window.findChild<QListWidget*>("overviewSources"); auto* outputs = window.findChild<QListWidget*>("overviewOutputs"); auto* table = window.findChild<QTableWidget*>("regions");
             check(overviewSources && outputs && outputs->count() == 3 && overviewSources->count() == 2, "next outputs enumerate two originals and one scene");
             outputs->setCurrentRow(2); settle();
-            check(overviewSources->item(0)->background().style() != Qt::NoBrush && overviewSources->item(1)->background().style() != Qt::NoBrush, "scene output highlights both actual source cards");
+            check(overviewSources->item(0)->data(linkedItemRole).toBool() && overviewSources->item(1)->data(linkedItemRole).toBool() && overviewSources->item(0)->background().style() == Qt::NoBrush, "scene output highlights both actual source cards");
             overviewSources->setCurrentRow(1); settle(); check(table->currentRow() == 1 && window.findChild<QListWidget*>("sourceCards")->currentRow() == 1, "source selection synchronizes views");
             window.findChild<QPushButton*>("applySettings")->click(); settle(); check(table->currentRow() == 1, "apply preserves selected region identity");
             nav->setCurrentRow(1); check(sourceTabs->currentIndex() == 0, "source default is display layout");
             sourceTabs->setCurrentIndex(1); nav->setCurrentRow(0); nav->setCurrentRow(1); check(sourceTabs->currentIndex() == 0, "source reentry resets to display layout");
             nav->setCurrentRow(3); check(window.findChild<QListWidget*>("batchCards")->count() == 1 && window.findChild<QListWidget*>("batchImages")->count() == 1, "gallery follows portable manifest paths and excludes invalid artifacts");
             check(window.findChild<QPushButton*>("captureSave")->text() == "Capture and save", "actual button localized");
+            if(app.platformName()=="offscreen") {
+                window.resize(1500,960);window.show();settle();
+                auto* left=window.findChild<QWidget*>("workbenchSources");auto* center=window.findChild<QWidget*>("workbenchLayout");auto* right=window.findChild<QWidget*>("workbenchOutputs");
+                check(left && center && right && left->geometry().top()==center->geometry().top() && left->height()==center->height() && center->height()==right->height(),"three complete panel bounds align");
+                check(left->property("card").toBool() && center->property("card").toBool() && right->property("card").toBool(),"three panels share theme surface");
+                check(window.findChild<QLabel*>("workbenchSourcesTitle")->height()==window.findChild<QLabel*>("workbenchLayoutTitle")->height() && window.findChild<QLabel*>("workbenchOutputsTitle")->height()==window.findChild<QLabel*>("workbenchLayoutTitle")->height(),"common title height");
+                window.hide();
+            }
             mode->setCurrentIndex(mode->findData("dark")); app.processEvents();
             check(activeColorMode() == "dark" && window.palette().color(QPalette::Window).lightness() < 90 && window.palette().color(QPalette::Text).lightness() > 190, "dark widgets have contrasting palette");
             auto* status = window.findChild<QLabel*>("captureStatus"); const auto darkStatus = status->palette().color(QPalette::WindowText);
