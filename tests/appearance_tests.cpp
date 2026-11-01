@@ -58,6 +58,7 @@ int main(int argc, char** argv)
             MainWindow window(nullptr, path, "-");
             auto* mode = window.findChild<QComboBox*>("appearanceColorMode"); auto* language = window.findChild<QComboBox*>("appearanceLanguage");
             check(mode && language, "appearance controls present");
+            check(!window.windowIcon().pixmap(16).isNull() && !window.windowIcon().pixmap(256).isNull(), "shipped multi-size icon loaded by Qt");
             auto* nav = window.findChild<QListWidget*>("workspaceNavigation"); auto* sourceTabs = window.findChild<QTabWidget*>("sourceViews");
             check(nav && nav->count() == 5 && sourceTabs, "visual navigation present");
             nav->setCurrentRow(1); check(sourceTabs->currentIndex() == 0, "source default is display layout");

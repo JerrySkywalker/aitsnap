@@ -1,4 +1,7 @@
 <RCC>
+  <qresource prefix="/brand">
+    <file alias="aitsnap.ico">../assets/brand/aitsnap.ico</file>
+  </qresource>
   <qresource prefix="/i18n">
     <file alias="en-US.json">../translations/en-US.json</file>
   </qresource>

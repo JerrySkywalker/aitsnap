@@ -61,15 +61,19 @@ def main():
     p.add_argument('--package',type=Path,required=True)
     p.add_argument('--destination',type=Path,required=True)
     p.add_argument('--version',default='0.7.0')
+    p.add_argument('--table-fixture',action='store_true',help='Author non-installable test data with an unconditional launch block and separate product identity')
     a=p.parse_args(); package=a.package.resolve(); output=a.destination.resolve()
     if output.exists(): p.error('Choose a new destination directory')
     manifest=json.loads((package/'package-manifest.json').read_text(encoding='utf-8'))
+    if manifest.get('product','').startswith('TABLE-FIXTURE') and not a.table_fixture:
+        p.error('Table-only payloads require --table-fixture and cannot be authored as installable packages')
+    package_upgrade = uuid.uuid5(UPGRADE,'non-installable-table-fixture') if a.table_fixture else UPGRADE
     for file in manifest['files']:
         if not (package/file['path']).resolve().is_relative_to(package): raise RuntimeError('Package path leaves its root')
         if sha(package/file['path']) != file['sha256']: raise RuntimeError('Package hash mismatch: '+file['path'])
     sources={Path(x['path']):package/x['path'] for x in manifest['files']}
     sources[Path('package-manifest.json')]=package/'package-manifest.json'
-    product=guid(uuid.uuid5(UPGRADE,a.version))
+    product=guid(uuid.uuid5(package_upgrade,a.version))
     output.mkdir(parents=True); cabinet=output/'payload.cab'
     marker=output/'msi-install.json'; marker.write_text(json.dumps(dict(installer='Windows Installer',productCode=product,version=a.version,sourcePackageManifestSha256=sha(package/'package-manifest.json')),indent=2)+'\n',encoding='utf-8')
     sources[Path('msi-install.json')]=marker; files=sorted(sources)
@@ -91,6 +95,11 @@ def main():
         db.table('Media','`DiskId` SHORT NOT NULL, `LastSequence` SHORT NOT NULL, `DiskPrompt` CHAR(64) LOCALIZABLE, `Cabinet` CHAR(255), `VolumeLabel` CHAR(32), `Source` CHAR(72) PRIMARY KEY `DiskId`')
         db.table('Registry','`Registry` CHAR(72) NOT NULL, `Root` SHORT NOT NULL, `Key` CHAR(255) NOT NULL LOCALIZABLE, `Name` CHAR(255) LOCALIZABLE, `Value` CHAR(0) LOCALIZABLE, `Component_` CHAR(72) NOT NULL PRIMARY KEY `Registry`')
         db.table('Shortcut','`Shortcut` CHAR(72) NOT NULL, `Directory_` CHAR(72) NOT NULL, `Name` CHAR(128) NOT NULL LOCALIZABLE, `Component_` CHAR(72) NOT NULL, `Target` CHAR(255) NOT NULL, `Arguments` CHAR(255), `Description` CHAR(255) LOCALIZABLE, `Hotkey` SHORT, `Icon_` CHAR(72), `IconIndex` SHORT, `ShowCmd` SHORT, `WkDir` CHAR(72) PRIMARY KEY `Shortcut`')
+        db.table('Icon','`Name` CHAR(72) NOT NULL, `Data` OBJECT NOT NULL PRIMARY KEY `Name`')
+        db.table('Binary','`Name` CHAR(72) NOT NULL, `Data` OBJECT NOT NULL PRIMARY KEY `Name`')
+        icon = Path(__file__).resolve().parents[1] / 'assets/brand/aitsnap.ico'
+        db.insert('Icon','Name Data','AITSnapIcon',icon,streams=(2,))
+        db.insert('Binary','Name Data','AITSnapIcon',icon,streams=(2,))
         db.table('RemoveFile','`FileKey` CHAR(72) NOT NULL, `Component_` CHAR(72) NOT NULL, `FileName` CHAR(255) LOCALIZABLE, `DirProperty` CHAR(72) NOT NULL, `InstallMode` SHORT NOT NULL PRIMARY KEY `FileKey`')
         db.table('AppSearch','`Property` CHAR(72) NOT NULL, `Signature_` CHAR(72) NOT NULL PRIMARY KEY `Property`, `Signature_`')
         db.table('Signature','`Signature` CHAR(72) NOT NULL, `FileName` CHAR(255) NOT NULL, `MinVersion` CHAR(20), `MaxVersion` CHAR(20), `MinSize` LONG, `MaxSize` LONG, `MinDate` LONG, `MaxDate` LONG, `Languages` CHAR(255) PRIMARY KEY `Signature`')
@@ -99,8 +108,9 @@ def main():
         db.table('Upgrade','`UpgradeCode` CHAR(38) NOT NULL, `VersionMin` CHAR(20), `VersionMax` CHAR(20), `Language` CHAR(255), `Attributes` SHORT NOT NULL, `Remove` CHAR(255), `ActionProperty` CHAR(72) NOT NULL PRIMARY KEY `UpgradeCode`, `VersionMin`, `VersionMax`, `Language`, `Attributes`')
         for table in ['InstallExecuteSequence','InstallUISequence']:
             db.table(table,'`Action` CHAR(72) NOT NULL, `Condition` CHAR(255), `Sequence` SHORT PRIMARY KEY `Action`')
-        props=dict(ProductName='AITSnap',ProductVersion=a.version,ProductCode=product,UpgradeCode=guid(UPGRADE),ProductLanguage='2052',Manufacturer='AITSnap contributors',INSTALLLEVEL='1',ARPNOMODIFY='1',ARPURLINFOABOUT='https://github.com/JerrySkywalker/aitsnap',SecureCustomProperties='OLDPRODUCTS;NEWERPRODUCTS;INSTALLDIR',MsiLogging='v')
+        props=dict(ProductName='AITSnap table fixture (not installable)' if a.table_fixture else 'AITSnap',ProductVersion=a.version,ProductCode=product,UpgradeCode=guid(package_upgrade),ProductLanguage='2052',Manufacturer='AITSnap contributors',INSTALLLEVEL='1',ARPNOMODIFY='1',ARPURLINFOABOUT='https://github.com/JerrySkywalker/aitsnap',SecureCustomProperties='OLDPRODUCTS;NEWERPRODUCTS;INSTALLDIR',MsiLogging='v')
         for key,value in props.items(): db.insert('Property','Property Value',key,value)
+        db.insert('Property','Property Value','ARPPRODUCTICON','AITSnapIcon')
         for row in [('TARGETDIR',None,'SourceDir'),('LocalAppDataFolder','TARGETDIR','.'),('ProgramsDir','LocalAppDataFolder','Programs'),('INSTALLDIR','ProgramsDir','AITSnap'),('ProgramMenuFolder','TARGETDIR','.'),('APPMENU','ProgramMenuFolder','AITSnap')]: db.insert('Directory','Directory Directory_Parent DefaultDir',*row)
         directories={Path('.'):'INSTALLDIR'}
         for file in files:
@@ -111,7 +121,7 @@ def main():
         main_component=None; main_file=None
         for i,file in enumerate(files,1):
             relative=file; identifier=f'F{i:05}'; component=f'C{i:05}'
-            db.insert('Component','Component ComponentId Directory_ Attributes Condition KeyPath',component,guid(uuid.uuid5(UPGRADE,relative.as_posix())),directories[relative.parent],256,None,identifier)
+            db.insert('Component','Component ComponentId Directory_ Attributes Condition KeyPath',component,guid(uuid.uuid5(package_upgrade,relative.as_posix())),directories[relative.parent],256,None,identifier)
             db.insert('FeatureComponents','Feature_ Component_','Main',component)
             db.insert('File','File Component_ FileName FileSize Version Language Attributes Sequence',identifier,component,f'{identifier}|{file.name}',sources[file].stat().st_size,file_version(sources[file]),None,512,i)
             if relative.as_posix()=='aitsnap.exe': main_component,main_file=component,identifier
@@ -123,10 +133,11 @@ def main():
             db.insert('RegLocator','Signature_ Root Key Name Type',name,2,r'SOFTWARE\Microsoft\Windows NT\CurrentVersion',value,18)
         db.insert('LaunchCondition','Condition Description','Installed OR (VersionNT64 AND AITSNAP_OS_MAJOR = "#10" AND AITSNAP_OS_BUILD >= 17763 AND AITSNAP_INSTALL_TYPE = "Client")','AITSnap requires Windows 10 1809 or later, x64 (Windows 11 supported).')
         db.insert('LaunchCondition','Condition Description','NOT NEWERPRODUCTS','A newer AITSnap version is already installed.')
-        db.insert('Upgrade','UpgradeCode VersionMin VersionMax Language Attributes Remove ActionProperty',guid(UPGRADE),None,a.version,None,1,None,'OLDPRODUCTS')
-        db.insert('Upgrade','UpgradeCode VersionMin VersionMax Language Attributes Remove ActionProperty',guid(UPGRADE),a.version,None,None,2,None,'NEWERPRODUCTS')
+        if a.table_fixture: db.insert('LaunchCondition','Condition Description','0','Non-installable table-test fixture. Use the complete release candidate instead.')
+        db.insert('Upgrade','UpgradeCode VersionMin VersionMax Language Attributes Remove ActionProperty',guid(package_upgrade),None,a.version,None,1,None,'OLDPRODUCTS')
+        db.insert('Upgrade','UpgradeCode VersionMin VersionMax Language Attributes Remove ActionProperty',guid(package_upgrade),a.version,None,None,2,None,'NEWERPRODUCTS')
         db.insert('Registry','Registry Root Key Name Value Component_','InstallLocation',1,r'Software\AITSnap\Installer','InstallDir','[INSTALLDIR]',main_component)
-        db.insert('Shortcut','Shortcut Directory_ Name Component_ Target Arguments Description Hotkey Icon_ IconIndex ShowCmd WkDir','AITSnapStart','APPMENU','AIT|AITSnap',main_component,f'[#{main_file}]',None,'Multi-screen capture, scenes and Word report',None,None,None,1,'INSTALLDIR')
+        db.insert('Shortcut','Shortcut Directory_ Name Component_ Target Arguments Description Hotkey Icon_ IconIndex ShowCmd WkDir','AITSnapStart','APPMENU','AIT|AITSnap',main_component,f'[#{main_file}]','--show','Multi-screen capture, scenes and Word report',None,'AITSnapIcon',0,1,'INSTALLDIR')
         for i,directory in enumerate([*directories.values(),'APPMENU']): db.insert('RemoveFile','FileKey Component_ FileName DirProperty InstallMode',f'R{i:05}',main_component,None,directory,2)
         actions=[('FindRelatedProducts',None,25),('AppSearch','NOT Installed',50),('LaunchConditions',None,100),('CostInitialize',None,800),('FileCost',None,900),('CostFinalize',None,1000),('MigrateFeatureStates',None,1200),('InstallValidate',None,1400),('InstallInitialize',None,1500),('RemoveExistingProducts','OLDPRODUCTS',1501),('ProcessComponents',None,1600),('UnpublishFeatures',None,1800),('RemoveRegistryValues',None,2600),('RemoveShortcuts',None,3200),('RemoveFiles',None,3500),('RemoveFolders',None,3600),('CreateFolders',None,3700),('InstallFiles',None,4000),('CreateShortcuts',None,4500),('WriteRegistryValues',None,5000),('RegisterUser',None,6000),('RegisterProduct',None,6100),('PublishFeatures',None,6300),('PublishProduct',None,6400),('InstallFinalize',None,6600)]
         for row in actions: db.insert('InstallExecuteSequence','Action Condition Sequence',*row)
@@ -139,7 +150,7 @@ def main():
         finally: close(info)
         ok(commit(db.handle),'commit MSI')
     finally: close(db.handle)
-    receipt=dict(productCode=product,upgradeCode=guid(UPGRADE),packageCode=package_code,version=a.version,msi=str(path),sha256=sha(path),packageManifestSha256=sha(package/'package-manifest.json'),files=len(files),nativeWin10Acceptance='HOLD until actual target run')
+    receipt=dict(productCode=product,upgradeCode=guid(package_upgrade),packageCode=package_code,version=a.version,msi=str(path),sha256=sha(path),packageManifestSha256=sha(package/'package-manifest.json'),files=len(files),tableFixture=a.table_fixture,nativeWin10Acceptance='HOLD until actual target run')
     receipt['filesSha256']={file.as_posix():sha(sources[file]) for file in files}
     (output/'installer-receipt.json').write_text(json.dumps(receipt,indent=2)+'\n',encoding='utf-8'); print(json.dumps({k:v for k,v in receipt.items() if k!='filesSha256'}))
 if __name__=='__main__': main()
