@@ -10,6 +10,7 @@
 #include <stdexcept>
 
 namespace aitsnap {
+std::mutex& desktopCaptureMutex(){static std::mutex mutex;return mutex;}
 core::Error interactiveDesktopStatus()
 {
     HDESK input = OpenInputDesktop(0, FALSE, DESKTOP_READOBJECTS);
