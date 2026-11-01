@@ -11,6 +11,7 @@ class LayerItem;
 class SceneEditor final : public QDialog {
 public:
     SceneEditor(core::SceneTemplate, core::CaptureProfile, SceneSources, QWidget* parent = nullptr);
+    ~SceneEditor() override;
     core::SceneTemplate sceneTemplate() const { return model_; }
     bool exportDerived(const QString& path, QString& error) const;
 private:

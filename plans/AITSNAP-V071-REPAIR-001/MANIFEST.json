@@ -1,0 +1,24 @@
+{
+  "package": "AITSNAP-V071-REPAIR-001",
+  "status": "APPROVED_EXECUTION_IN_PROGRESS",
+  "sourceBaseline": "7c6a717a1234204bebf01ea2c4fc50cd5a04bebe",
+  "targetVersion": "0.7.1",
+  "implementationStarted": true,
+  "files": [
+    {
+      "path": "DEVELOPMENT-CHECKLIST.md",
+      "sha256": "2a87da3af7ff278d73f66c4e3c1fef45c0f1c02b1d9ba4642463e6be039338b3",
+      "bytes": 5283
+    },
+    {
+      "path": "EXECUTION.md",
+      "sha256": "7b101383d9812047045693ca7e3b0bc8dac3022d63c9b99c8a9b63bce17db877",
+      "bytes": 2345
+    },
+    {
+      "path": "REVIEW-AND-PLAN.md",
+      "sha256": "ce2615e30645bb135bcbd0815d53882f533550a7612c4f09167c91e4d9fe6304",
+      "bytes": 22602
+    }
+  ]
+}
