@@ -231,7 +231,7 @@ QJsonObject batchJson(const core::CaptureBatch& b)
     for (const auto& f : b.displayFrames) displays.append(QJsonObject{{"displayId", qs(f.display.id)}, {"acquiredAtUtc", qs(f.acquiredAtUtc)},
         {"startMonotonicNs", QString::number(f.acquisitionStartNs)}, {"endMonotonicNs", QString::number(f.acquisitionEndNs)}, {"errorCode", qs(f.error.code)}});
     for (const auto& o : b.outputs) {
-        outputs.append(QJsonObject{{"kind", qs(o.kind)}, {"path", qs(o.path)}, {"status", qs(o.status)},
+        outputs.append(QJsonObject{{"kind", qs(o.kind)}, {"path", qs(o.path)}, {"relativePath", qs(o.relativePath)}, {"status", qs(o.status)},
             {"errorCode", qs(o.error.code)}, {"error", qs(o.error.message)}});
         if (o.error) ++failures;
         if (o.kind == "ORIGINAL" || o.kind == "COMPOSITE") {

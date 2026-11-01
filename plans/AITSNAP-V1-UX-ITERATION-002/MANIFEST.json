@@ -15,8 +15,8 @@
     },
     {
       "path": "APPEARANCE-070.md",
-      "sha256": "8f400d7d0cbfbe0f8b5d376824876f50218f045aa4c4196384555075ae79e93e",
-      "bytes": 2119
+      "sha256": "e5c7bc86ad592de4479f710c5f1a08ca5c8d6bfed6fe8ddcd7a204e88762bee7",
+      "bytes": 2161
     },
     {
       "path": "BUDGET-SNAPSHOT.md",
@@ -265,8 +265,8 @@
     },
     {
       "path": "EXECUTION-070.md",
-      "sha256": "6f91f32de7f0b4d142bd24e068252266971e256bde89820464b920d164690dad",
-      "bytes": 1795
+      "sha256": "ab15a779d0219467a0d4eee07e0fdc4fe83090b9b720b7d6440c3dfbeff3434c",
+      "bytes": 2863
     },
     {
       "path": "ISSUES-AND-EVIDENCE.md",

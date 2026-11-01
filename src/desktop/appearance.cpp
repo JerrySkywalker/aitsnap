@@ -73,7 +73,8 @@ public:
             "QMenu::item{padding:7px 24px;} QMenu::item:selected{background:%5;}"
             "QLabel[muted=\"true\"]{color:%4;} QWidget[card=\"true\"]{background:%2;border:1px solid %1;border-radius:8px;}"
             "QPushButton[primary=\"true\"]{background:#2364d2;color:white;border:1px solid #2364d2;}"
-        ).arg(border.name(), base.name(), accent.name(), muted.name(), p.color(QPalette::Highlight).name()));
+            "QLabel#captureStatus[statusError=\"true\"]{color:%6;} QLabel#captureStatus[statusError=\"false\"]{color:%7;}"
+        ).arg(border.name(), base.name(), accent.name(), muted.name(), p.color(QPalette::Highlight).name(), dark ? "#ff9a91" : "#b42318", dark ? "#96dfb5" : "#275b43"));
     }
 };
 ColorController* colors{};
