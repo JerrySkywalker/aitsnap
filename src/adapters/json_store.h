@@ -18,6 +18,7 @@ struct Settings {
     QString clipboardRegion, testId, device, station, operatorName;
     qint64 sequence{};
     bool startInTray{};
+    QString language{"system"}, colorMode{"system"};
     std::vector<core::SceneTemplate> scenes;
     QStringList selectedSceneIds;
     QString outputMode{"originals"};
@@ -32,6 +33,7 @@ bool profileFromJson(const QJsonObject&, core::CaptureProfile&, QString& error);
 QImage toQImage(const core::Image&);
 QString expandFilename(const Settings&, const core::CaptureRequest&, const core::Region&, QString& error);
 bool saveImageNew(const QImage&, const QString& path, const QByteArray& format, QString& error);
+bool saveImageNumbered(const QImage&, const QString& directory, const QString& stem, const QByteArray& format, QString& path, QString& error);
 bool saveBytesNew(const QByteArray&, const QString& path, QString& error);
 QJsonObject batchJson(const core::CaptureBatch&);
 } // namespace aitsnap

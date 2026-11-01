@@ -90,6 +90,7 @@ int main(int argc, char** argv)
         Settings settings = defaultSettings(); settings.profiles = {profile}; settings.scenes = {row, column}; settings.selectedSceneIds = QStringList{"row", "column"}; settings.outputMode = "both"; settings.format = "JPEG"; settings.outputDirectory = directory;
         CaptureRequest request; request.requestId = "synthetic-" + QString::number(QDateTime::currentMSecsSinceEpoch()).toStdString(); request.issuedAtUtc = "2026-10-31T08:30:00.000Z"; request.profile = profile;
         auto outcome = captureToFiles(backend, settings, request, true);
+        check(!outcome.directory.endsWith(QString::fromStdString(request.requestId)), "visible batch directory does not expose internal request id");
         check(outcome.composites.size() == 2 && outcome.sceneSnapshots.size() == 2, "multiple composites one batch");
         int originals = 0, exports = 0, composites = 0;
         for (const auto& output : outcome.batch.outputs) {
@@ -100,6 +101,14 @@ int main(int argc, char** argv)
             if (output.kind == "COMPOSITE") ++composites;
         }
         check(originals == 2 && exports == 2 && composites == 2, "original/export/composite independence");
+        {
+            auto collisionSettings = settings; collisionSettings.filenameTemplate = "same-name"; collisionSettings.outputMode = "originals"; collisionSettings.format = "PNG";
+            const auto collided = captureToFiles(backend, collisionSettings, request, true);
+            check(collided.directory != outcome.directory, "same timestamp batch uses exclusive readable suffix");
+            check(collided.batch.outputs.size() == 2 && collided.batch.outputs[0].status == "SAVED" && collided.batch.outputs[1].status == "SAVED", "colliding names both saved");
+            check(collided.batch.outputs[0].path != collided.batch.outputs[1].path && QFileInfo(QString::fromStdString(collided.batch.outputs[1].path)).fileName() == "same-name_2.png", "readable collision suffix instead of UUID");
+            check(QImage(QString::fromStdString(collided.batch.outputs[0].path)).pixelColor(1, 1) != QImage(QString::fromStdString(collided.batch.outputs[1].path)).pixelColor(1, 1), "colliding source pixels never overwritten");
+        }
         check(writeBatchManifest(outcome, error), "batch manifest");
         SceneSources historical; CaptureProfile historicalProfile;
         check(loadHistoricalSources(QDir(outcome.directory).filePath("batch.json"), historical, historicalProfile, error) && historical.size() == 2, "historical original hashes and sources");

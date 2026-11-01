@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 cmake_minimum_required(VERSION 3.24)
 
-project(AITSnap VERSION 0.6.2 LANGUAGES CXX)
+project(AITSnap VERSION 0.7.0 LANGUAGES CXX)
 
 if(NOT WIN32)
     message(FATAL_ERROR "The current AITSnap build baseline requires Windows.")
@@ -11,6 +11,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTORCC ON)
 include(CTest)
 
 add_library(aitsnap-domain STATIC src/core/domain.cpp src/core/region_edit.cpp)
@@ -44,6 +45,7 @@ set(AITSNAP_QT_MAJOR "6" CACHE STRING "Explicit Qt major version: 5 or 6")
 set_property(CACHE AITSNAP_QT_MAJOR PROPERTY STRINGS 5 6)
 option(AITSNAP_BUILD_COMPAT_PROBE "Build the non-product Windows compatibility probe" OFF)
 option(AITSNAP_BUILD_RESEARCH_PROBE "Build synthetic capture/scene feasibility probe" OFF)
+option(AITSNAP_BUILD_ASSET_TOOLS "Build SVG-to-PNG authoring tool (not shipped)" OFF)
 
 if(AITSNAP_QT_MAJOR STREQUAL "6")
     if(NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
@@ -54,6 +56,12 @@ elseif(AITSNAP_QT_MAJOR STREQUAL "5")
     find_package(Qt5 5.15 REQUIRED COMPONENTS Widgets)
 else()
     message(FATAL_ERROR "AITSNAP_QT_MAJOR must be 5 or 6; no automatic fallback is used.")
+endif()
+
+if(AITSNAP_BUILD_ASSET_TOOLS)
+    find_package(Qt${AITSNAP_QT_MAJOR} REQUIRED COMPONENTS Svg)
+    add_executable(aitsnap-render-assets tools/render_assets.cpp)
+    target_link_libraries(aitsnap-render-assets PRIVATE Qt${AITSNAP_QT_MAJOR}::Widgets Qt${AITSNAP_QT_MAJOR}::Svg)
 endif()
 
 add_library(aitsnap-adapters STATIC
@@ -68,6 +76,8 @@ add_library(aitsnap-adapters STATIC
     src/desktop/region_editor.cpp
     src/adapters/scene_render.cpp
     src/desktop/scene_editor.cpp
+    src/desktop/appearance.cpp
+    resources/aitsnap.qrc
 )
 target_link_libraries(aitsnap-adapters PUBLIC aitsnap-capture aitsnap-scene aitsnap-context Qt${AITSNAP_QT_MAJOR}::Widgets PRIVATE gdi32 user32 dwmapi wtsapi32 advapi32)
 target_include_directories(aitsnap-adapters PUBLIC src)
@@ -90,6 +100,10 @@ if(BUILD_TESTING)
     target_link_libraries(aitsnap-desktop-tests PRIVATE aitsnap-adapters dwmapi)
     add_test(NAME desktop-adapters COMMAND aitsnap-desktop-tests)
     list(APPEND aitsnap_targets aitsnap-desktop-tests)
+    add_executable(aitsnap-appearance-tests tests/appearance_tests.cpp src/main_window.cpp src/desktop/host_controller.cpp)
+    target_link_libraries(aitsnap-appearance-tests PRIVATE aitsnap-adapters)
+    add_test(NAME appearance COMMAND aitsnap-appearance-tests)
+    list(APPEND aitsnap_targets aitsnap-appearance-tests)
     add_executable(aitsnap-scene-tests tests/scene_tests.cpp)
     target_link_libraries(aitsnap-scene-tests PRIVATE aitsnap-adapters)
     add_test(NAME scene COMMAND aitsnap-scene-tests)
@@ -141,7 +155,7 @@ if(AITSNAP_BUILD_COMPAT_PROBE)
 endif()
 
 foreach(target IN LISTS aitsnap_targets)
-    target_compile_definitions(${target} PRIVATE AITSNAP_VERSION="${PROJECT_VERSION}-preview")
+    target_compile_definitions(${target} PRIVATE AITSNAP_VERSION="${PROJECT_VERSION}")
     target_link_libraries(${target} PRIVATE Qt${AITSNAP_QT_MAJOR}::Widgets)
     if(AITSNAP_QT_MAJOR STREQUAL "5")
         # Header API floor only; this does not qualify compiler/CRT dependencies.

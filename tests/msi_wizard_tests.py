@@ -50,7 +50,7 @@ try:
             assert not (tx<x+w and tx+tw>x and ty<y+h and ty+th>y), 'Overlapping text/input: '+text[0]+'/'+text[1]+' and '+target[1]
     progress = {r[1]:r for r in controls if r[0]=='ProgressDlg'}
     assert int(progress['Body'][6])+int(progress['Body'][8]) <= int(progress['Action'][6]), 'Progress body obscures action text'
-    assert properties['ProductVersion'] in ['0.6.1','0.6.2']
+    assert properties['ProductVersion'] in ['0.6.1','0.6.2','0.7.0']
     assert any(r[0]=='WelcomeDlg' and '[ProductVersion]' in r[3] and '多屏截图' in r[3] for r in controls)
     assert any(r[0]=='ExitDlg' and '立即启动 AITSnap' in r[3] for r in controls)
     sequence = {r[0]:r[1] for r in rows('InstallUISequence',['Action','Sequence'])}

@@ -9,6 +9,7 @@
 #include "adapters/local_host.h"
 #include "desktop/region_editor.h"
 #include "desktop/scene_editor.h"
+#include "desktop/appearance.h"
 #include "core/scene_geometry.h"
 #include <QAction>
 #include <QApplication>
@@ -62,7 +63,7 @@ static QIcon appIcon()
 }
 MainWindow::MainWindow(QWidget* parent, QString path, QString pipeName) : QMainWindow(parent), configurationPath_(path.isEmpty() ? settingsPath() : path)
 {
-    setWindowTitle(QStringLiteral("AITSnap · 多屏截图")); resize(1120, 780); setWindowIcon(appIcon());
+    setWindowTitle(aitsnap::uiText("AITSnap · 多屏截图")); resize(1120, 780); setWindowIcon(appIcon());
     settings_ = defaultSettings(); QString loadError;
     settings_.outputDirectory = QFileInfo(configurationPath_).absolutePath() + "/captures";
     if (QFile::exists(configurationPath_)) loadSettings(configurationPath_, settings_, loadError);
@@ -73,7 +74,7 @@ MainWindow::MainWindow(QWidget* parent, QString path, QString pipeName) : QMainW
             const auto b = p.calibratedDisplays.empty() ? core::Rect{0, 0, 1920, 1080} : p.calibratedDisplays[std::size_t(i) % p.calibratedDisplays.size()].rect;
             p.regions.push_back({id(), "区域 " + std::to_string(i + 1), {b.x + 60 + i * 20, b.y + 60 + i * 20, std::max(1, std::min(640, b.width / 2)), std::max(1, std::min(400, b.height / 2))}, true});
         }
-        settings_.profiles.push_back(p);
+        core::numberRegions(p); settings_.profiles.push_back(p);
     }
     configurationBlocked_ = !loadError.isEmpty();
     buildUi(); setupTray(); loadProfile(); qApp->installNativeEventFilter(&hotkeys_);
@@ -85,8 +86,8 @@ MainWindow::MainWindow(QWidget* parent, QString path, QString pipeName) : QMainW
     hotkeys_.taskbarCreated = [this] { QTimer::singleShot(250, this, [this] { tray_->hide(); tray_->show(); }); };
     QString e;
     if (!hotkeys_.configure({settings_.saveHotkey, settings_.copyHotkey, settings_.bothHotkey}, e)) setStatus(e, true);
-    else setStatus(QStringLiteral("就绪 · %1 保存，%2 复制，%3 保存并复制").arg(settings_.saveHotkey, settings_.copyHotkey, settings_.bothHotkey));
-    if (!loadError.isEmpty()) setStatus(QStringLiteral("配置未载入，原文件保留：") + loadError + QStringLiteral("。核对后应用配置。"), true);
+    else setStatus(aitsnap::uiText("就绪 · %1 保存，%2 复制，%3 保存并复制").arg(settings_.saveHotkey, settings_.copyHotkey, settings_.bothHotkey));
+    if (!loadError.isEmpty()) setStatus(aitsnap::uiText("配置未载入，原文件保留：") + loadError + aitsnap::uiText("。核对后应用配置。"), true);
     startHost(std::move(pipeName));
 }
 MainWindow::~MainWindow()
@@ -100,71 +101,82 @@ MainWindow::~MainWindow()
 void MainWindow::buildUi()
 {
     auto* central = new QWidget(this); auto* outer = new QVBoxLayout(central); outer->setContentsMargins(24, 20, 24, 16); outer->setSpacing(14);
-    auto* title = new QLabel(QStringLiteral("AITSnap  多屏证据截图")); title->setStyleSheet("font-size:24px; font-weight:600;"); outer->addWidget(title);
-    outer->addWidget(new QLabel(QStringLiteral("区域与场景独立 · 修改后应用配置 · 后台一键保存/复制 · 关闭窗口后驻留托盘")));
+    auto* title = new QLabel(aitsnap::uiText("AITSnap  多屏证据截图")); title->setStyleSheet("font-size:24px; font-weight:600;"); outer->addWidget(title);
+    outer->addWidget(new QLabel(aitsnap::uiText("区域与场景独立 · 修改后应用配置 · 后台一键保存/复制 · 关闭窗口后驻留托盘")));
     auto* row = new QHBoxLayout; profiles_ = new QComboBox; profiles_->setObjectName("profiles");
     for (const auto& p : settings_.profiles) profiles_->addItem(qs(p.name));
-    profiles_->setCurrentIndex(settings_.activeProfile); row->addWidget(new QLabel(QStringLiteral("截图配置"))); row->addWidget(profiles_, 1);
-    auto* addProfile = new QPushButton(QStringLiteral("新建配置")); row->addWidget(addProfile);
-    auto* apply = new QPushButton(QStringLiteral("应用配置")); apply->setObjectName("applySettings"); row->addWidget(apply); outer->addLayout(row);
+    profiles_->setCurrentIndex(settings_.activeProfile); row->addWidget(new QLabel(aitsnap::uiText("截图配置"))); row->addWidget(profiles_, 1);
+    auto* addProfile = new QPushButton(aitsnap::uiText("新建配置")); row->addWidget(addProfile);
+    auto* apply = new QPushButton(aitsnap::uiText("应用配置")); apply->setObjectName("applySettings"); row->addWidget(apply); outer->addLayout(row);
     auto* split = new QSplitter(Qt::Horizontal); outer->addWidget(split, 1);
     auto* left = new QWidget; auto* l = new QVBoxLayout(left); l->setContentsMargins(0, 0, 10, 0);
     regions_ = new QTableWidget(0, 6); regions_->setObjectName("regions");
-    regions_->setHorizontalHeaderLabels({QStringLiteral("启用"), QStringLiteral("名称"), "X", "Y", QStringLiteral("宽 px"), QStringLiteral("高 px")});
+    regions_->setHorizontalHeaderLabels({aitsnap::uiText("启用"), aitsnap::uiText("名称"), "X", "Y", aitsnap::uiText("宽 px"), aitsnap::uiText("高 px")});
     regions_->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch); regions_->setSelectionBehavior(QAbstractItemView::SelectRows);
-    l->addWidget(new QLabel(QStringLiteral("源区域 · 原生桌面物理像素（可为负坐标）"))); l->addWidget(regions_, 1);
-    auto* buttons = new QHBoxLayout; auto* add = new QPushButton(QStringLiteral("添加区域")); auto* remove = new QPushButton(QStringLiteral("删除选中")); auto* calibrate = new QPushButton(QStringLiteral("确认当前屏幕布局"));
-    auto* visual = new QPushButton(QStringLiteral("屏幕框选 / 拖动")); visual->setObjectName("editRegions");
+    l->addWidget(new QLabel(aitsnap::uiText("源区域 · 原生桌面物理像素（可为负坐标）"))); l->addWidget(regions_, 1);
+    auto* buttons = new QHBoxLayout; auto* add = new QPushButton(aitsnap::uiText("添加区域")); auto* remove = new QPushButton(aitsnap::uiText("删除选中")); auto* calibrate = new QPushButton(aitsnap::uiText("确认当前屏幕布局"));
+    auto* visual = new QPushButton(aitsnap::uiText("屏幕框选 / 拖动")); visual->setObjectName("editRegions");
     auto* visualRow = new QHBoxLayout; visualRow->addWidget(visual); visualRow->addStretch(); l->addLayout(visualRow);
     buttons->addWidget(add); buttons->addWidget(remove); buttons->addWidget(calibrate); l->addLayout(buttons); split->addWidget(left);
-    l->addWidget(new QLabel(QStringLiteral("拼图场景 · 可勾选多个，同一批源图分别渲染")));
+    l->addWidget(new QLabel(aitsnap::uiText("拼图场景 · 可勾选多个，同一批源图分别渲染")));
     scenes_ = new QListWidget; scenes_->setObjectName("enabledScenes"); scenes_->setMaximumHeight(105); l->addWidget(scenes_);
     auto* sceneActions = new QHBoxLayout;
-    auto* newScene = new QPushButton(QStringLiteral("新建拼图")); newScene->setObjectName("newScene");
-    auto* editSceneButton = new QPushButton(QStringLiteral("编辑拼图")); editSceneButton->setObjectName("editScene");
-    auto* history = new QPushButton(QStringLiteral("重排历史批次")); history->setObjectName("openHistoricalBatch");
-    auto* import = new QPushButton(QStringLiteral("导入场景")); auto* exportTemplate = new QPushButton(QStringLiteral("导出场景"));
+    auto* newScene = new QPushButton(aitsnap::uiText("新建拼图")); newScene->setObjectName("newScene");
+    auto* editSceneButton = new QPushButton(aitsnap::uiText("编辑拼图")); editSceneButton->setObjectName("editScene");
+    auto* history = new QPushButton(aitsnap::uiText("重排历史批次")); history->setObjectName("openHistoricalBatch");
+    auto* import = new QPushButton(aitsnap::uiText("导入场景")); auto* exportTemplate = new QPushButton(aitsnap::uiText("导出场景"));
     sceneActions->addWidget(newScene); sceneActions->addWidget(editSceneButton); sceneActions->addWidget(history); sceneActions->addWidget(import); sceneActions->addWidget(exportTemplate); l->addLayout(sceneActions);
     outputMode_ = new QComboBox; outputMode_->setObjectName("outputMode");
-    outputMode_->addItem(QStringLiteral("保存原图"), "originals"); outputMode_->addItem(QStringLiteral("保存拼图（源图存入证据子目录）"), "composites"); outputMode_->addItem(QStringLiteral("原图 + 选中拼图"), "both");
+    outputMode_->addItem(aitsnap::uiText("保存原图"), "originals"); outputMode_->addItem(aitsnap::uiText("保存拼图（源图存入证据子目录）"), "composites"); outputMode_->addItem(aitsnap::uiText("原图 + 选中拼图"), "both");
     l->addWidget(outputMode_);
-    auto* contextButton = new QPushButton(QStringLiteral("静态目录 / 执行事件 / 选择截图上下文")); contextButton->setObjectName("openContextStore"); l->addWidget(contextButton);
-    contextStatus_ = new QLabel(QStringLiteral("截图上下文：未关联。事件到达不会自动切换当前上下文。")); contextStatus_->setWordWrap(true); l->addWidget(contextStatus_);
+    auto* contextButton = new QPushButton(aitsnap::uiText("静态目录 / 执行事件 / 选择截图上下文")); contextButton->setObjectName("openContextStore"); l->addWidget(contextButton);
+    contextStatus_ = new QLabel(aitsnap::uiText("截图上下文：未关联。事件到达不会自动切换当前上下文。")); contextStatus_->setWordWrap(true); l->addWidget(contextStatus_);
     connect(contextButton, &QPushButton::clicked, this, [this] { showContextStore(); });
-    auto* rules = new QPushButton(QStringLiteral("事件截图规则（默认无自动规则）")); l->addWidget(rules); connect(rules, &QPushButton::clicked, this, [this] { editEventRules(); });
+    auto* rules = new QPushButton(aitsnap::uiText("事件截图规则（默认无自动规则）")); l->addWidget(rules); connect(rules, &QPushButton::clicked, this, [this] { editEventRules(); });
     hostStatus_ = new QLabel; hostStatus_->setWordWrap(true); l->addWidget(hostStatus_);
     connect(newScene, &QPushButton::clicked, this, [this] { editScene(true); });
     connect(editSceneButton, &QPushButton::clicked, this, [this] { editScene(false); });
     connect(history, &QPushButton::clicked, this, [this] { editScene(false, true); });
     connect(import, &QPushButton::clicked, this, [this] { importScene(); }); connect(exportTemplate, &QPushButton::clicked, this, [this] { exportScene(); });
     auto* right = new QWidget; auto* form = new QFormLayout(right); form->setContentsMargins(10, 0, 0, 0);
-    profileName_ = new QLineEdit; form->addRow(QStringLiteral("配置名称"), profileName_);
+    profileName_ = new QLineEdit; form->addRow(aitsnap::uiText("配置名称"), profileName_);
     directory_ = new QLineEdit(settings_.outputDirectory); directory_->setObjectName("outputDirectory");
     auto* pathRow = new QWidget; auto* paths = new QHBoxLayout(pathRow); paths->setContentsMargins(0, 0, 0, 0); paths->addWidget(directory_);
-    auto* browse = new QPushButton("…"); browse->setMaximumWidth(32); paths->addWidget(browse); form->addRow(QStringLiteral("保存目录"), pathRow);
-    format_ = new QComboBox; format_->addItems({"PNG", "JPEG", "BMP"}); format_->setCurrentText(settings_.format); form->addRow(QStringLiteral("图片格式"), format_);
-    filename_ = new QLineEdit(settings_.filenameTemplate); filename_->setToolTip("{datetime} {sequence} {region} {profile} {test} {device} {station} {operator} {run} {step} {command}"); form->addRow(QStringLiteral("文件命名"), filename_);
-    clipboard_ = new QComboBox; form->addRow(QStringLiteral("复制哪张图"), clipboard_);
+    auto* browse = new QPushButton("…"); browse->setMaximumWidth(32); paths->addWidget(browse); form->addRow(aitsnap::uiText("保存目录"), pathRow);
+    format_ = new QComboBox; format_->addItems({"PNG", "JPEG", "BMP"}); format_->setCurrentText(settings_.format); form->addRow(aitsnap::uiText("图片格式"), format_);
+    filename_ = new QLineEdit(settings_.filenameTemplate); filename_->setToolTip("{datetime} {sequence} {region} {profile} {test} {device} {station} {operator} {run} {step} {command}"); form->addRow(aitsnap::uiText("文件命名"), filename_);
+    clipboard_ = new QComboBox; form->addRow(aitsnap::uiText("复制哪张图"), clipboard_);
     saveKey_ = new QLineEdit(settings_.saveHotkey); copyKey_ = new QLineEdit(settings_.copyHotkey); bothKey_ = new QLineEdit(settings_.bothHotkey);
-    form->addRow(QStringLiteral("保存热键"), saveKey_); form->addRow(QStringLiteral("复制热键"), copyKey_); form->addRow(QStringLiteral("保存并复制"), bothKey_);
+    form->addRow(aitsnap::uiText("保存热键"), saveKey_); form->addRow(aitsnap::uiText("复制热键"), copyKey_); form->addRow(aitsnap::uiText("保存并复制"), bothKey_);
     testId_ = new QLineEdit(settings_.testId); device_ = new QLineEdit(settings_.device); station_ = new QLineEdit(settings_.station); operator_ = new QLineEdit(settings_.operatorName);
-    form->addRow(QStringLiteral("试验标识"), testId_); form->addRow(QStringLiteral("设备标识"), device_); form->addRow(QStringLiteral("工位"), station_); form->addRow(QStringLiteral("操作员"), operator_);
-    startTray_ = new QCheckBox(QStringLiteral("启动时直接进入托盘")); startTray_->setChecked(settings_.startInTray); form->addRow(startTray_);
-    reportEnabled_ = new QCheckBox(QStringLiteral("保存截图后自动追加 Word")); reportEnabled_->setChecked(settings_.report.enabled); form->addRow(reportEnabled_);
+    form->addRow(aitsnap::uiText("试验标识"), testId_); form->addRow(aitsnap::uiText("设备标识"), device_); form->addRow(aitsnap::uiText("工位"), station_); form->addRow(aitsnap::uiText("操作员"), operator_);
+    startTray_ = new QCheckBox(aitsnap::uiText("启动时直接进入托盘")); startTray_->setChecked(settings_.startInTray); form->addRow(startTray_);
+    reportEnabled_ = new QCheckBox(aitsnap::uiText("保存截图后自动追加 Word")); reportEnabled_->setChecked(settings_.report.enabled); form->addRow(reportEnabled_);
     auto* reportPathRow = new QWidget; auto* reportPaths = new QHBoxLayout(reportPathRow); reportPaths->setContentsMargins(0, 0, 0, 0);
     reportPath_ = new QLineEdit(settings_.report.documentPath); reportPath_->setObjectName("reportDocumentPath"); reportPaths->addWidget(reportPath_);
-    auto* reportBrowse = new QPushButton("…"); reportBrowse->setMaximumWidth(32); reportPaths->addWidget(reportBrowse); form->addRow(QStringLiteral("Word 报告"), reportPathRow);
-    connect(reportBrowse, &QPushButton::clicked, this, [this] { const auto path = QFileDialog::getSaveFileName(this, QStringLiteral("选择已有报告，或输入新 DOCX 文件名"), reportPath_->text(), "Word (*.docx)", nullptr, QFileDialog::DontConfirmOverwrite); if (!path.isEmpty()) reportPath_->setText(path); });
+    auto* reportBrowse = new QPushButton("…"); reportBrowse->setMaximumWidth(32); reportPaths->addWidget(reportBrowse); form->addRow(aitsnap::uiText("Word 报告"), reportPathRow);
+    connect(reportBrowse, &QPushButton::clicked, this, [this] { const auto path = QFileDialog::getSaveFileName(this, aitsnap::uiText("选择已有报告，或输入新 DOCX 文件名"), reportPath_->text(), "Word (*.docx)", nullptr, QFileDialog::DontConfirmOverwrite); if (!path.isEmpty()) reportPath_->setText(path); });
     auto* reportPolicy = new QWidget; auto* policies = new QHBoxLayout(reportPolicy); policies->setContentsMargins(0, 0, 0, 0);
-    reportMode_ = new QComboBox; reportMode_->addItem(QStringLiteral("原图与拼图"), "both"); reportMode_->addItem(QStringLiteral("仅原图"), "originals"); reportMode_->addItem(QStringLiteral("仅拼图"), "composites"); reportMode_->setCurrentIndex(std::max(0, reportMode_->findData(settings_.report.itemMode))); policies->addWidget(reportMode_);
-    reportLayout_ = new QComboBox; reportLayout_->addItem(QStringLiteral("顺序图文"), "inline"); reportLayout_->addItem(QStringLiteral("两列表格"), "table"); reportLayout_->setCurrentIndex(std::max(0, reportLayout_->findData(settings_.report.layout))); policies->addWidget(reportLayout_); form->addRow(reportPolicy);
-    auto* queueButton = new QPushButton(QStringLiteral("查看 Word 任务 / 恢复核对")); form->addRow(queueButton); connect(queueButton, &QPushButton::clicked, this, [this] { showReportQueue(); });
-    auto* appendLast = new QPushButton(QStringLiteral("将最近保存批次加入报告")); form->addRow(appendLast);
-    connect(appendLast, &QPushButton::clicked, this, [this] { if (!lastOutcome_ || lastOutcome_->directory.isEmpty()) { setStatus(QStringLiteral("请先保存一批截图。"), true); return; } if (!applySettings()) return; QString error; if (!reportQueue_->enqueue(*lastOutcome_, settings_.report, error)) setStatus(error, true); else setStatus(QStringLiteral("报告任务已排队，截图可继续。")); });
+    reportMode_ = new QComboBox; reportMode_->addItem(aitsnap::uiText("原图与拼图"), "both"); reportMode_->addItem(aitsnap::uiText("仅原图"), "originals"); reportMode_->addItem(aitsnap::uiText("仅拼图"), "composites"); reportMode_->setCurrentIndex(std::max(0, reportMode_->findData(settings_.report.itemMode))); policies->addWidget(reportMode_);
+    reportLayout_ = new QComboBox; reportLayout_->addItem(aitsnap::uiText("顺序图文"), "inline"); reportLayout_->addItem(aitsnap::uiText("两列表格"), "table"); reportLayout_->setCurrentIndex(std::max(0, reportLayout_->findData(settings_.report.layout))); policies->addWidget(reportLayout_); form->addRow(reportPolicy);
+    auto* queueButton = new QPushButton(aitsnap::uiText("查看 Word 任务 / 恢复核对")); form->addRow(queueButton); connect(queueButton, &QPushButton::clicked, this, [this] { showReportQueue(); });
+    auto* appendLast = new QPushButton(aitsnap::uiText("将最近保存批次加入报告")); form->addRow(appendLast);
+    connect(appendLast, &QPushButton::clicked, this, [this] { if (!lastOutcome_ || lastOutcome_->directory.isEmpty()) { setStatus(aitsnap::uiText("请先保存一批截图。"), true); return; } if (!applySettings()) return; QString error; if (!reportQueue_->enqueue(*lastOutcome_, settings_.report, error)) setStatus(error, true); else setStatus(aitsnap::uiText("报告任务已排队，截图可继续。")); });
     reportStatus_ = new QLabel; reportStatus_->setWordWrap(true); form->addRow(reportStatus_);
-    preview_ = new QLabel(QStringLiteral("最近一次截图预览")); preview_->setAlignment(Qt::AlignCenter); preview_->setMinimumSize(240, 130); preview_->setStyleSheet("background:#eef2f7; color:#3f4f65; border:1px solid #d8e0ea; border-radius:6px;"); form->addRow(preview_);
-    auto* rightScroll = new QScrollArea; rightScroll->setWidgetResizable(true); rightScroll->setWidget(right); split->addWidget(rightScroll); split->setSizes({650, 400});
-    auto* actions = new QHBoxLayout; auto* save = new QPushButton(QStringLiteral("截图并保存")); auto* copy = new QPushButton(QStringLiteral("复制选中图片")); auto* both = new QPushButton(QStringLiteral("保存并复制")); auto* folder = new QPushButton(QStringLiteral("打开输出目录"));
+    preview_ = new QLabel(aitsnap::uiText("最近一次截图预览")); preview_->setAlignment(Qt::AlignCenter); preview_->setMinimumSize(240, 130); preview_->setProperty("card", true); form->addRow(preview_);
+    auto* rightScroll = new QScrollArea; rightScroll->setWidgetResizable(true); rightScroll->setWidget(right);
+    auto* settingsTabs = new QTabWidget; settingsTabs->addTab(rightScroll, uiText("常用设置"));
+    auto* appearancePage = new QWidget; auto* appearanceForm = new QFormLayout(appearancePage);
+    language_ = new QComboBox; language_->setObjectName("appearanceLanguage");
+    language_->addItem(uiText("跟随系统"), "system"); language_->addItem(aitsnap::uiText("简体中文"), "zh-CN"); language_->addItem("English", "en-US");
+    language_->setCurrentIndex(std::max(0, language_->findData(settings_.language))); appearanceForm->addRow(uiText("界面语言"), language_);
+    colorMode_ = new QComboBox; colorMode_->setObjectName("appearanceColorMode");
+    colorMode_->addItem(uiText("跟随系统"), "system"); colorMode_->addItem(uiText("浅色"), "light"); colorMode_->addItem(uiText("深色"), "dark");
+    colorMode_->setCurrentIndex(std::max(0, colorMode_->findData(settings_.colorMode))); appearanceForm->addRow(uiText("色彩模式"), colorMode_);
+    auto* appearanceNote = new QLabel(uiText("配色立即生效；语言更改将在重新启动 AITSnap 后生效。")); appearanceNote->setWordWrap(true); appearanceForm->addRow(appearanceNote);
+    settingsTabs->addTab(appearancePage, uiText("外观")); split->addWidget(settingsTabs); split->setSizes({650, 400});
+    connect(colorMode_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this] { applyColorMode(colorMode_->currentData().toString()); });
+    auto* actions = new QHBoxLayout; auto* save = new QPushButton(aitsnap::uiText("截图并保存")); auto* copy = new QPushButton(aitsnap::uiText("复制选中图片")); auto* both = new QPushButton(aitsnap::uiText("保存并复制")); auto* folder = new QPushButton(aitsnap::uiText("打开输出目录"));
     save->setObjectName("captureSave"); save->setStyleSheet("background:#1967d2; color:white; padding:9px 18px; border-radius:5px;");
     actions->addWidget(save); actions->addWidget(copy); actions->addWidget(both); actions->addStretch(); actions->addWidget(folder); outer->addLayout(actions);
     status_ = new QLabel; status_->setObjectName("captureStatus"); status_->setWordWrap(true); status_->setTextInteractionFlags(Qt::TextSelectableByMouse); outer->addWidget(status_); setCentralWidget(central);
@@ -172,7 +184,7 @@ void MainWindow::buildUi()
     connect(add, &QPushButton::clicked, this, [this] { addRegion(); });
     connect(visual, &QPushButton::clicked, this, [this] { editRegions(); });
     connect(remove, &QPushButton::clicked, this, [this] { if (regions_->currentRow() >= 0) regions_->removeRow(regions_->currentRow()); });
-    connect(browse, &QPushButton::clicked, this, [this] { auto p = QFileDialog::getExistingDirectory(this, QStringLiteral("选择截图保存目录"), directory_->text()); if (!p.isEmpty()) directory_->setText(p); });
+    connect(browse, &QPushButton::clicked, this, [this] { auto p = QFileDialog::getExistingDirectory(this, aitsnap::uiText("选择截图保存目录"), directory_->text()); if (!p.isEmpty()) directory_->setText(p); });
     connect(folder, &QPushButton::clicked, this, [this] { QDesktopServices::openUrl(QUrl::fromLocalFile(directory_->text())); });
     connect(save, &QPushButton::clicked, this, [this] { if (applySettings()) triggerCapture(0); });
     connect(copy, &QPushButton::clicked, this, [this] { if (applySettings()) triggerCapture(1); });
@@ -184,7 +196,7 @@ void MainWindow::buildUi()
         rebuildProfileMenu();
     });
     connect(addProfile, &QPushButton::clicked, this, [this] {
-        bool ok{}; auto name = QInputDialog::getText(this, QStringLiteral("新建截图配置"), QStringLiteral("名称"), QLineEdit::Normal, {}, &ok);
+        bool ok{}; auto name = QInputDialog::getText(this, aitsnap::uiText("新建截图配置"), aitsnap::uiText("名称"), QLineEdit::Normal, {}, &ok);
         if (!ok || name.trimmed().isEmpty()) return;
         auto p = settings_.profiles[std::size_t(settings_.activeProfile)]; p.id = id(); p.name = name.trimmed().toStdString(); p.revision = 1;
         settings_.profiles.push_back(p); profiles_->addItem(name); profiles_->setCurrentIndex(int(settings_.profiles.size()) - 1);
@@ -194,27 +206,27 @@ void MainWindow::buildUi()
         if (!collectSettings(candidate, e)) { setStatus(e, true); return; }
         try { WinCaptureBackend b; candidate.profiles[std::size_t(candidate.activeProfile)].calibratedDisplays = b.displays(); }
         catch (const std::exception& x) { setStatus(QString::fromUtf8(x.what()), true); return; }
-        if (configurationBlocked_) { setStatus(QStringLiteral("原配置无法读取。请先核对并应用配置。"), true); return; }
-        if (saveSettings(configurationPath_, candidate, e)) { settings_ = candidate; setStatus(QStringLiteral("已确认显示器布局。请核对物理区域后截图。")); } else setStatus(e, true);
+        if (configurationBlocked_) { setStatus(aitsnap::uiText("原配置无法读取。请先核对并应用配置。"), true); return; }
+        if (saveSettings(configurationPath_, candidate, e)) { settings_ = candidate; setStatus(aitsnap::uiText("已确认显示器布局。请核对物理区域后截图。")); } else setStatus(e, true);
     });
 }
 void MainWindow::setupTray()
 {
     tray_ = new QSystemTrayIcon(windowIcon(), this); auto* menu = new QMenu(this);
-    auto* show = menu->addAction(QStringLiteral("打开区域与输出设置")); connect(show, &QAction::triggered, this, [this] { showNormal(); raise(); activateWindow(); });
-    auto* edit = menu->addAction(QStringLiteral("屏幕框选 / 编辑区域")); connect(edit, &QAction::triggered, this, [this] { QTimer::singleShot(180, this, [this] { editRegions(); }); });
-    const QStringList labels{QStringLiteral("截图并保存"), QStringLiteral("复制选中图片"), QStringLiteral("保存并复制")};
+    auto* show = menu->addAction(aitsnap::uiText("打开区域与输出设置")); connect(show, &QAction::triggered, this, [this] { showNormal(); raise(); activateWindow(); });
+    auto* edit = menu->addAction(aitsnap::uiText("屏幕框选 / 编辑区域")); connect(edit, &QAction::triggered, this, [this] { QTimer::singleShot(180, this, [this] { editRegions(); }); });
+    const QStringList labels{aitsnap::uiText("截图并保存"), aitsnap::uiText("复制选中图片"), aitsnap::uiText("保存并复制")};
     for (int i = 0; i < 3; ++i) { auto* action = menu->addAction(labels[i]); connect(action, &QAction::triggered, this, [this, i] { QTimer::singleShot(180, this, [this, i] { triggerCapture(i); }); }); }
-    profileMenu_ = menu->addMenu(QStringLiteral("切换截图配置")); rebuildProfileMenu();
-    sceneMenu_ = menu->addMenu(QStringLiteral("拼图场景 / 启用切换")); rebuildSceneMenu();
-    auto* sceneEdit = menu->addAction(QStringLiteral("打开自由拼图")); connect(sceneEdit, &QAction::triggered, this, [this] { QTimer::singleShot(180, this, [this] { editScene(false); }); });
-    auto* pause = menu->addAction(QStringLiteral("暂停截图热键")); pause->setCheckable(true);
+    profileMenu_ = menu->addMenu(aitsnap::uiText("切换截图配置")); rebuildProfileMenu();
+    sceneMenu_ = menu->addMenu(aitsnap::uiText("拼图场景 / 启用切换")); rebuildSceneMenu();
+    auto* sceneEdit = menu->addAction(aitsnap::uiText("打开自由拼图")); connect(sceneEdit, &QAction::triggered, this, [this] { QTimer::singleShot(180, this, [this] { editScene(false); }); });
+    auto* pause = menu->addAction(aitsnap::uiText("暂停截图热键")); pause->setCheckable(true);
     connect(pause, &QAction::toggled, this, [this, pause](bool checked) {
-        QString e; if (hotkeys_.pause(checked, e)) { paused_ = checked; setStatus(checked ? QStringLiteral("截图已暂停") : QStringLiteral("截图已恢复")); }
+        QString e; if (hotkeys_.pause(checked, e)) { paused_ = checked; setStatus(checked ? aitsnap::uiText("截图已暂停") : aitsnap::uiText("截图已恢复")); }
         else { pause->blockSignals(true); pause->setChecked(true); pause->blockSignals(false); paused_ = true; setStatus(e, true); }
     });
-    auto* folder = menu->addAction(QStringLiteral("打开输出目录")); connect(folder, &QAction::triggered, this, [this] { QDesktopServices::openUrl(QUrl::fromLocalFile(settings_.outputDirectory)); });
-    menu->addSeparator(); auto* quit = menu->addAction(QStringLiteral("退出 AITSnap")); connect(quit, &QAction::triggered, qApp, &QApplication::quit);
+    auto* folder = menu->addAction(aitsnap::uiText("打开输出目录")); connect(folder, &QAction::triggered, this, [this] { QDesktopServices::openUrl(QUrl::fromLocalFile(settings_.outputDirectory)); });
+    menu->addSeparator(); auto* quit = menu->addAction(aitsnap::uiText("退出 AITSnap")); connect(quit, &QAction::triggered, qApp, &QApplication::quit);
     tray_->setContextMenu(menu); tray_->setToolTip("AITSnap"); tray_->show();
     connect(tray_, &QSystemTrayIcon::activated, this, [this](auto r) { if (r == QSystemTrayIcon::DoubleClick) { showNormal(); raise(); activateWindow(); } });
 }
@@ -235,12 +247,13 @@ void MainWindow::loadProfile()
     for (const auto& r : p.regions) {
         int row = regions_->rowCount(); regions_->insertRow(row);
         auto* enabled = new QTableWidgetItem; enabled->setCheckState(r.enabled ? Qt::Checked : Qt::Unchecked); regions_->setItem(row, 0, enabled);
-        auto* name = new QTableWidgetItem(qs(r.name)); name->setData(Qt::UserRole, qs(r.id)); regions_->setItem(row, 1, name);
+        auto* name = new QTableWidgetItem(qs(r.name)); name->setData(Qt::UserRole, qs(r.id)); name->setData(Qt::UserRole + 1, r.displayNumber); regions_->setItem(row, 1, name);
+        regions_->setVerticalHeaderItem(row, new QTableWidgetItem(QString::number(r.displayNumber)));
         const int values[]{r.rect.x, r.rect.y, r.rect.width, r.rect.height};
         for (int i = 0; i < 4; ++i) regions_->setItem(row, i + 2, new QTableWidgetItem(QString::number(values[i])));
-        if (r.enabled) clipboard_->addItem(qs(r.name), qs(r.id));
+        if (r.enabled) clipboard_->addItem(regionLabel(r), qs(r.id));
     }
-    for (const auto& scene : settings_.scenes) clipboard_->addItem(QStringLiteral("拼图：") + qs(scene.name), "scene:" + qs(scene.id));
+    for (const auto& scene : settings_.scenes) clipboard_->addItem(aitsnap::uiText("拼图：") + qs(scene.name), "scene:" + qs(scene.id));
     int index = clipboard_->findData(wantedClipboard); if (index >= 0) clipboard_->setCurrentIndex(index);
     settings_.clipboardRegion = clipboard_->currentData().toString();
     outputMode_->setCurrentIndex(std::max(0, outputMode_->findData(settings_.outputMode))); rebuildScenes(); rebuildSceneMenu();
@@ -249,27 +262,31 @@ void MainWindow::addRegion()
 {
     int row = regions_->rowCount(); regions_->insertRow(row);
     auto* enabled = new QTableWidgetItem; enabled->setCheckState(Qt::Checked); regions_->setItem(row, 0, enabled);
-    auto* name = new QTableWidgetItem(QStringLiteral("区域 %1").arg(row + 1)); name->setData(Qt::UserRole, QString::fromStdString(id())); regions_->setItem(row, 1, name);
+    auto& profile = settings_.profiles[std::size_t(settings_.activeProfile)];
+    const int number = profile.nextRegionNumber++;
+    auto* name = new QTableWidgetItem(aitsnap::uiText("区域 %1").arg(number)); name->setData(Qt::UserRole, QString::fromStdString(id())); name->setData(Qt::UserRole + 1, number); regions_->setItem(row, 1, name);
+    regions_->setVerticalHeaderItem(row, new QTableWidgetItem(QString::number(number)));
     const int values[]{0, 0, 640, 400}; for (int i = 0; i < 4; ++i) regions_->setItem(row, i + 2, new QTableWidgetItem(QString::number(values[i])));
 }
 bool MainWindow::collectSettings(Settings& c, QString& e)
 {
     auto& p = c.profiles[std::size_t(c.activeProfile)]; p.name = profileName_->text().trimmed().toStdString(); p.regions.clear();
-    if (p.name.empty()) { e = QStringLiteral("请输入配置名称"); return false; }
+    if (p.name.empty()) { e = aitsnap::uiText("请输入配置名称"); return false; }
     for (int row = 0; row < regions_->rowCount(); ++row) {
         int v[4]{};
-        for (int i = 0; i < 4; ++i) { bool ok{}; const auto* item = regions_->item(row, i + 2); v[i] = item ? item->text().toInt(&ok) : 0; if (!ok) { e = QStringLiteral("第 %1 行需要整数物理坐标和尺寸").arg(row + 1); return false; } }
-        const auto* name = regions_->item(row, 1); p.regions.push_back({name->data(Qt::UserRole).toString().toStdString(), name->text().trimmed().toStdString(), {v[0], v[1], v[2], v[3]}, regions_->item(row, 0)->checkState() == Qt::Checked});
+        for (int i = 0; i < 4; ++i) { bool ok{}; const auto* item = regions_->item(row, i + 2); v[i] = item ? item->text().toInt(&ok) : 0; if (!ok) { e = aitsnap::uiText("第 %1 行需要整数物理坐标和尺寸").arg(row + 1); return false; } }
+        const auto* name = regions_->item(row, 1); p.regions.push_back({name->data(Qt::UserRole).toString().toStdString(), name->text().trimmed().toStdString(), {v[0], v[1], v[2], v[3]}, regions_->item(row, 0)->checkState() == Qt::Checked, name->data(Qt::UserRole + 1).toInt()});
     }
     if (auto err = core::validateProfile(p); err) { e = qs(err.message); return false; }
     ++p.revision; c.outputDirectory = QDir(directory_->text().trimmed()).absolutePath(); c.format = format_->currentText(); c.filenameTemplate = filename_->text();
     c.saveHotkey = saveKey_->text(); c.copyHotkey = copyKey_->text(); c.bothHotkey = bothKey_->text(); c.clipboardRegion = clipboard_->currentData().toString();
     c.testId = testId_->text(); c.device = device_->text(); c.station = station_->text(); c.operatorName = operator_->text(); c.startInTray = startTray_->isChecked();
+    c.language = language_->currentData().toString(); c.colorMode = colorMode_->currentData().toString();
     c.outputMode = outputMode_->currentData().toString(); c.selectedSceneIds.clear();
     for (int i = 0; i < scenes_->count(); ++i) if (scenes_->item(i)->checkState() == Qt::Checked) c.selectedSceneIds.append(scenes_->item(i)->data(Qt::UserRole).toString());
     p.outputMode = c.outputMode.toStdString(); p.sceneIds.clear(); for (const auto& id : c.selectedSceneIds) p.sceneIds.push_back(id.toStdString()); p.clipboardSelection = c.clipboardRegion.toStdString();
     c.report.enabled = reportEnabled_->isChecked(); c.report.documentPath = reportPath_->text().trimmed(); c.report.itemMode = reportMode_->currentData().toString(); c.report.layout = reportLayout_->currentData().toString();
-    if (c.report.enabled && (!QDir::isAbsolutePath(c.report.documentPath) || QFileInfo(c.report.documentPath).suffix().compare("docx", Qt::CaseInsensitive))) { e = QStringLiteral("自动报告需要明确的 DOCX 完整路径。"); return false; }
+    if (c.report.enabled && (!QDir::isAbsolutePath(c.report.documentPath) || QFileInfo(c.report.documentPath).suffix().compare("docx", Qt::CaseInsensitive))) { e = aitsnap::uiText("自动报告需要明确的 DOCX 完整路径。"); return false; }
     core::CaptureRequest sample; sample.issuedAtUtc = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs).toStdString(); sample.profile = p;
     expandFilename(c, sample, p.regions.front(), e); return e.isEmpty();
 }
@@ -278,12 +295,12 @@ bool MainWindow::applySettings()
     Settings c = settings_; QString e;
     if (configurationBlocked_ && QFile::exists(configurationPath_)) {
         const auto backup = configurationPath_ + ".preserved-" + QString::fromStdString(id());
-        if (!QFile::copy(configurationPath_, backup)) { setStatus(QStringLiteral("无法保留旧配置，配置未改写。"), true); return false; }
+        if (!QFile::copy(configurationPath_, backup)) { setStatus(aitsnap::uiText("无法保留旧配置，配置未改写。"), true); return false; }
     }
     if (!collectSettings(c, e) || !hotkeys_.configure({c.saveHotkey, c.copyHotkey, c.bothHotkey}, e)) { setStatus(e, true); return false; }
     if (paused_) hotkeys_.pause(true, e);
     if (!saveSettings(configurationPath_, c, e)) { QString ignored; hotkeys_.configure({settings_.saveHotkey, settings_.copyHotkey, settings_.bothHotkey}, ignored); if (paused_) hotkeys_.pause(true, ignored); setStatus(e, true); return false; }
-    settings_ = c; configurationBlocked_ = false; profiles_->setItemText(settings_.activeProfile, qs(c.profiles[std::size_t(c.activeProfile)].name)); rebuildProfileMenu(); loadProfile(); setStatus(QStringLiteral("配置已保存 · 热键已应用")); return true;
+    settings_ = c; configurationBlocked_ = false; profiles_->setItemText(settings_.activeProfile, qs(c.profiles[std::size_t(c.activeProfile)].name)); rebuildProfileMenu(); loadProfile(); setStatus(aitsnap::uiText("配置已保存 · 热键已应用")); return true;
 }
 void MainWindow::setStatus(const QString& text, bool error)
 {
@@ -297,11 +314,11 @@ void MainWindow::triggerCapture(int mode)
 }
 QString MainWindow::startCapture(int mode, const QJsonObject& options, const QJsonObject& eventSnapshot)
 {
-    if (editingScene_) { setStatus(QStringLiteral("拼图编辑中，截图热键暂停；保存或取消后恢复。"), true); return {}; }
-    if (editingRegions_) { setStatus(QStringLiteral("区域编辑中，截图未接受；请完成或取消框选。"), true); return {}; }
-    if (configurationBlocked_) { setStatus(QStringLiteral("原配置无法读取。核对并应用配置后才能截图。"), true); return {}; }
-    if (paused_) { setStatus(QStringLiteral("截图已暂停，请从托盘恢复"), true); return {}; }
-    if (busy_) { setStatus(QStringLiteral("上一批截图尚未完成，本次请求未接受"), true); return {}; }
+    if (editingScene_) { setStatus(aitsnap::uiText("拼图编辑中，截图热键暂停；保存或取消后恢复。"), true); return {}; }
+    if (editingRegions_) { setStatus(aitsnap::uiText("区域编辑中，截图未接受；请完成或取消框选。"), true); return {}; }
+    if (configurationBlocked_) { setStatus(aitsnap::uiText("原配置无法读取。核对并应用配置后才能截图。"), true); return {}; }
+    if (paused_) { setStatus(aitsnap::uiText("截图已暂停，请从托盘恢复"), true); return {}; }
+    if (busy_) { setStatus(aitsnap::uiText("上一批截图尚未完成，本次请求未接受"), true); return {}; }
     QString e; Settings snapshot = settings_; ++snapshot.sequence;
     if (options.contains("profileId")) {
         const auto chosen = options["profileId"].toString().toStdString(); const auto found = std::find_if(snapshot.profiles.begin(), snapshot.profiles.end(), [&](const auto& p) { return p.id == chosen; });
@@ -309,7 +326,7 @@ QString MainWindow::startCapture(int mode, const QJsonObject& options, const QJs
     }
     if (options.contains("sceneIds")) { snapshot.selectedSceneIds.clear(); for (const auto& scene : options["sceneIds"].toArray()) snapshot.selectedSceneIds.append(scene.toString()); snapshot.outputMode = snapshot.selectedSceneIds.empty() ? "originals" : "both"; if (!snapshot.selectedSceneIds.empty()) snapshot.clipboardRegion = "scene:" + snapshot.selectedSceneIds.front(); else snapshot.clipboardRegion.clear(); }
     auto persistent = settings_; persistent.sequence = snapshot.sequence;
-    if (!saveSettings(configurationPath_, persistent, e)) { setStatus(QStringLiteral("序号未持久化：") + e, true); return {}; }
+    if (!saveSettings(configurationPath_, persistent, e)) { setStatus(aitsnap::uiText("序号未持久化：") + e, true); return {}; }
     settings_.sequence = snapshot.sequence; core::CaptureRequest request;
     request.requestId = QDateTime::currentDateTimeUtc().toString("yyyyMMdd-HHmmss-zzz").toStdString() + "-" + id();
     request.issuedAtUtc = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs).toStdString(); request.profile = snapshot.profiles[std::size_t(snapshot.activeProfile)];
@@ -318,7 +335,7 @@ QString MainWindow::startCapture(int mode, const QJsonObject& options, const QJs
     if (!selectedContextSnapshot_.isEmpty()) { request.context = selectedContext_; request.context.stationId = snapshot.station.toStdString(); request.context.operatorId = snapshot.operatorName.toStdString(); request.contextSnapshotJson = QJsonDocument(selectedContextSnapshot_).toJson(QJsonDocument::Compact).toStdString(); }
     if (!eventSnapshot.isEmpty()) { const auto event = eventSnapshot["event"].toObject(); request.context = contextStore_->context(event["sourceSystem"].toString(), event["eventId"].toString()); request.context.stationId = snapshot.station.toStdString(); request.context.operatorId = snapshot.operatorName.toStdString(); request.contextSnapshotJson = QJsonDocument(eventSnapshot).toJson(QJsonDocument::Compact).toStdString(); }
     currentRequestId_ = qs(request.requestId);
-    busy_ = true; setStatus(QStringLiteral("正在后台采集 %1 个源区域…").arg(request.profile.regions.size())); QPointer<MainWindow> self(this);
+    busy_ = true; setStatus(aitsnap::uiText("正在后台采集 %1 个源区域…").arg(request.profile.regions.size())); QPointer<MainWindow> self(this);
     QThreadPool::globalInstance()->start(QRunnable::create([self, snapshot, request, mode] {
         WinCaptureBackend backend; auto result = std::make_shared<CaptureOutcome>(captureToFiles(backend, snapshot, request, mode != 1, mode != 0));
         if (self) QMetaObject::invokeMethod(self, [self, result, snapshot, mode] { if (self) self->completeCapture(result, snapshot, mode); }, Qt::QueuedConnection);
@@ -346,11 +363,11 @@ void MainWindow::completeCapture(const std::shared_ptr<CaptureOutcome>& result, 
     int captured = 0, saved = 0, failed = 0; QString detail;
     for (const auto& c : result->batch.captures) { if (c.error) { ++failed; detail = qs(c.error.code + ": " + c.error.message); } else ++captured; }
     for (const auto& o : result->batch.outputs) { if (o.status == "SAVED") ++saved; if (o.error) { ++failed; detail = qs(o.error.code + ": " + o.error.message); } }
-    setStatus(QStringLiteral("已采集 %1 张 · 已保存 %2 张 · %3 ms%4").arg(captured).arg(saved).arg(result->elapsedMs, 0, 'f', 1).arg(failed ? " · " + detail : QStringLiteral(" · 完成")), failed > 0);
+    setStatus(aitsnap::uiText("已采集 %1 张 · 已保存 %2 张 · %3 ms%4").arg(captured).arg(saved).arg(result->elapsedMs, 0, 'f', 1).arg(failed ? " · " + detail : aitsnap::uiText(" · 完成")), failed > 0);
     for (const auto& c : result->batch.captures) if (c.image.valid()) { preview_->setPixmap(QPixmap::fromImage(toQImage(c.image)).scaled(320, 160, Qt::KeepAspectRatio, Qt::SmoothTransformation)); break; }
     busy_ = false; lastOutcome_ = result; if (captureFinished) captureFinished(result);
     if (mode != 1 && snapshot.report.enabled && !result->directory.isEmpty()) {
-        QString error; if (!reportQueue_->enqueue(*result, snapshot.report, error)) { reportStatus_->setText(QStringLiteral("截图已完成，报告未入队：") + error); }
+        QString error; if (!reportQueue_->enqueue(*result, snapshot.report, error)) { reportStatus_->setText(aitsnap::uiText("截图已完成，报告未入队：") + error); }
     }
 }
 void MainWindow::closeEvent(QCloseEvent* e)
@@ -361,16 +378,16 @@ void MainWindow::refreshReportStatus()
 {
     if (!reportQueue_ || !reportStatus_) return; int committed = 0, pending = 0, uncertain = 0, failed = 0;
     for (const auto& job : reportQueue_->jobs()) { const auto state = job["state"].toString(); if (state == "COMMITTED") ++committed; else if (state == "UNCERTAIN") ++uncertain; else if (state == "FAILED") ++failed; else ++pending; }
-    reportStatus_->setText(QStringLiteral("Word：已提交 %1 · 排队/执行 %2 · 待核对 %3 · 失败 %4").arg(committed).arg(pending).arg(uncertain).arg(failed) + (reportQueue_->diagnostic().isEmpty() ? "" : "\n" + reportQueue_->diagnostic()));
+    reportStatus_->setText(aitsnap::uiText("Word：已提交 %1 · 排队/执行 %2 · 待核对 %3 · 失败 %4").arg(committed).arg(pending).arg(uncertain).arg(failed) + (reportQueue_->diagnostic().isEmpty() ? "" : "\n" + reportQueue_->diagnostic()));
 }
 void MainWindow::showContextStore()
 {
-    QDialog dialog(this); dialog.setWindowTitle(QStringLiteral("只读目录与执行上下文")); dialog.resize(1180, 640); auto* layout = new QVBoxLayout(&dialog);
-    auto* note = new QLabel(QStringLiteral("此处只关联证据，不执行指令。来源时间与首次接收时间独立；参数值不写入事件/批次/导出。只有完整且静态版本唯一的显式选择可供截图继承。")); note->setWordWrap(true); layout->addWidget(note);
-    auto* actions = new QHBoxLayout; auto* importCatalog = new QPushButton(QStringLiteral("导入目录 JSON / CSV")); auto* importEvent = new QPushButton(QStringLiteral("接收事件 JSON")); auto* exportMetadata = new QPushButton(QStringLiteral("导出脱敏元数据（新文件）")); actions->addWidget(importCatalog); actions->addWidget(importEvent); actions->addWidget(exportMetadata); layout->addLayout(actions);
+    QDialog dialog(this); dialog.setWindowTitle(aitsnap::uiText("只读目录与执行上下文")); dialog.resize(1180, 640); auto* layout = new QVBoxLayout(&dialog);
+    auto* note = new QLabel(aitsnap::uiText("此处只关联证据，不执行指令。来源时间与首次接收时间独立；参数值不写入事件/批次/导出。只有完整且静态版本唯一的显式选择可供截图继承。")); note->setWordWrap(true); layout->addWidget(note);
+    auto* actions = new QHBoxLayout; auto* importCatalog = new QPushButton(aitsnap::uiText("导入目录 JSON / CSV")); auto* importEvent = new QPushButton(aitsnap::uiText("接收事件 JSON")); auto* exportMetadata = new QPushButton(aitsnap::uiText("导出脱敏元数据（新文件）")); actions->addWidget(importCatalog); actions->addWidget(importEvent); actions->addWidget(exportMetadata); layout->addLayout(actions);
     auto* tabs = new QTabWidget; layout->addWidget(tabs, 1);
-    auto* table = new QTableWidget(0, 10); table->setHorizontalHeaderLabels({QStringLiteral("来源"), QStringLiteral("事件"), "Run", "Step execution", "Invocation", QStringLiteral("尝试"), QStringLiteral("关联 / 静态版本"), QStringLiteral("来源 UTC"), QStringLiteral("首次接收 UTC"), QStringLiteral("类型")}); table->setEditTriggers(QAbstractItemView::NoEditTriggers); table->setSelectionBehavior(QAbstractItemView::SelectRows); table->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents); tabs->addTab(table, QStringLiteral("执行事件"));
-    auto* tree = new QTreeWidget; tree->setHeaderLabels({QStringLiteral("定义 / 版本"), QStringLiteral("名称 / 类型"), QStringLiteral("实测来源 SHA-256")}); tabs->addTab(tree, QStringLiteral("静态目录"));
+    auto* table = new QTableWidget(0, 10); table->setHorizontalHeaderLabels({aitsnap::uiText("来源"), aitsnap::uiText("事件"), "Run", "Step execution", "Invocation", aitsnap::uiText("尝试"), aitsnap::uiText("关联 / 静态版本"), aitsnap::uiText("来源 UTC"), aitsnap::uiText("首次接收 UTC"), aitsnap::uiText("类型")}); table->setEditTriggers(QAbstractItemView::NoEditTriggers); table->setSelectionBehavior(QAbstractItemView::SelectRows); table->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents); tabs->addTab(table, aitsnap::uiText("执行事件"));
+    auto* tree = new QTreeWidget; tree->setHeaderLabels({aitsnap::uiText("定义 / 版本"), aitsnap::uiText("名称 / 类型"), aitsnap::uiText("实测来源 SHA-256")}); tabs->addTab(tree, aitsnap::uiText("静态目录"));
     auto refresh = [this, table, tree] {
         table->setRowCount(0); for (const auto& envelope : contextStore_->events()) { const auto event = envelope["event"].toObject(), sequence = event["sequence"].toObject(), command = event["command"].toObject(); const int row = table->rowCount(); table->insertRow(row);
             const QStringList values{event["sourceSystem"].toString(), event["eventId"].toString(), sequence["runId"].toString(), sequence["stepExecutionId"].toString(), command["invocationId"].toString(), command.contains("attempt") ? QString::number(command["attempt"].toInt()) : QString{}, event["correlationStatus"].toString() + "/" + envelope["definitionStatus"].toString(), event["sourceTimeUtc"].toString(), event["receivedAtUtc"].toString(), event["eventType"].toString()};
@@ -381,34 +398,34 @@ void MainWindow::showContextStore()
                 for (const auto& value2 : s["steps"].toArray()) { const auto step = value2.toObject(); new QTreeWidgetItem(sequence, {step["stepId"].toString(), step["kind"].toString() + ": " + (step["kind"] == "command" ? step["commandId"].toString() : step["subsequenceId"].toString() + "@" + step["subsequenceRevision"].toString())}); } }
         } tree->resizeColumnToContents(0); tree->resizeColumnToContents(1);
     }; refresh();
-    connect(importCatalog, &QPushButton::clicked, &dialog, [this, &dialog, note, refresh] { const auto path = QFileDialog::getOpenFileName(&dialog, QStringLiteral("选择来源目录（只读导入）"), {}, "Catalog (*.json *.csv)"); if (path.isEmpty()) return; QString error; note->setText(contextStore_->importCatalog(path, error) ? QStringLiteral("已保存实测哈希和不可变来源副本；未修改来源文件。") : error); refresh(); });
-    connect(importEvent, &QPushButton::clicked, &dialog, [this, &dialog, note, refresh] { const auto path = QFileDialog::getOpenFileName(&dialog, QStringLiteral("选择规范化事件 JSON"), {}, "Event (*.json)"); if (path.isEmpty()) return; QFile file(path); if (!file.open(QIODevice::ReadOnly) || file.size() > 1024 * 1024) { note->setText(QStringLiteral("事件无法读取或超过 1 MiB。")); return; } const auto result = contextStore_->ingest(QJsonDocument::fromJson(file.readAll()).object()); note->setText(result.error ? qs(result.error.message) : QStringLiteral("事件已接收或去重；未切换截图上下文。")); refresh(); });
-    connect(exportMetadata, &QPushButton::clicked, &dialog, [this, &dialog, note] { const auto path = QFileDialog::getSaveFileName(&dialog, QStringLiteral("导出脱敏元数据，不覆盖已有文件"), {}, "JSON (*.json)", nullptr, QFileDialog::DontConfirmOverwrite); if (path.isEmpty()) return; QString error; note->setText(contextStore_->exportMetadata(path, true, error) ? QStringLiteral("脱敏元数据已导出。") : error); });
-    auto* select = new QPushButton(QStringLiteral("明确选择此事件作为截图上下文")); auto* clear = new QPushButton(QStringLiteral("清除关联")); auto* bottom = new QHBoxLayout; bottom->addWidget(select); bottom->addWidget(clear); layout->addLayout(bottom);
+    connect(importCatalog, &QPushButton::clicked, &dialog, [this, &dialog, note, refresh] { const auto path = QFileDialog::getOpenFileName(&dialog, aitsnap::uiText("选择来源目录（只读导入）"), {}, "Catalog (*.json *.csv)"); if (path.isEmpty()) return; QString error; note->setText(contextStore_->importCatalog(path, error) ? aitsnap::uiText("已保存实测哈希和不可变来源副本；未修改来源文件。") : error); refresh(); });
+    connect(importEvent, &QPushButton::clicked, &dialog, [this, &dialog, note, refresh] { const auto path = QFileDialog::getOpenFileName(&dialog, aitsnap::uiText("选择规范化事件 JSON"), {}, "Event (*.json)"); if (path.isEmpty()) return; QFile file(path); if (!file.open(QIODevice::ReadOnly) || file.size() > 1024 * 1024) { note->setText(aitsnap::uiText("事件无法读取或超过 1 MiB。")); return; } const auto result = contextStore_->ingest(QJsonDocument::fromJson(file.readAll()).object()); note->setText(result.error ? qs(result.error.message) : aitsnap::uiText("事件已接收或去重；未切换截图上下文。")); refresh(); });
+    connect(exportMetadata, &QPushButton::clicked, &dialog, [this, &dialog, note] { const auto path = QFileDialog::getSaveFileName(&dialog, aitsnap::uiText("导出脱敏元数据，不覆盖已有文件"), {}, "JSON (*.json)", nullptr, QFileDialog::DontConfirmOverwrite); if (path.isEmpty()) return; QString error; note->setText(contextStore_->exportMetadata(path, true, error) ? aitsnap::uiText("脱敏元数据已导出。") : error); });
+    auto* select = new QPushButton(aitsnap::uiText("明确选择此事件作为截图上下文")); auto* clear = new QPushButton(aitsnap::uiText("清除关联")); auto* bottom = new QHBoxLayout; bottom->addWidget(select); bottom->addWidget(clear); layout->addLayout(bottom);
     connect(select, &QPushButton::clicked, &dialog, [this, table, note] { if (table->currentRow() < 0) return; const auto source = table->item(table->currentRow(), 0)->text(), id = table->item(table->currentRow(), 1)->text(); const auto context = contextStore_->context(source, id); const auto snapshot = contextStore_->snapshot(source, id);
-        if (context.correlationStatus != "EXACT" || snapshot["definitionStatus"] != "RESOLVED") { selectedContext_ = {}; selectedContextSnapshot_ = {}; contextStatus_->setText(QStringLiteral("截图上下文：未关联（所选身份或静态版本不唯一）。")); note->setText(QStringLiteral("此事件保留歧义/未关联状态，不能自动供热键截图继承。")); return; }
-        selectedContext_ = context; selectedContextSnapshot_ = snapshot; contextStatus_->setText(QStringLiteral("显式上下文：%1 / %2 · run=%3 · attempt=%4").arg(source, id, qs(context.sequenceRunId)).arg(context.attempt)); note->setText(QStringLiteral("后续截图将冻结此事件的身份、时间和静态版本；不会随新事件自动漂移。")); });
-    connect(clear, &QPushButton::clicked, &dialog, [this] { selectedContext_ = {}; selectedContextSnapshot_ = {}; contextStatus_->setText(QStringLiteral("截图上下文：未关联。")); });
+        if (context.correlationStatus != "EXACT" || snapshot["definitionStatus"] != "RESOLVED") { selectedContext_ = {}; selectedContextSnapshot_ = {}; contextStatus_->setText(aitsnap::uiText("截图上下文：未关联（所选身份或静态版本不唯一）。")); note->setText(aitsnap::uiText("此事件保留歧义/未关联状态，不能自动供热键截图继承。")); return; }
+        selectedContext_ = context; selectedContextSnapshot_ = snapshot; contextStatus_->setText(aitsnap::uiText("显式上下文：%1 / %2 · run=%3 · attempt=%4").arg(source, id, qs(context.sequenceRunId)).arg(context.attempt)); note->setText(aitsnap::uiText("后续截图将冻结此事件的身份、时间和静态版本；不会随新事件自动漂移。")); });
+    connect(clear, &QPushButton::clicked, &dialog, [this] { selectedContext_ = {}; selectedContextSnapshot_ = {}; contextStatus_->setText(aitsnap::uiText("截图上下文：未关联。")); });
     auto* close = new QDialogButtonBox(QDialogButtonBox::Close); connect(close, &QDialogButtonBox::rejected, &dialog, &QDialog::reject); layout->addWidget(close); dialog.exec();
 }
 void MainWindow::showReportQueue()
 {
-    QDialog dialog(this); dialog.setWindowTitle(QStringLiteral("Word 报告任务")); dialog.resize(980, 500); auto* layout = new QVBoxLayout(&dialog);
-    auto* note = new QLabel(QStringLiteral("截图与 Word 独立。失败或待核对会暂停同一报告的后续任务。排除原因后，仅修改前失败的任务可重试；UNCERTAIN 必须核对标记，不会盲目重插。未发布 pending.docx 保留供核对。")); note->setWordWrap(true); layout->addWidget(note);
-    auto* table = new QTableWidget(0, 5); table->setObjectName("reportJobs"); table->setHorizontalHeaderLabels({QStringLiteral("任务"), QStringLiteral("报告"), QStringLiteral("状态"), QStringLiteral("尝试"), QStringLiteral("错误 / 原因")}); table->setSelectionBehavior(QAbstractItemView::SelectRows); table->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    QDialog dialog(this); dialog.setWindowTitle(aitsnap::uiText("Word 报告任务")); dialog.resize(980, 500); auto* layout = new QVBoxLayout(&dialog);
+    auto* note = new QLabel(aitsnap::uiText("截图与 Word 独立。失败或待核对会暂停同一报告的后续任务。排除原因后，仅修改前失败的任务可重试；UNCERTAIN 必须核对标记，不会盲目重插。未发布 pending.docx 保留供核对。")); note->setWordWrap(true); layout->addWidget(note);
+    auto* table = new QTableWidget(0, 5); table->setObjectName("reportJobs"); table->setHorizontalHeaderLabels({aitsnap::uiText("任务"), aitsnap::uiText("报告"), aitsnap::uiText("状态"), aitsnap::uiText("尝试"), aitsnap::uiText("错误 / 原因")}); table->setSelectionBehavior(QAbstractItemView::SelectRows); table->setEditTriggers(QAbstractItemView::NoEditTriggers);
     table->setTextElideMode(Qt::ElideMiddle); table->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
     table->setColumnWidth(0, 120); table->setColumnWidth(1, 270); table->setColumnWidth(2, 110); table->setColumnWidth(3, 50); table->horizontalHeader()->setStretchLastSection(true); layout->addWidget(table);
     auto refresh = [this, table] { const auto selected = table->currentRow() >= 0 && table->item(table->currentRow(), 0) ? table->item(table->currentRow(), 0)->text() : QString{}; table->setRowCount(0);
         for (const auto& job : reportQueue_->jobs()) { const int row = table->rowCount(); table->insertRow(row); const auto ext = job["extensions"].toObject();
-            static const QMap<QString, QString> labels{{"QUEUED", QStringLiteral("排队中")}, {"RUNNING", QStringLiteral("正在写入")}, {"COMMITTED", QStringLiteral("已保存提交")}, {"RETRYABLE", QStringLiteral("等待重试")}, {"FAILED", QStringLiteral("失败")}, {"UNCERTAIN", QStringLiteral("待核对")}};
+            static const QMap<QString, QString> labels{{"QUEUED", aitsnap::uiText("排队中")}, {"RUNNING", aitsnap::uiText("正在写入")}, {"COMMITTED", aitsnap::uiText("已保存提交")}, {"RETRYABLE", aitsnap::uiText("等待重试")}, {"FAILED", aitsnap::uiText("失败")}, {"UNCERTAIN", aitsnap::uiText("待核对")}};
             const auto state = job["state"].toString();
             const QStringList values{job["jobId"].toString(), job["target"].toObject()["documentPath"].toString(), labels.value(state, state), QString::number(job["attemptCount"].toInt()), job["errorCode"].toString() + " " + ext["lastResult"].toObject()["message"].toString()};
             for (int col = 0; col < values.size(); ++col) { auto* cell = new QTableWidgetItem(values[col]); cell->setToolTip(col == 2 ? state : values[col]); table->setItem(row, col, cell); } if (values[0] == selected) table->selectRow(row); }
     }; refresh();
-    auto* inspect = new QPushButton(QStringLiteral("核对所选待核对任务的文档标记")); layout->addWidget(inspect);
+    auto* inspect = new QPushButton(aitsnap::uiText("核对所选待核对任务的文档标记")); layout->addWidget(inspect);
     connect(inspect, &QPushButton::clicked, &dialog, [this, table, note, refresh] { if (table->currentRow() < 0) return; QString error; if (!reportQueue_->inspectMarker(table->item(table->currentRow(), 0)->text(), error)) note->setText(error); refresh(); });
-    auto* retry = new QPushButton(QStringLiteral("已排除原因：重试所选修改前失败任务")); retry->setObjectName("retryFailedReport"); layout->addWidget(retry);
-    connect(retry, &QPushButton::clicked, &dialog, [this, table, note, refresh] { if (table->currentRow() < 0) return; QString error; note->setText(reportQueue_->retryFailed(table->item(table->currentRow(), 0)->text(), error) ? QStringLiteral("原任务已重新排队，保留顺序与重试历史。") : error); refresh(); });
+    auto* retry = new QPushButton(aitsnap::uiText("已排除原因：重试所选修改前失败任务")); retry->setObjectName("retryFailedReport"); layout->addWidget(retry);
+    connect(retry, &QPushButton::clicked, &dialog, [this, table, note, refresh] { if (table->currentRow() < 0) return; QString error; note->setText(reportQueue_->retryFailed(table->item(table->currentRow(), 0)->text(), error) ? aitsnap::uiText("原任务已重新排队，保留顺序与重试历史。") : error); refresh(); });
     QTimer timer; connect(&timer, &QTimer::timeout, &dialog, refresh); timer.start(1000); auto* close = new QDialogButtonBox(QDialogButtonBox::Close); connect(close, &QDialogButtonBox::rejected, &dialog, &QDialog::reject); layout->addWidget(close); dialog.exec();
 }
 void MainWindow::rebuildScenes()
@@ -417,7 +434,7 @@ void MainWindow::rebuildScenes()
     scenes_->clear(); const auto& profile = settings_.profiles[std::size_t(settings_.activeProfile)];
     for (const auto& scene : settings_.scenes) {
         const bool compatible = std::all_of(scene.layers.begin(), scene.layers.end(), [&](const auto& l) { return std::any_of(profile.regions.begin(), profile.regions.end(), [&](const auto& r) { return r.id == l.sourceRegionId; }); });
-        auto* item = new QListWidgetItem(qs(scene.name) + QString(" · r%1").arg(scene.revision) + (compatible ? "" : QStringLiteral(" · 源待匹配")), scenes_);
+        auto* item = new QListWidgetItem(qs(scene.name) + QString(" · r%1").arg(scene.revision) + (compatible ? "" : aitsnap::uiText(" · 源待匹配")), scenes_);
         item->setData(Qt::UserRole, qs(scene.id)); item->setFlags(item->flags() | Qt::ItemIsUserCheckable); item->setCheckState(settings_.selectedSceneIds.contains(qs(scene.id)) ? Qt::Checked : Qt::Unchecked);
         if (qs(scene.id) == current) scenes_->setCurrentItem(item);
     }
@@ -426,7 +443,7 @@ void MainWindow::rebuildScenes()
 void MainWindow::rebuildSceneMenu()
 {
     if (!sceneMenu_) return; sceneMenu_->clear();
-    if (settings_.scenes.empty()) { auto* empty = sceneMenu_->addAction(QStringLiteral("尚无场景，请先新建拼图")); empty->setEnabled(false); return; }
+    if (settings_.scenes.empty()) { auto* empty = sceneMenu_->addAction(aitsnap::uiText("尚无场景，请先新建拼图")); empty->setEnabled(false); return; }
     for (const auto& scene : settings_.scenes) {
         const auto sceneId = qs(scene.id); auto* action = sceneMenu_->addAction(qs(scene.name)); action->setCheckable(true); action->setChecked(settings_.selectedSceneIds.contains(sceneId));
         connect(action, &QAction::toggled, this, [this, sceneId](bool checked) {
@@ -437,18 +454,18 @@ void MainWindow::rebuildSceneMenu()
             auto& profile = candidate.profiles[std::size_t(candidate.activeProfile)]; profile.sceneIds.clear();
             for (const auto& id : candidate.selectedSceneIds) profile.sceneIds.push_back(id.toStdString()); profile.outputMode = candidate.outputMode.toStdString();
             QString error;
-            if (saveSettings(configurationPath_, candidate, error)) { settings_ = candidate; loadProfile(); setStatus(candidate.selectedSceneIds.empty() ? QStringLiteral("未启用拼图，当前仅保存原图。") : QStringLiteral("已更新当前配置的拼图输出。")); }
+            if (saveSettings(configurationPath_, candidate, error)) { settings_ = candidate; loadProfile(); setStatus(candidate.selectedSceneIds.empty() ? aitsnap::uiText("未启用拼图，当前仅保存原图。") : aitsnap::uiText("已更新当前配置的拼图输出。")); }
             else setStatus(error, true);
         });
     }
 }
 void MainWindow::editScene(bool createNew, bool historical)
 {
-    if (busy_ || editingRegions_ || editingScene_) { setStatus(QStringLiteral("请等待当前截图或编辑完成。"), true); return; }
+    if (busy_ || editingRegions_ || editingScene_) { setStatus(aitsnap::uiText("请等待当前截图或编辑完成。"), true); return; }
     if (!applySettings()) return;
     auto profile = settings_.profiles[std::size_t(settings_.activeProfile)]; SceneSources sources;
     if (historical) {
-        const auto manifest = QFileDialog::getOpenFileName(this, QStringLiteral("打开已保存批次的 batch.json"), settings_.outputDirectory, "Batch (batch.json);;JSON (*.json)");
+        const auto manifest = QFileDialog::getOpenFileName(this, aitsnap::uiText("打开已保存批次的 batch.json"), settings_.outputDirectory, "Batch (batch.json);;JSON (*.json)");
         if (manifest.isEmpty()) return; QString error;
         if (!loadHistoricalSources(manifest, sources, profile, error)) { setStatus(error, true); return; }
     } else if (lastOutcome_ && lastOutcome_->batch.request.profile.id == profile.id) sources = batchSources(lastOutcome_->batch);
@@ -463,7 +480,7 @@ void MainWindow::editScene(bool createNew, bool historical)
     editingScene_ = true;
     SceneEditor dialog(model, profile, sources, this);
     const auto accepted = dialog.exec() == QDialog::Accepted; editingScene_ = false;
-    if (!accepted) { setStatus(QStringLiteral("已取消场景编辑，截图已恢复。")); return; }
+    if (!accepted) { setStatus(aitsnap::uiText("已取消场景编辑，截图已恢复。")); return; }
     const auto saved = dialog.sceneTemplate(); auto candidate = settings_;
     const auto found = std::find_if(candidate.scenes.begin(), candidate.scenes.end(), [&](const auto& scene) { return scene.id == saved.id; });
     if (found == candidate.scenes.end()) candidate.scenes.push_back(saved); else *found = saved;
@@ -478,33 +495,33 @@ void MainWindow::editScene(bool createNew, bool historical)
     QString error;
     if (!saveSettings(configurationPath_, candidate, error)) { setStatus(error, true); return; }
     settings_ = candidate; loadProfile();
-    setStatus(compatible ? QStringLiteral("场景已保存并启用；后续截图保存原图和拼图，复制所选拼图。") : QStringLiteral("历史场景已保存；源与当前配置不同，未自动启用。可在编辑器导出派生图。"));
+    setStatus(compatible ? aitsnap::uiText("场景已保存并启用；后续截图保存原图和拼图，复制所选拼图。") : aitsnap::uiText("历史场景已保存；源与当前配置不同，未自动启用。可在编辑器导出派生图。"));
 }
 void MainWindow::importScene()
 {
     if (busy_ || editingRegions_ || editingScene_ || !applySettings()) return;
-    const auto path = QFileDialog::getOpenFileName(this, QStringLiteral("导入独立场景模板"), {}, "Scene (*.json)"); if (path.isEmpty()) return;
+    const auto path = QFileDialog::getOpenFileName(this, aitsnap::uiText("导入独立场景模板"), {}, "Scene (*.json)"); if (path.isEmpty()) return;
     QFile file(path); if (!file.open(QIODevice::ReadOnly)) { setStatus(file.errorString(), true); return; }
-    if (file.size() > 8 * 1024 * 1024) { setStatus(QStringLiteral("场景文件超过 8 MiB。"), true); return; }
+    if (file.size() > 8 * 1024 * 1024) { setStatus(aitsnap::uiText("场景文件超过 8 MiB。"), true); return; }
     QJsonParseError parse; const auto document = QJsonDocument::fromJson(file.readAll(), &parse); QString error; core::SceneTemplate scene;
-    if (parse.error || !document.isObject() || !sceneFromJson(document.object(), scene, error)) { setStatus(error.isEmpty() ? QStringLiteral("场景 JSON 无效，原文件未改动。") : error, true); return; }
+    if (parse.error || !document.isObject() || !sceneFromJson(document.object(), scene, error)) { setStatus(error.isEmpty() ? aitsnap::uiText("场景 JSON 无效，原文件未改动。") : error, true); return; }
     auto candidate = settings_;
     if (std::any_of(candidate.scenes.begin(), candidate.scenes.end(), [&](const auto& s) { return s.id == scene.id; })) { scene.id = id(); scene.revision = 1; scene.name += "（导入副本）"; }
     candidate.scenes.push_back(scene);
     if (!saveSettings(configurationPath_, candidate, error)) { setStatus(error, true); return; }
-    settings_ = candidate; loadProfile(); setStatus(QStringLiteral("场景已导入。请编辑确认源映射，再勾选输出并应用配置。"));
+    settings_ = candidate; loadProfile(); setStatus(aitsnap::uiText("场景已导入。请编辑确认源映射，再勾选输出并应用配置。"));
 }
 void MainWindow::exportScene()
 {
-    if (!scenes_->currentItem()) { setStatus(QStringLiteral("请先选择一个场景。"), true); return; }
+    if (!scenes_->currentItem()) { setStatus(aitsnap::uiText("请先选择一个场景。"), true); return; }
     const auto chosen = scenes_->currentItem()->data(Qt::UserRole).toString().toStdString();
     const auto found = std::find_if(settings_.scenes.begin(), settings_.scenes.end(), [&](const auto& scene) { return scene.id == chosen; }); if (found == settings_.scenes.end()) return;
-    const auto path = QFileDialog::getSaveFileName(this, QStringLiteral("导出为新的场景文件（不覆盖）"), {}, "Scene (*.json)", nullptr, QFileDialog::DontConfirmOverwrite); if (path.isEmpty()) return;
-    QString error; if (saveBytesNew(QJsonDocument(sceneJson(*found)).toJson(), path, error)) setStatus(QStringLiteral("独立场景模板已导出。")); else setStatus(error, true);
+    const auto path = QFileDialog::getSaveFileName(this, aitsnap::uiText("导出为新的场景文件（不覆盖）"), {}, "Scene (*.json)", nullptr, QFileDialog::DontConfirmOverwrite); if (path.isEmpty()) return;
+    QString error; if (saveBytesNew(QJsonDocument(sceneJson(*found)).toJson(), path, error)) setStatus(aitsnap::uiText("独立场景模板已导出。")); else setStatus(error, true);
 }
 void MainWindow::editRegions()
 {
-    if (busy_ || editingRegions_ || editingScene_) { setStatus(QStringLiteral("请等待当前采集或编辑完成。"), true); return; }
+    if (busy_ || editingRegions_ || editingScene_) { setStatus(aitsnap::uiText("请等待当前采集或编辑完成。"), true); return; }
     if (!applySettings()) return;
     const bool restore = isVisible(); hide(); editingRegions_ = true;
     // Let the compositor remove the host before taking editor-only background frames.
@@ -514,11 +531,11 @@ void MainWindow::editRegions()
                 if (accepted) {
                     auto candidate = settings_;
                     const auto target = std::find_if(candidate.profiles.begin(), candidate.profiles.end(), [&](const auto& p) { return p.id == profile.id; });
-                    if (target == candidate.profiles.end()) { editingRegions_ = false; setStatus(QStringLiteral("编辑配置已不存在，未改写其他配置。"), true); if (restore) showNormal(); return; }
+                    if (target == candidate.profiles.end()) { editingRegions_ = false; setStatus(aitsnap::uiText("编辑配置已不存在，未改写其他配置。"), true); if (restore) showNormal(); return; }
                     *target = std::move(profile); QString error;
-                    if (saveSettings(configurationPath_, candidate, error)) { settings_ = candidate; loadProfile(); setStatus(QStringLiteral("区域已保存，截图已恢复。")); }
+                    if (saveSettings(configurationPath_, candidate, error)) { settings_ = candidate; loadProfile(); setStatus(aitsnap::uiText("区域已保存，截图已恢复。")); }
                     else setStatus(error, true);
-                } else setStatus(QStringLiteral("已取消框选，区域未改动。"));
+                } else setStatus(aitsnap::uiText("已取消框选，区域未改动。"));
                 editingRegions_ = false; if (restore) { showNormal(); raise(); activateWindow(); }
             });
         } catch (const std::exception& e) { editingRegions_ = false; setStatus(QString::fromUtf8(e.what()), true); if (restore) showNormal(); }

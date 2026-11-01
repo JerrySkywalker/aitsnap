@@ -1,0 +1,68 @@
+// SPDX-License-Identifier: Apache-2.0
+#include "desktop/appearance.h"
+#include "desktop/scene_layer_item.h"
+#include "main_window.h"
+#include <QApplication>
+#include <QCheckBox>
+#include <QComboBox>
+#include <QFile>
+#include <QJsonDocument>
+#include <QJsonArray>
+#include <QPushButton>
+#include <QTemporaryDir>
+#include <QDir>
+#include <iostream>
+#include <stdexcept>
+using namespace aitsnap;
+static void check(bool ok, const char* text) { if (!ok) throw std::runtime_error(text); }
+int main(int argc, char** argv)
+{
+    QApplication app(argc, argv); app.setApplicationName("AITSnapAppearanceTests");
+    try {
+        QTemporaryDir temp; check(temp.isValid(), "temporary directory");
+        Settings settings = defaultSettings(); settings.outputDirectory = temp.path();
+        settings.saveHotkey = "Ctrl+Alt+Shift+F20"; settings.copyHotkey = "Ctrl+Alt+Shift+F21"; settings.bothHotkey = "Ctrl+Alt+Shift+F22";
+        core::CaptureProfile profile; profile.id = "unchanged-profile"; profile.name = "Fixture";
+        profile.regions = {{"unchanged-id-1", "Voltage", {0, 0, 32, 16}, true}, {"unchanged-id-2", "Log", {32, 0, 32, 16}, true}};
+        settings.profiles.push_back(profile); QString error;
+        const auto path = temp.filePath("settings.json"); check(saveSettings(path, settings, error), "fixture save");
+        // A real legacy v3 input, preserving its exact bytes before the first v4 write.
+        QFile f(path); check(f.open(QIODevice::ReadOnly), "legacy read"); auto old = QJsonDocument::fromJson(f.readAll()).object(); f.close();
+        old["schemaVersion"] = 3; old.remove("appearance"); auto profiles = old["profiles"].toArray(); auto p = profiles[0].toObject(); p.remove("nextRegionNumber");
+        auto regions = p["regions"].toArray(); for (int i = 0; i < regions.size(); ++i) { auto r = regions[i].toObject(); r.remove("displayNumber"); regions[i] = r; } p["regions"] = regions; profiles[0] = p; old["profiles"] = profiles;
+        const auto originalBytes = QJsonDocument(old).toJson(); check(f.open(QIODevice::WriteOnly | QIODevice::Truncate), "legacy write"); f.write(originalBytes); f.close();
+        Settings loaded; check(loadSettings(path, loaded, error), "legacy load");
+        check(loaded.language == "system" && loaded.colorMode == "system", "legacy appearance defaults");
+        check(loaded.profiles[0].regions[0].id == "unchanged-id-1" && loaded.profiles[0].regions[1].displayNumber == 2, "stable migration identities");
+        loaded.profiles[0].regions.erase(loaded.profiles[0].regions.begin() + 1);
+        loaded.profiles[0].regions.push_back({"new-region", "Third", {0, 16, 32, 16}, true}); core::numberRegions(loaded.profiles[0]);
+        check(loaded.profiles[0].regions.back().displayNumber == 3, "deleted region number is not reused");
+        check(saveSettings(path, loaded, error), "migrate save");
+        const auto backups = QDir(temp.path()).entryList({"settings.json.v3-preserved-*"}, QDir::Files); check(backups.size() == 1, "one exact legacy backup");
+        QFile backup(temp.filePath(backups.front())); check(backup.open(QIODevice::ReadOnly) && backup.readAll() == originalBytes, "legacy bytes preserved");
+        installLanguage("en-US"); applyColorMode("light");
+        check(uiText("截图并保存") == "Capture and save", "English catalog actually loaded");
+        {
+            MainWindow window(nullptr, path, "-");
+            auto* mode = window.findChild<QComboBox*>("appearanceColorMode"); auto* language = window.findChild<QComboBox*>("appearanceLanguage");
+            check(mode && language, "appearance controls present");
+            check(window.findChild<QPushButton*>("captureSave")->text() == "Capture and save", "actual button localized");
+            mode->setCurrentIndex(mode->findData("dark")); app.processEvents();
+            check(activeColorMode() == "dark" && window.palette().color(QPalette::Window).lightness() < 90 && window.palette().color(QPalette::Text).lightness() > 190, "dark widgets have contrasting palette");
+            language->setCurrentIndex(language->findData("en-US")); window.findChild<QPushButton*>("applySettings")->click();
+        }
+        check(loadSettings(path, loaded, error) && loaded.language == "en-US" && loaded.colorMode == "dark", "chosen appearance persisted");
+        installLanguage(loaded.language); applyColorMode(loaded.colorMode); check(uiText("外观") == "Appearance", "restart language resolution");
+        QImage source(32, 16, QImage::Format_ARGB32); source.fill(QColor("#d92c41")); const QImage original = source;
+        core::SceneTemplate scene; scene.id = "s"; scene.name = "Scene"; scene.width = 32; scene.height = 16;
+        core::Layer layer; layer.id = "l"; layer.sourceRegionId = "r"; layer.destination = {0, 0, 32, 16, 0}; scene.layers.push_back(layer);
+        SceneSources sources{{"r", {source, "artifact"}}}; const auto dark = renderScene(scene, sources);
+        applyColorMode("light"); const auto light = renderScene(scene, sources);
+        check(dark.image == light.image && source == original, "theme never changes captured or exported pixels");
+        LayerItem item(layer, source, false, "#1 Voltage"); bool independent = false;
+        for (auto* child : item.childItems()) independent |= bool(child->flags() & QGraphicsItem::ItemIgnoresTransformations);
+        check(independent, "identity text is independent of image transforms");
+        installLanguage("zh-CN"); check(uiText("外观") == QString::fromUtf8("外观"), "Chinese fallback");
+        std::cout << "APPEARANCE_IDENTITY_MIGRATION_PASS\n"; return 0;
+    } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
+}

@@ -3,6 +3,7 @@
 
 #include "main_window.h"
 #include "compat/qt_widgets_compat.h"
+#include "desktop/appearance.h"
 
 #include <QApplication>
 #include <QString>
@@ -51,10 +52,13 @@ int main(int argc, char* argv[])
     if (!durationOk || idleMs < 1 || idleMs > 60000) return 2;
     const auto configuration = parser.isSet("data-dir") ? QDir(parser.value("data-dir")).absoluteFilePath("settings-v1.json") : aitsnap::settingsPath();
     if (!QDir().mkpath(QFileInfo(configuration).absolutePath())) return 3;
+    aitsnap::Settings preferences = aitsnap::defaultSettings(); QString preferencesError;
+    if (QFile::exists(configuration)) aitsnap::loadSettings(configuration, preferences, preferencesError);
+    aitsnap::installLanguage(preferences.language); aitsnap::applyColorMode(preferences.colorMode);
     QLockFile lock(QFileInfo(configuration).absolutePath() + "/desktop.lock");
     lock.setStaleLockTime(0);
     if (!lock.tryLock(0)) {
-        QMessageBox::information(nullptr, QStringLiteral("AITSnap"), QStringLiteral("AITSnap 已在运行。请从通知区域打开现有窗口。"));
+        QMessageBox::information(nullptr, QStringLiteral("AITSnap"), aitsnap::uiText("AITSnap 已在运行。请从通知区域打开现有窗口。"));
         return 2;
     }
     QApplication::setQuitOnLastWindowClosed(false);

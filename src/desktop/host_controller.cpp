@@ -1,3 +1,4 @@
+#include "appearance.h"
 // SPDX-License-Identifier: Apache-2.0
 #include "main_window.h"
 #include "adapters/local_host.h"
@@ -50,7 +51,7 @@ void MainWindow::startHost(QString name)
             else { auto candidate = root["rules"].toArray(); for (const auto& r : candidate) { if (!r.isObject()) { warning = "Rule requires an object"; break; } if (!validateEventRule(r.toObject(), warning)) break; } if (warning.isEmpty()) eventRules_ = candidate; }
         }
     }
-    if (name == "-") { hostStatus_->setText(QStringLiteral("本地 CLI：本测试实例未启动端点。")); return; }
+    if (name == "-") { hostStatus_->setText(aitsnap::uiText("本地 CLI：本测试实例未启动端点。")); return; }
     QString error; if (name.isEmpty()) name = defaultPipeName(error); QPointer<MainWindow> self(this);
     HostHandler handler = [self](const QString& action, const QJsonObject& payload, bool preflight) {
         struct Pending { std::promise<QJsonObject> result; std::atomic<bool> cancelled{}; }; auto pending = std::make_shared<Pending>(); auto result = pending->result.get_future();
@@ -62,8 +63,8 @@ void MainWindow::startHost(QString name)
         return result.get();
     };
     localHost_ = std::make_unique<LocalPipeServer>(name, QFileInfo(configurationPath_).absolutePath() + "/host-receipts", std::move(handler));
-    if (!localHost_->start(error)) hostStatus_->setText(QStringLiteral("本地 CLI HOLD：") + error);
-    else hostStatus_->setText(QStringLiteral("本地 CLI：%1 · 当前登录会话 · %2 条规则").arg(name).arg(eventRules_.size()) + (warning.isEmpty() ? "" : "\n" + warning));
+    if (!localHost_->start(error)) hostStatus_->setText(aitsnap::uiText("本地 CLI HOLD：") + error);
+    else hostStatus_->setText(aitsnap::uiText("本地 CLI：%1 · 当前登录会话 · %2 条规则").arg(name).arg(eventRules_.size()) + (warning.isEmpty() ? "" : "\n" + warning));
 }
 QJsonObject MainWindow::hostRequest(const QString& action, const QJsonObject& payload, bool preflight)
 {
@@ -111,27 +112,27 @@ QJsonObject MainWindow::hostRequest(const QString& action, const QJsonObject& pa
 }
 void MainWindow::editEventRules()
 {
-    QDialog dialog(this); dialog.setWindowTitle(QStringLiteral("事件截图规则 · 元数据匹配")); dialog.resize(1240, 530); auto* layout = new QVBoxLayout(&dialog);
-    auto* note = new QLabel(QStringLiteral("按表格顺序采用第一条启用且匹配的规则。空过滤器匹配任意值；空 Scene IDs 表示仅原图。Word 使用当前自动报告配置。规则不执行来源指令。")); note->setWordWrap(true); layout->addWidget(note);
-    auto* table = new QTableWidget(0, 9); table->setHorizontalHeaderLabels({QStringLiteral("启用"), QStringLiteral("来源"), QStringLiteral("事件类型"), "Sequence ID", "Step ID", "Command ID", QStringLiteral("截图配置"), "Scene IDs (,)", QStringLiteral("输出")}); table->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents); layout->addWidget(table);
+    QDialog dialog(this); dialog.setWindowTitle(aitsnap::uiText("事件截图规则 · 元数据匹配")); dialog.resize(1240, 530); auto* layout = new QVBoxLayout(&dialog);
+    auto* note = new QLabel(aitsnap::uiText("按表格顺序采用第一条启用且匹配的规则。空过滤器匹配任意值；空 Scene IDs 表示仅原图。Word 使用当前自动报告配置。规则不执行来源指令。")); note->setWordWrap(true); layout->addWidget(note);
+    auto* table = new QTableWidget(0, 9); table->setHorizontalHeaderLabels({aitsnap::uiText("启用"), aitsnap::uiText("来源"), aitsnap::uiText("事件类型"), "Sequence ID", "Step ID", "Command ID", aitsnap::uiText("截图配置"), "Scene IDs (,)", aitsnap::uiText("输出")}); table->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents); layout->addWidget(table);
     auto add = [this, table](QJsonObject rule) { const int row = table->rowCount(); table->insertRow(row); auto* enabled = new QTableWidgetItem; enabled->setCheckState(rule["enabled"].toBool() ? Qt::Checked : Qt::Unchecked); table->setItem(row, 0, enabled);
         const char* filters[]{"sourceSystem", "sequenceDefinitionId", "stepId", "commandDefinitionId"}; const int cols[]{1, 3, 4, 5}; for (int i = 0; i < 4; ++i) table->setItem(row, cols[i], new QTableWidgetItem(rule[filters[i]].toString()));
         auto* type = new QComboBox; type->addItems(eventTypes); type->setCurrentText(rule["eventType"].toString("COMMAND_ACKNOWLEDGED")); table->setCellWidget(row, 2, type);
-        auto* profile = new QComboBox; profile->addItem(QStringLiteral("当前配置"), ""); for (const auto& p : settings_.profiles) profile->addItem(qs(p.name), qs(p.id)); profile->setCurrentIndex(std::max(0, profile->findData(rule["profileId"].toString()))); table->setCellWidget(row, 6, profile);
+        auto* profile = new QComboBox; profile->addItem(aitsnap::uiText("当前配置"), ""); for (const auto& p : settings_.profiles) profile->addItem(qs(p.name), qs(p.id)); profile->setCurrentIndex(std::max(0, profile->findData(rule["profileId"].toString()))); table->setCellWidget(row, 6, profile);
         QStringList scenes; for (const auto& scene : rule["sceneIds"].toArray()) scenes.append(scene.toString()); table->setItem(row, 7, new QTableWidgetItem(scenes.join(',')));
         auto* mode = new QComboBox; mode->addItems({"save", "copy", "both"}); mode->setCurrentText(rule["mode"].toString("save")); table->setCellWidget(row, 8, mode);
     }; for (const auto& rule : eventRules_) add(rule.toObject());
-    QStringList availableScenes; for (const auto& s : settings_.scenes) availableScenes.append(qs(s.id) + " = " + qs(s.name)); auto* references = new QLabel(QStringLiteral("可用 Scene IDs：") + availableScenes.join(" · ")); references->setWordWrap(true); references->setTextInteractionFlags(Qt::TextSelectableByMouse); layout->addWidget(references);
-    auto* actions = new QHBoxLayout; auto* append = new QPushButton(QStringLiteral("新增禁用规则")); auto* remove = new QPushButton(QStringLiteral("移除选中规则")); actions->addWidget(append); actions->addWidget(remove); layout->addLayout(actions); connect(append, &QPushButton::clicked, &dialog, [add] { add(QJsonObject{{"enabled", false}, {"eventType", "COMMAND_ACKNOWLEDGED"}, {"sceneIds", QJsonArray{}}, {"mode", "save"}}); }); connect(remove, &QPushButton::clicked, &dialog, [table] { if (table->currentRow() >= 0) table->removeRow(table->currentRow()); });
+    QStringList availableScenes; for (const auto& s : settings_.scenes) availableScenes.append(qs(s.id) + " = " + qs(s.name)); auto* references = new QLabel(aitsnap::uiText("可用 Scene IDs：") + availableScenes.join(" · ")); references->setWordWrap(true); references->setTextInteractionFlags(Qt::TextSelectableByMouse); layout->addWidget(references);
+    auto* actions = new QHBoxLayout; auto* append = new QPushButton(aitsnap::uiText("新增禁用规则")); auto* remove = new QPushButton(aitsnap::uiText("移除选中规则")); actions->addWidget(append); actions->addWidget(remove); layout->addLayout(actions); connect(append, &QPushButton::clicked, &dialog, [add] { add(QJsonObject{{"enabled", false}, {"eventType", "COMMAND_ACKNOWLEDGED"}, {"sceneIds", QJsonArray{}}, {"mode", "save"}}); }); connect(remove, &QPushButton::clicked, &dialog, [table] { if (table->currentRow() >= 0) table->removeRow(table->currentRow()); });
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Save | QDialogButtonBox::Cancel); layout->addWidget(buttons); connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
     connect(buttons, &QDialogButtonBox::accepted, &dialog, [this, table, note, &dialog] { QJsonArray rules; QString error;
         for (int row = 0; row < table->rowCount(); ++row) { QJsonArray scenes; for (const auto& id : table->item(row, 7)->text().split(',', Qt::SkipEmptyParts)) scenes.append(id.trimmed());
             QJsonObject rule{{"enabled", table->item(row, 0)->checkState() == Qt::Checked}, {"sourceSystem", table->item(row, 1)->text().trimmed()}, {"eventType", qobject_cast<QComboBox*>(table->cellWidget(row, 2))->currentText()}, {"sequenceDefinitionId", table->item(row, 3)->text().trimmed()}, {"stepId", table->item(row, 4)->text().trimmed()}, {"commandDefinitionId", table->item(row, 5)->text().trimmed()}, {"profileId", qobject_cast<QComboBox*>(table->cellWidget(row, 6))->currentData().toString()}, {"sceneIds", scenes}, {"mode", qobject_cast<QComboBox*>(table->cellWidget(row, 8))->currentText()}};
             if (!validateEventRule(rule, error)) { note->setText(error); return; } rules.append(rule);
         }
-        if (rules.size() > 100) { note->setText(QStringLiteral("最多 100 条规则。")); return; }
+        if (rules.size() > 100) { note->setText(aitsnap::uiText("最多 100 条规则。")); return; }
         QSaveFile file(QFileInfo(configurationPath_).absolutePath() + "/host-rules-v1.json"); const auto bytes = QJsonDocument(QJsonObject{{"schemaVersion", 1}, {"rules", rules}}).toJson();
-        if (!file.open(QIODevice::WriteOnly) || file.write(bytes) != bytes.size() || !file.commit()) { note->setText(file.errorString()); return; } eventRules_ = rules; hostStatus_->setText(QStringLiteral("本地事件规则已保存：%1 条；第一条匹配规则生效。").arg(rules.size())); dialog.accept();
+        if (!file.open(QIODevice::WriteOnly) || file.write(bytes) != bytes.size() || !file.commit()) { note->setText(file.errorString()); return; } eventRules_ = rules; hostStatus_->setText(aitsnap::uiText("本地事件规则已保存：%1 条；第一条匹配规则生效。").arg(rules.size())); dialog.accept();
     }); dialog.exec();
 }
 } // namespace aitsnap

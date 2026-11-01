@@ -36,6 +36,7 @@ private:
     QMenu* profileMenu_{};
     QMenu* sceneMenu_{};
     QComboBox *profiles_{}, *format_{}, *clipboard_{};
+    QComboBox *language_{}, *colorMode_{};
     QLineEdit *profileName_{}, *directory_{}, *filename_{}, *saveKey_{}, *copyKey_{}, *bothKey_{};
     QLineEdit *testId_{}, *device_{}, *station_{}, *operator_{};
     QCheckBox* startTray_{};
