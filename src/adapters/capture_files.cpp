@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "capture_files.h"
+#include "win_capture.h"
 #include <QCryptographicHash>
 #include <QDir>
 #include <QElapsedTimer>
@@ -34,7 +35,7 @@ CaptureOutcome captureToFiles(core::ICaptureBackend& backend, const Settings& se
         const auto revision = std::pair<std::string, int>{scene.id, scene.revision};
         if (std::find(request.sceneRevisions.begin(), request.sceneRevisions.end(), revision) == request.sceneRevisions.end()) request.sceneRevisions.push_back(revision);
     }
-    try { core::CaptureService service(backend); out.batch = service.capture(request); }
+    try { const std::lock_guard<std::mutex> lock(desktopCaptureMutex());core::CaptureService service(backend); out.batch = service.capture(request); }
     catch (const std::exception& e) {
         out.batch.batchId = request.requestId; out.batch.request = request;
         out.batch.outputs.push_back({"capture", "", "FAILED", {"CAPTURE", e.what()}});

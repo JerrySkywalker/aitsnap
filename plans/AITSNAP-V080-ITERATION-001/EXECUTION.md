@@ -41,3 +41,13 @@ W03源 `a4175360423d2da965fb02ab061f75182ad29f70` 已经PR41正常合并，merge
 Qt6产品/helper与Qt5宿主helper及相关测试编译通过；两路各 report-text/report-queue/appearance 3/3通过。新增测试验证转义/中文/固定字符串、范围不适用字段拒绝、空值、无递归替换、解析快照、纯图指令、旧指纹算法、policy篡改拒绝、来源不变、UI预设/自定义及设置持久化。原始日志 `UX080/w02-*`。Qt5最初因QString空初始化赋值歧义失败，改显式QString后通过，失败日志保留。
 
 SOURCE/HOST_COMPONENT=PASS；**新版真实Word布局/追加证明仍NOT_RUN/TOOL_POLICY_HOLD**：未重放先前被自动审批拒绝的包内Word探针，也未换入口绕过。旧版真实现代Word证据保留其范围，不能替代本次新文字分支。Word2010及Owner文档视觉仍HOLD，继续W04/W05独立工作。
+
+W02源 `38e941b7c172c9f20601cdfba830d87e005a210e` 经PR42正常合并，merge `fdcd406fbc91d1e35358cc37c93f38cd5f1fec52`。
+
+## W04 — 实时来源服务
+
+独立后台订阅/定时器、单一in-flight帧、配置generation、停止时释放缓存、过期状态和像素预算。复用CaptureService的精确裁切/覆盖/拓扑算法，内部临时结果无request/batch身份，不进入CaptureOutcome/文件/序号/报告生命周期。正式捕获与实时采集共享采集阶段互斥，编码/报告不持有采集锁。旧帧不能覆盖新配置；无法排除的自身窗口重叠只阻断对应来源。
+
+Qt6/Qt5宿主live-preview组件通过：合成跨屏像素、每屏帧复用、局部重叠、拓扑改变、过期generation丢弃、停止无继续采集。两路Win11原生测试证明实际GDI在排除蓝窗后读到下层已知红色，而非仅凭SetWindowDisplayAffinity返回；不据此推断Win10旧版本/Win7。
+
+Qt6正式原生四屏五来源三动作/迷你窗回归通过，确认采集锁没有破坏既有文件/剪贴板/序号规则。`UX080/w04-*`保留日志，工作区/编辑器/图窗接入和最终性能属于W05/W06。平台及Owner签收保持HOLD。

@@ -73,6 +73,7 @@ add_library(aitsnap-adapters STATIC
     src/adapters/capture_files.cpp
     src/adapters/report_queue.cpp
     src/adapters/report_text.cpp
+    src/adapters/live_preview.cpp
     src/adapters/context_store.cpp
     src/adapters/host_journal.cpp
     src/adapters/local_pipe.cpp
@@ -81,6 +82,7 @@ add_library(aitsnap-adapters STATIC
     src/desktop/scene_editor.cpp
     src/desktop/desktop_activation.cpp
     src/desktop/mini_capture_window.cpp
+    src/desktop/capture_visibility.cpp
     src/desktop/appearance.cpp
     src/desktop/workspace_views.cpp
     resources/aitsnap.qrc
@@ -125,6 +127,11 @@ endif()
 target_link_libraries(aitsnap PRIVATE aitsnap-adapters psapi)
 set(aitsnap_targets aitsnap aitsnap-adapters aitsnap-word-bridge aitsnap-cli)
 if(BUILD_TESTING)
+    add_executable(aitsnap-live-preview-tests tests/live_preview_tests.cpp)
+    target_link_libraries(aitsnap-live-preview-tests PRIVATE aitsnap-adapters dwmapi)
+    add_test(NAME live-preview COMMAND aitsnap-live-preview-tests)
+    set_tests_properties(live-preview PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 20)
+    list(APPEND aitsnap_targets aitsnap-live-preview-tests)
     add_executable(aitsnap-report-text-tests tests/report_text_tests.cpp)
     target_link_libraries(aitsnap-report-text-tests PRIVATE aitsnap-adapters)
     add_test(NAME report-text COMMAND aitsnap-report-text-tests)
