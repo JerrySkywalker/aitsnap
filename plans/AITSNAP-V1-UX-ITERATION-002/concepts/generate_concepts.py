@@ -149,7 +149,7 @@ def composer():
 def generate_originals():
     overview();regions();composer()
     (OUT/'brandmark-proposal.svg').write_text('<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">'+BRAND+'</svg>',encoding='utf-8',newline='\n')
-    
+
     html='''<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>AITSnap 下一轮界面概念审计</title>
     <meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;background:#edf2f7;color:#17283d;font:16px "Microsoft YaHei UI",sans-serif}header{padding:22px 28px;background:white;border-bottom:1px solid #d9e2eb}h1{margin:0 0 9px;font-size:25px}p{margin:8px 0;color:#52677e}nav{display:flex;gap:10px;margin-top:16px}button{font:inherit;border:1px solid #b8c8da;border-radius:7px;background:white;color:#17345a;padding:10px 20px;cursor:pointer}button[aria-selected=true]{background:#2364d2;color:white;border-color:#2364d2}main{padding:16px}img{display:block;width:100%;height:auto;background:white;border-radius:10px}section[hidden]{display:none}a{color:#2364d2}</style>
     <header><h1>AITSnap 下一轮 UI 概念审计</h1><p>合成示例 · 尚未实现或获得 Owner 批准。三屏四区域仅表达设计关系，不是现场监控截图。</p><p>审计重点：来源与输出是否清晰、编号名称能否对应、文字是否独立、是否接受稳定编号与高级参数折叠。</p><nav role="tablist">'''
