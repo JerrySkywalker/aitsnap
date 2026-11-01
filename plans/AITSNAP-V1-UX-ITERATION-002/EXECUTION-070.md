@@ -51,3 +51,7 @@ Computer Use 收到物理 Esc 停止信号：**停止桌面输入，未经 Owner
 PR #25 已合并：源码 `caccff8d6ab9b29f489a9ac6cb347fc059f0978a`，合并 `a68a00e5f5fb8dc5354f663c51f5c0dfae10596b`。当前 `codex/aitsnap-070-integration` 补齐来源/输出互相高亮、应用后保留选择、框选 F2 改名、历史批次加入报告、冻结名称图注及中文标准按钮。Owner 原安装实例未动；仅精确清理自建测试实例 PID 25444。
 
 Qt6/Qt5 offscreen 外观及报告针对性检查通过；10 张组件浅/深色渲染位于 `out/AITSNAP-V1-GOAL-TRAIN-001/UX070-INTEGRATION/components/`，仅是隐藏组件/合成夹具证据。补修小区域标签遮挡；完整源回归和离线包检查继续。桌面控制停止约束不变，安装新装/升级/修复/卸载与完成页启动仍 HOLD，不能用包提取或静态表检查清除。
+
+## 完整候选已封装
+
+PR #26 merge `69897b90bdda417958f2e04df9910ed1bf8b372a`。完整 MSI/Setup（非夹具）及离线目录已由干净合并源码生成。实际CAB的121文件、Setup内嵌MSI哈希、4PE九帧图标、普通/中文空格路径隐藏启动与包内Qt依赖检查PASS。详见 DELIVERY-070.md。待交付文档正常PR合并后生成最终main/产物/预算回执并停止独立工作，保留原ledger。桌面及全部外部门槛不解除。
