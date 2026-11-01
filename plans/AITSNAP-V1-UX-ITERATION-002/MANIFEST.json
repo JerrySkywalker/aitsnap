@@ -10,8 +10,8 @@
     },
     {
       "path": "BUDGET-SNAPSHOT.md",
-      "sha256": "fdc1dc13c5fd3aa75d5424a3fc09bd9b7d8e5b7fea0f41a8208568f2d5af7ccc",
-      "bytes": 1836
+      "sha256": "a1afc8f2033f4f91f7046b6490ecde193399a9a10dfa6d216988777afe868708",
+      "bytes": 1831
     },
     {
       "path": "concepts/01-workbench.png",
@@ -44,19 +44,69 @@
       "bytes": 11574
     },
     {
+      "path": "concepts/04-sources-tab.png",
+      "sha256": "f007c3218184231a99afb56640be3de6c182ed94b7abb4d21da280cd6000bf49",
+      "bytes": 146478
+    },
+    {
+      "path": "concepts/04-sources-tab.svg",
+      "sha256": "02153e3eb82e308075f76c76a86b0098dc9dde8359ea049042bd16e8a97320b9",
+      "bytes": 12050
+    },
+    {
+      "path": "concepts/05-scenes-tab.png",
+      "sha256": "9fd89f0c647fc92a4dcc1c1c0c476174789e89d116fe2c01e748e41d79401373",
+      "bytes": 141258
+    },
+    {
+      "path": "concepts/05-scenes-tab.svg",
+      "sha256": "6c7ca8698702cdb2c871dc163bc04f3e137211971a897e2f2c3fe59715137127",
+      "bytes": 17508
+    },
+    {
+      "path": "concepts/06-batches-reports-tab.png",
+      "sha256": "4052001bc20e2a7b1315df029dcfdbee78e9a386807ac4982df0c5cd95164404",
+      "bytes": 152106
+    },
+    {
+      "path": "concepts/06-batches-reports-tab.svg",
+      "sha256": "86b569dd7d5cf5ce6c3b8f6a43200c87ccd3d01dbf7535e861a2d3b165cba000",
+      "bytes": 14648
+    },
+    {
+      "path": "concepts/07-settings-tab.png",
+      "sha256": "a26ee98c2d230814f9e83869359c087bcd1d1cedd999e091aead622bdb17a760",
+      "bytes": 128958
+    },
+    {
+      "path": "concepts/07-settings-tab.svg",
+      "sha256": "79f72412398e589381205b1b568c554258df10f3ff7ffdbb2af69aad3ecc4790",
+      "bytes": 8654
+    },
+    {
       "path": "concepts/brandmark-proposal.svg",
       "sha256": "c822bfabc9abc1e2139758bd306e3264d2f4feda48ff6303085815e24d8fdb2c",
       "bytes": 328
     },
     {
       "path": "concepts/generate_concepts.py",
-      "sha256": "c4b0d021da0daa465b5a6119f65aba60c0252a624f2e78f2d3e55704b295482e",
-      "bytes": 14169
+      "sha256": "318500f9236610ac1f00ef499724a4b1286481559e3aaeeb43098bc4938668f1",
+      "bytes": 14304
+    },
+    {
+      "path": "concepts/generate_tab_concepts.py",
+      "sha256": "696d75596cbd3622adda2e7bf8d40a39a9090b9800906a2a04b581850a980ac1",
+      "bytes": 15014
     },
     {
       "path": "concepts/review-board.html",
       "sha256": "fd0ca42db9a945bb63fc188f0f0edaee7d5f216bc32d52c7562cb6d18b2365d6",
       "bytes": 2480
+    },
+    {
+      "path": "concepts/tab-review-board.html",
+      "sha256": "46215ee57fe60e0c4103db83db5aa6cf8454ecc8a9fa8a92312024081ddd9578",
+      "bytes": 3680
     },
     {
       "path": "ISSUES-AND-EVIDENCE.md",
@@ -65,18 +115,24 @@
     },
     {
       "path": "OWNER-HANDOFF.md",
-      "sha256": "0e608055a227ca34461f87e7ed07193a15efa4fa942cccaefc1da866dd580484",
-      "bytes": 5369
+      "sha256": "6ba1f815aadcffa78ee7db7c512a7a0ac74d6659ca2dadc2371eb5e052a35249",
+      "bytes": 5721
     },
     {
       "path": "ROADMAP-AND-CHECKLIST.md",
-      "sha256": "5da3818c4d0c98bc4666c0429a5ecd70233f554a8f7622c5a135e5077f6c8191",
-      "bytes": 13216
+      "sha256": "feff084b2448ca622fdcebf57afae4927edc304e4a8712598329eaa592f7b29b",
+      "bytes": 13432
+    },
+    {
+      "path": "TABS-CONCEPT.md",
+      "sha256": "0e58749994ae92e354144acee720f85d7d42cbc03cfd189b346f406317cd5c70",
+      "bytes": 8016
     },
     {
       "path": "UI-CONCEPT.md",
-      "sha256": "61ba6cc63852c0f7d30ef26b2063aebaf5304bd99573c393392d39473cd0a6ff",
-      "bytes": 4768
+      "sha256": "5f08d4d9cd457861b9fc9e1aa2bf3e972451dd9a69a2619d1e713a11b05e70a2",
+      "bytes": 5068
     }
-  ]
+  ],
+  "designScope": "Original3concepts plus4navigationtabs; Owner endorsedworkbenchdirection; newtabs awaitreview"
 }

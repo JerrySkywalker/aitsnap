@@ -146,17 +146,21 @@ def composer():
     d.button(840,925,170,'预览导出文件');d.button(1026,925,168,'取消');d.button(1210,925,364,'保存场景：试验总览',True)
     d.save('03-scene-composer')
 
-overview();regions();composer()
-(OUT/'brandmark-proposal.svg').write_text('<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">'+BRAND+'</svg>',encoding='utf-8',newline='\n')
+def generate_originals():
+    overview();regions();composer()
+    (OUT/'brandmark-proposal.svg').write_text('<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">'+BRAND+'</svg>',encoding='utf-8',newline='\n')
+    
+    html='''<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>AITSnap 下一轮界面概念审计</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;background:#edf2f7;color:#17283d;font:16px "Microsoft YaHei UI",sans-serif}header{padding:22px 28px;background:white;border-bottom:1px solid #d9e2eb}h1{margin:0 0 9px;font-size:25px}p{margin:8px 0;color:#52677e}nav{display:flex;gap:10px;margin-top:16px}button{font:inherit;border:1px solid #b8c8da;border-radius:7px;background:white;color:#17345a;padding:10px 20px;cursor:pointer}button[aria-selected=true]{background:#2364d2;color:white;border-color:#2364d2}main{padding:16px}img{display:block;width:100%;height:auto;background:white;border-radius:10px}section[hidden]{display:none}a{color:#2364d2}</style>
+    <header><h1>AITSnap 下一轮 UI 概念审计</h1><p>合成示例 · 尚未实现或获得 Owner 批准。三屏四区域仅表达设计关系，不是现场监控截图。</p><p>审计重点：来源与输出是否清晰、编号名称能否对应、文字是否独立、是否接受稳定编号与高级参数折叠。</p><nav role="tablist">'''
+    for i,(n,label) in enumerate([('01-workbench','工作台总览'),('02-region-selection','多屏框选'),('03-scene-composer','拼图编辑')]):
+        html+=f'<button role="tab" id="tab{i}" aria-controls="panel{i}" aria-selected="{str(i==0).lower()}" onclick="show({i})">{label}</button>'
+    html+='</nav></header><main>'
+    for i,n in enumerate(['01-workbench','02-region-selection','03-scene-composer']):
+        html+=f'<section role="tabpanel" id="panel{i}" aria-labelledby="tab{i}"'+(' hidden' if i else '')+f'><img src="{n}.svg" alt="AITSnap概念图：{n}"></section>'
+    html+='''</main><script>function show(n){for(let i=0;i<3;i++){document.getElementById('panel'+i).hidden=i!==n;document.getElementById('tab'+i).setAttribute('aria-selected',String(i===n));}}document.querySelector('nav').addEventListener('keydown',e=>{if(e.key!=='ArrowRight'&&e.key!=='ArrowLeft')return;const current=Array.from(document.querySelectorAll('button')).findIndex(b=>b.getAttribute('aria-selected')==='true');const n=(current+(e.key==='ArrowRight'?1:2))%3;show(n);document.getElementById('tab'+n).focus();});</script></html>'''
+    (OUT/'review-board.html').write_text(html,encoding='utf-8',newline='\n')
+    print('Generated three SVG diagrams, one shared draft brandmark and local review board')
 
-html='''<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>AITSnap 下一轮界面概念审计</title>
-<meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;background:#edf2f7;color:#17283d;font:16px "Microsoft YaHei UI",sans-serif}header{padding:22px 28px;background:white;border-bottom:1px solid #d9e2eb}h1{margin:0 0 9px;font-size:25px}p{margin:8px 0;color:#52677e}nav{display:flex;gap:10px;margin-top:16px}button{font:inherit;border:1px solid #b8c8da;border-radius:7px;background:white;color:#17345a;padding:10px 20px;cursor:pointer}button[aria-selected=true]{background:#2364d2;color:white;border-color:#2364d2}main{padding:16px}img{display:block;width:100%;height:auto;background:white;border-radius:10px}section[hidden]{display:none}a{color:#2364d2}</style>
-<header><h1>AITSnap 下一轮 UI 概念审计</h1><p>合成示例 · 尚未实现或获得 Owner 批准。三屏四区域仅表达设计关系，不是现场监控截图。</p><p>审计重点：来源与输出是否清晰、编号名称能否对应、文字是否独立、是否接受稳定编号与高级参数折叠。</p><nav role="tablist">'''
-for i,(n,label) in enumerate([('01-workbench','工作台总览'),('02-region-selection','多屏框选'),('03-scene-composer','拼图编辑')]):
-    html+=f'<button role="tab" id="tab{i}" aria-controls="panel{i}" aria-selected="{str(i==0).lower()}" onclick="show({i})">{label}</button>'
-html+='</nav></header><main>'
-for i,n in enumerate(['01-workbench','02-region-selection','03-scene-composer']):
-    html+=f'<section role="tabpanel" id="panel{i}" aria-labelledby="tab{i}"'+(' hidden' if i else '')+f'><img src="{n}.svg" alt="AITSnap概念图：{n}"></section>'
-html+='''</main><script>function show(n){for(let i=0;i<3;i++){document.getElementById('panel'+i).hidden=i!==n;document.getElementById('tab'+i).setAttribute('aria-selected',String(i===n));}}document.querySelector('nav').addEventListener('keydown',e=>{if(e.key!=='ArrowRight'&&e.key!=='ArrowLeft')return;const current=Array.from(document.querySelectorAll('button')).findIndex(b=>b.getAttribute('aria-selected')==='true');const n=(current+(e.key==='ArrowRight'?1:2))%3;show(n);document.getElementById('tab'+n).focus();});</script></html>'''
-(OUT/'review-board.html').write_text(html,encoding='utf-8',newline='\n')
-print('Generated three SVG diagrams, one shared draft brandmark and local review board')
+if __name__ == "__main__":
+    generate_originals()
