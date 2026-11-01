@@ -9,6 +9,11 @@
       "bytes": 3976
     },
     {
+      "path": "BUDGET-SNAPSHOT.md",
+      "sha256": "fdc1dc13c5fd3aa75d5424a3fc09bd9b7d8e5b7fea0f41a8208568f2d5af7ccc",
+      "bytes": 1836
+    },
+    {
       "path": "concepts/01-workbench.png",
       "sha256": "3cf9e88dcb4af0400c440eb865cff228b9502764ff33258d80c4e2a888653066",
       "bytes": 137673
@@ -60,8 +65,8 @@
     },
     {
       "path": "OWNER-HANDOFF.md",
-      "sha256": "5bdb18cd0e17a2d72551c9a1db986c88691332c0999d34570aa034a1ac37187d",
-      "bytes": 5173
+      "sha256": "0e608055a227ca34461f87e7ed07193a15efa4fa942cccaefc1da866dd580484",
+      "bytes": 5369
     },
     {
       "path": "ROADMAP-AND-CHECKLIST.md",

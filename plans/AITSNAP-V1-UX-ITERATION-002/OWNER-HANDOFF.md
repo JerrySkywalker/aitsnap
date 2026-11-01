@@ -32,6 +32,7 @@
 - 新诊断：`out/AITSNAP-V1-GOAL-TRAIN-001/UX-ITERATION-002-PLANNING/diagnosis-summary.json` 与 `sanitized-timeline.txt`。
 - 本地原始安装日志快照：同目录 `owner-062-install-raw.log`，SHA 和行号已记录。**原始日志包含本机账户/路径信息，保持 ignored，不直接提交或发到外部。**
 - 累计预算：`out/AITSNAP-V1-GOAL-TRAIN-001/ledger.json`。原始上限仍为 120 小时，不是本次重新授权的 120 小时。本次结束时的准确消耗/剩余见 `out/AITSNAP-V1-GOAL-TRAIN-001/UX-ITERATION-002-PLANNING/planning-receipt.json`；不要重置历史。
+- 如果只拿到ZIP，请读[可转移预算快照](BUDGET-SNAPSHOT.md)：它扣留了收尾余量，提供保守剩余上限，不能据此重建一个新的120小时预算或覆盖原ledger。
 - 开始真实工作前运行 `python tools/goal_train.py start --note "UX-ITERATION-002 ..."`；阶段检查点用 `checkpoint`。阶段/父预算均要遵守。若 D07 原阶段预算不足，先登记新的有界子任务与父预算关系，不得默默重置 D07 已用时。
 - 不运行旧 `seal-receipt.py`、`seal-m3-candidate.py` 或 `seal-062.py`；它们绑定历史状态，重跑会覆盖封存信息。
 
