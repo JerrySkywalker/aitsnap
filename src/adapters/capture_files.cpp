@@ -6,6 +6,8 @@
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonArray>
+#include <QDateTime>
+#include <QFileInfo>
 #include <algorithm>
 namespace aitsnap {
 static void digest(core::OutputResult& result)
@@ -19,6 +21,7 @@ CaptureOutcome captureToFiles(core::ICaptureBackend& backend, const Settings& se
 {
     QElapsedTimer timer; timer.start();
     CaptureOutcome out; auto request = input;
+    core::numberRegions(request.profile);
     request.profile.outputMode = settings.outputMode.toStdString(); request.profile.sceneIds.clear();
     for (const auto& id : settings.selectedSceneIds) request.profile.sceneIds.push_back(id.toStdString()); request.profile.clipboardSelection = settings.clipboardRegion.toStdString();
     QStringList renderIds;
@@ -37,10 +40,16 @@ CaptureOutcome captureToFiles(core::ICaptureBackend& backend, const Settings& se
     }
     for (auto& frame : out.batch.displayFrames) frame.image = {}; // retain times/topology, release uncropped desktop buffers
     if (save) {
-        const QString batchName = QString::fromStdString(core::safeSegment(request.requestId));
+        const QString batchName = QString("%1_%2_%3").arg(
+            QDateTime::fromString(QString::fromStdString(request.issuedAtUtc), Qt::ISODateWithMs).toUTC().toString("yyyyMMdd-HHmmss-zzz"),
+            QString::number(settings.sequence).rightJustified(4, '0'), QString::fromStdString(core::safeSegment(request.profile.name)));
         QDir root(settings.outputDirectory);
-        const bool ready = QDir().mkpath(root.absolutePath()) && root.mkdir(batchName);
-        if (ready) out.directory = root.absoluteFilePath(batchName);
+        bool ready = false;
+        if (QDir().mkpath(root.absolutePath())) for (int suffix = 1; suffix <= 10000; ++suffix) {
+            const auto candidate = batchName + (suffix == 1 ? QString{} : QString("_%1").arg(suffix));
+            if (root.mkdir(candidate)) { ready = true; out.directory = root.absoluteFilePath(candidate); break; }
+            if (!root.exists(candidate)) break;
+        }
         for (const auto& c : out.batch.captures) {
             core::OutputResult result{"ORIGINAL", "", "FAILED", c.error};
             result.regionId = c.region.id;
@@ -51,17 +60,21 @@ CaptureOutcome captureToFiles(core::ICaptureBackend& backend, const Settings& se
             else if (!c.error) {
                 const bool directLossless = settings.outputMode != "composites" && settings.format != "JPEG";
                 const auto format = directLossless ? settings.format.toLatin1() : QByteArray("PNG");
-                const auto regionId = QString::fromStdString(core::safeSegment(c.region.id));
-                result.relativePath = (directLossless ? name + "_" + regionId + "." + QString::fromLatin1(format).toLower() : "source-evidence/" + regionId + ".png").toStdString();
-                const QString path = QDir(out.directory).filePath(QString::fromStdString(result.relativePath));
-                if (!directLossless) QDir().mkpath(QDir(out.directory).filePath("source-evidence"));
-                result.path = path.toStdString();
-                if (saveImageNew(toQImage(c.image), path, format, error)) { result.status = "SAVED"; digest(result); }
+                const auto prefix = QString::number(c.region.displayNumber).rightJustified(2, '0') + "_";
+                const auto evidenceName = prefix + QString::fromStdString(core::safeSegment(c.region.name));
+                const auto directory = directLossless ? out.directory : QDir(out.directory).filePath("source-evidence");
+                QString path;
+                if (!directLossless) QDir().mkpath(directory);
+                if (saveImageNumbered(toQImage(c.image), directory, directLossless ? name : evidenceName, format, path, error)) { result.status = "SAVED"; }
                 else result.error = {"SAVE", error.toStdString()};
+                result.path = path.toStdString(); result.relativePath = QDir(out.directory).relativeFilePath(path).toStdString();
+                if (result.status == "SAVED") digest(result);
                 if (settings.outputMode != "composites" && settings.format == "JPEG") {
-                    core::OutputResult exported{"IMAGE_EXPORT", QDir(out.directory).filePath(name + "_" + regionId + ".jpeg").toStdString(), "FAILED", {}};
-                    if (saveImageNew(toQImage(c.image), QString::fromStdString(exported.path), "JPEG", error)) { exported.status = "SAVED"; digest(exported); }
+                    core::OutputResult exported{"IMAGE_EXPORT", "", "FAILED", {}}; QString exportPath;
+                    if (saveImageNumbered(toQImage(c.image), out.directory, name, "JPEG", exportPath, error)) exported.status = "SAVED";
                     else exported.error = {"SAVE", error.toStdString()};
+                    exported.path = exportPath.toStdString(); exported.relativePath = QDir(out.directory).relativeFilePath(exportPath).toStdString();
+                    if (exported.status == "SAVED") digest(exported);
                     out.batch.outputs.push_back(exported);
                 }
             }
@@ -86,11 +99,12 @@ CaptureOutcome captureToFiles(core::ICaptureBackend& backend, const Settings& se
             out.composites.emplace(selected->id, rendered.image); output.status = "RENDERED";
             if (save && settings.outputMode != "originals" && settings.selectedSceneIds.contains(sceneId)) {
                 output.kind = "COMPOSITE"; output.status = "FAILED";
-                output.relativePath = "composites/" + core::safeSegment(selected->name) + "_r" + std::to_string(selected->revision) + "_" + core::safeSegment(selected->id) + ".png";
-                output.path = QDir(out.directory).filePath(QString::fromStdString(output.relativePath)).toStdString(); QString error;
+                QString error, savedPath;
                 if (out.directory.isEmpty() || !QDir().mkpath(QDir(out.directory).filePath("composites"))) output.error = {"OUTPUT_DIRECTORY", "Cannot create composite directory"};
-                else if (saveImageNew(rendered.image, QString::fromStdString(output.path), "PNG", error)) { output.status = "SAVED"; digest(output); }
+                else if (saveImageNumbered(rendered.image, QDir(out.directory).filePath("composites"), QString::fromStdString(core::safeSegment(selected->name)) + QString("_r%1").arg(selected->revision), "PNG", savedPath, error)) { output.status = "SAVED"; }
                 else output.error = {"SCENE_SAVE", error.toStdString()};
+                if (!savedPath.isEmpty()) { output.path = savedPath.toStdString(); output.relativePath = QDir(out.directory).relativeFilePath(savedPath).toStdString(); }
+                if (output.status == "SAVED") digest(output);
             }
             if (!rendered.complete && !output.error) output.error = {"SCENE_INCOMPLETE", rendered.warnings.join("; ").toStdString()};
         }

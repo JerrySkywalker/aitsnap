@@ -1,3 +1,4 @@
+#include "appearance.h"
 // SPDX-License-Identifier: Apache-2.0
 #define NOMINMAX
 #include <windows.h>
@@ -39,10 +40,10 @@ public:
     {
         setWindowFlags(Qt::FramelessWindowHint | Qt::Tool | Qt::WindowStaysOnTopHint);
         setAttribute(Qt::WA_DeleteOnClose); setFocusPolicy(Qt::StrongFocus); setMouseTracking(true); setCursor(Qt::CrossCursor);
-        setWindowTitle(QStringLiteral("AITSnap · 屏幕区域编辑 [%1,%2]").arg(display_.rect.x).arg(display_.rect.y));
+        setWindowTitle(aitsnap::uiText("AITSnap · 屏幕区域编辑 [%1,%2]").arg(display_.rect.x).arg(display_.rect.y));
         auto* bar = new QWidget(this); bar->setStyleSheet("background:#172332; color:white; border-radius:5px;");
-        auto* layout = new QHBoxLayout(bar); layout->addWidget(new QLabel(QStringLiteral("空白处框选 · 拖动区域/角点 · Tab 切换 · 方向键微调")));
-        auto* accept = new QPushButton(QStringLiteral("完成 Enter")); auto* cancel = new QPushButton(QStringLiteral("取消 Esc"));
+        auto* layout = new QHBoxLayout(bar); layout->addWidget(new QLabel(aitsnap::uiText("空白处框选 · 拖动区域/角点 · Tab 切换 · 方向键微调")));
+        auto* accept = new QPushButton(aitsnap::uiText("完成 Enter")); auto* cancel = new QPushButton(aitsnap::uiText("取消 Esc"));
         layout->addWidget(accept); layout->addWidget(cancel); bar->move(16, 16); bar->adjustSize();
         connect(accept, &QPushButton::clicked, this, [this] { state_->finish(true); });
         connect(cancel, &QPushButton::clicked, this, [this] { state_->finish(false); });
@@ -70,9 +71,14 @@ protected:
             const bool selected = i == state_->selected;
             painter.setPen(QPen(selected ? QColor("#46D8FF") : QColor("#9BE8BA"), 2, r.enabled ? Qt::SolidLine : Qt::DashLine));
             painter.setBrush(QColor(40, 140, 200, selected ? 55 : 20)); painter.drawRect(area);
-            painter.fillRect(QRectF(area.x(), area.y() - 24, std::max(area.width(), 240.0), 24), QColor(16, 35, 51, 220));
-            painter.setPen(Qt::white); painter.drawText(QRectF(area.x() + 4, area.y() - 24, std::max(area.width(), 240.0), 24),
-                Qt::AlignLeft | Qt::AlignVCenter, QString::fromStdString(r.name) + QString(" · %1,%2 · %3×%4").arg(r.rect.x).arg(r.rect.y).arg(r.rect.width).arg(r.rect.height));
+            const auto label = regionLabel(r) + QString(" · %1×%2").arg(r.rect.width).arg(r.rect.height);
+            const double labelWidth = std::min(double(width()), double(std::max(240, painter.fontMetrics().horizontalAdvance(label) + 12)));
+            const double labelX = std::clamp(area.x(), 0.0, std::max(0.0, width() - labelWidth));
+            double labelY = std::clamp(area.y() - 26, 0.0, double(std::max(0, height() - 26)));
+            if (labelY < 70 && labelX < 1000) labelY = std::clamp(std::max(76.0, area.y() + 4), 0.0, double(std::max(0, height() - 26)));
+            const QRectF labelRect(labelX, labelY, labelWidth, 26);
+            painter.fillRect(labelRect, QColor(16, 35, 51, 235)); painter.setPen(Qt::white);
+            painter.drawText(labelRect.adjusted(6, 0, -4, 0), Qt::AlignLeft | Qt::AlignVCenter, painter.fontMetrics().elidedText(label, Qt::ElideRight, int(labelWidth) - 10));
             if (selected) { painter.setBrush(QColor("#46D8FF")); painter.setPen(Qt::NoPen); const double h = 5;
                 for (auto point : {area.topLeft(), area.topRight(), area.bottomLeft(), area.bottomRight()}) painter.drawRect(QRectF(point.x() - h, point.y() - h, 2 * h, 2 * h)); }
         }
@@ -96,7 +102,7 @@ protected:
             if (state_->selected < 0) {
                 state_->mode = core::RegionDrag::Create; state_->selected = int(state_->profile.regions.size());
                 state_->profile.regions.push_back({QUuid::createUuid().toString(QUuid::WithoutBraces).toStdString(),
-                    "区域 " + std::to_string(state_->selected + 1), {p.x, p.y, 1, 1}, true});
+                    "区域 " + std::to_string(state_->profile.nextRegionNumber), {p.x, p.y, 1, 1}, true, state_->profile.nextRegionNumber++});
             }
         }
         state_->original = state_->profile.regions[std::size_t(state_->selected)].rect;
@@ -133,7 +139,7 @@ void RegionOverlay::closeEvent(QCloseEvent* e)
 }
 void openRegionEditor(QWidget* owner, const core::CaptureProfile& profile, std::function<void(bool, core::CaptureProfile)> finished)
 {
-    auto state = std::make_shared<EditState>(); state->profile = profile;
+    auto state = std::make_shared<EditState>(); state->profile = profile; core::numberRegions(state->profile);
     WinCaptureBackend backend; const auto displays = backend.displays();
     std::vector<QImage> backgrounds;
     for (const auto& d : displays) {

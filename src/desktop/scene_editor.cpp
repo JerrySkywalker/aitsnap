@@ -1,3 +1,4 @@
+#include "appearance.h"
 // SPDX-License-Identifier: Apache-2.0
 #include "scene_editor.h"
 #include "scene_layer_item.h"
@@ -41,76 +42,77 @@ static std::string uuid() { return QUuid::createUuid().toString(QUuid::WithoutBr
 SceneEditor::SceneEditor(core::SceneTemplate scene, core::CaptureProfile profile, SceneSources sources, QWidget* parent)
     : QDialog(parent), model_(std::move(scene)), profile_(std::move(profile)), sources_(std::move(sources))
 {
-    setWindowTitle(QStringLiteral("AITSnap · 自由拼图")); resize(1360, 860); setMinimumSize(1040, 680);
+    core::numberRegions(profile_);
+    setWindowTitle(aitsnap::uiText("AITSnap · 自由拼图")); resize(1360, 860); setMinimumSize(1040, 680);
     buildUi(); rebuild(); QTimer::singleShot(0, this, [this] { view_->fitInView(graphics_->sceneRect(), Qt::KeepAspectRatio); });
 }
 void SceneEditor::buildUi()
 {
     auto* outer = new QVBoxLayout(this); outer->setContentsMargins(18, 16, 18, 14);
-    auto* heading = new QLabel(QStringLiteral("自由拼图 · 场景与截图源独立")); heading->setStyleSheet("font-size:22px; font-weight:600;"); outer->addWidget(heading);
+    auto* heading = new QLabel(aitsnap::uiText("自由拼图 · 场景与截图源独立")); heading->setStyleSheet("font-size:22px; font-weight:600;"); outer->addWidget(heading);
     auto* toolbar = new QHBoxLayout;
     auto button = [this, toolbar](const QString& text, const std::function<void()>& action, const char* objectName = "") {
         auto* b = new QPushButton(text); b->setObjectName(objectName); toolbar->addWidget(b); connect(b, &QPushButton::clicked, this, action); return b;
     };
-    auto* presets = new QComboBox; presets->addItems({QStringLiteral("行排列"), QStringLiteral("列排列"), QStringLiteral("网格"), QStringLiteral("主图 + 辅图")}); toolbar->addWidget(presets);
-    button(QStringLiteral("应用预设"), [this, presets] { preset(presets->currentIndex()); }, "applyPreset");
-    button(QStringLiteral("撤销"), [this] { if (!undo_.empty()) { redo_.push_back(model_); model_ = undo_.back(); undo_.pop_back(); rebuild(); } }, "undoScene");
-    button(QStringLiteral("重做"), [this] { if (!redo_.empty()) { undo_.push_back(model_); model_ = redo_.back(); redo_.pop_back(); rebuild(); } });
-    snap_ = new QCheckBox(QStringLiteral("10 px 吸附")); toolbar->addWidget(snap_);
-    button(QStringLiteral("适合窗口"), [this] { view_->fitInView(graphics_->sceneRect(), Qt::KeepAspectRatio); });
+    auto* presets = new QComboBox; presets->addItems({aitsnap::uiText("行排列"), aitsnap::uiText("列排列"), aitsnap::uiText("网格"), aitsnap::uiText("主图 + 辅图")}); toolbar->addWidget(presets);
+    button(aitsnap::uiText("应用预设"), [this, presets] { preset(presets->currentIndex()); }, "applyPreset");
+    button(aitsnap::uiText("撤销"), [this] { if (!undo_.empty()) { redo_.push_back(model_); model_ = undo_.back(); undo_.pop_back(); rebuild(); } }, "undoScene");
+    button(aitsnap::uiText("重做"), [this] { if (!redo_.empty()) { undo_.push_back(model_); model_ = redo_.back(); redo_.pop_back(); rebuild(); } });
+    snap_ = new QCheckBox(aitsnap::uiText("10 px 吸附")); toolbar->addWidget(snap_);
+    button(aitsnap::uiText("适合窗口"), [this] { view_->fitInView(graphics_->sceneRect(), Qt::KeepAspectRatio); });
     button("−", [this] { view_->scale(0.8, 0.8); }); button("+", [this] { view_->scale(1.25, 1.25); }); toolbar->addStretch(); outer->addLayout(toolbar);
     auto* split = new QSplitter(Qt::Horizontal); outer->addWidget(split, 1);
     auto* left = new QWidget; auto* leftLayout = new QVBoxLayout(left); leftLayout->setContentsMargins(0, 0, 8, 0);
-    leftLayout->addWidget(new QLabel(QStringLiteral("可复用源区域"))); sourceList_ = new QListWidget; sourceList_->setObjectName("sceneSources");
+    leftLayout->addWidget(new QLabel(aitsnap::uiText("可复用源区域"))); sourceList_ = new QListWidget; sourceList_->setObjectName("sceneSources");
     for (const auto& r : profile_.regions) {
-        auto* item = new QListWidgetItem(qs(r.name) + QString(" · %1×%2").arg(r.rect.width).arg(r.rect.height), sourceList_); item->setData(Qt::UserRole, qs(r.id));
+        auto* item = new QListWidgetItem(regionLabel(r) + QString(" · %1×%2").arg(r.rect.width).arg(r.rect.height), sourceList_); item->setData(Qt::UserRole, qs(r.id));
     }
     sourceList_->setMaximumHeight(170); if (sourceList_->count()) sourceList_->setCurrentRow(0); leftLayout->addWidget(sourceList_);
-    auto* add = new QPushButton(QStringLiteral("添加到画布")); add->setObjectName("addSceneSource"); leftLayout->addWidget(add); connect(add, &QPushButton::clicked, this, [this] { addSource(); });
-    leftLayout->addWidget(new QLabel(QStringLiteral("图层 · 复选框控制可见性"))); layers_ = new QListWidget; layers_->setObjectName("sceneLayers"); layers_->setSelectionMode(QAbstractItemView::ExtendedSelection); leftLayout->addWidget(layers_, 1);
-    auto* layerButtons = new QHBoxLayout; auto* duplicate = new QPushButton(QStringLiteral("复制源")); duplicate->setObjectName("duplicateLayer"); auto* remove = new QPushButton(QStringLiteral("删除图层"));
+    auto* add = new QPushButton(aitsnap::uiText("添加到画布")); add->setObjectName("addSceneSource"); leftLayout->addWidget(add); connect(add, &QPushButton::clicked, this, [this] { addSource(); });
+    leftLayout->addWidget(new QLabel(aitsnap::uiText("图层 · 复选框控制可见性"))); layers_ = new QListWidget; layers_->setObjectName("sceneLayers"); layers_->setSelectionMode(QAbstractItemView::ExtendedSelection); leftLayout->addWidget(layers_, 1);
+    auto* layerButtons = new QHBoxLayout; auto* duplicate = new QPushButton(aitsnap::uiText("复制源")); duplicate->setObjectName("duplicateLayer"); auto* remove = new QPushButton(aitsnap::uiText("删除图层"));
     layerButtons->addWidget(duplicate); layerButtons->addWidget(remove); leftLayout->addLayout(layerButtons);
-    auto* groups = new QHBoxLayout; auto* group = new QPushButton(QStringLiteral("组合")); group->setObjectName("groupLayers"); auto* ungroup = new QPushButton(QStringLiteral("取消组合")); groups->addWidget(group); groups->addWidget(ungroup); leftLayout->addLayout(groups);
+    auto* groups = new QHBoxLayout; auto* group = new QPushButton(aitsnap::uiText("组合")); group->setObjectName("groupLayers"); auto* ungroup = new QPushButton(aitsnap::uiText("取消组合")); groups->addWidget(group); groups->addWidget(ungroup); leftLayout->addLayout(groups);
     connect(duplicate, &QPushButton::clicked, this, [this] { duplicateSelection(); }); connect(remove, &QPushButton::clicked, this, [this] { removeSelection(); });
     connect(group, &QPushButton::clicked, this, [this] { groupSelection(true); }); connect(ungroup, &QPushButton::clicked, this, [this] { groupSelection(false); });
     split->addWidget(left);
     graphics_ = new QGraphicsScene(this); view_ = new QGraphicsView(graphics_); view_->setObjectName("sceneCanvas"); view_->setDragMode(QGraphicsView::RubberBandDrag);
     view_->setRenderHints(QPainter::Antialiasing | QPainter::SmoothPixmapTransform); view_->setBackgroundBrush(QColor("#647081")); split->addWidget(view_);
     auto* scroll = new QScrollArea; scroll->setWidgetResizable(true); scroll->setMinimumWidth(245); auto* properties = new QWidget; auto* form = new QFormLayout(properties); form->setContentsMargins(12, 0, 4, 0);
-    name_ = new QLineEdit(qs(model_.name)); form->addRow(QStringLiteral("场景名称"), name_);
+    name_ = new QLineEdit(qs(model_.name)); form->addRow(aitsnap::uiText("场景名称"), name_);
     auto integerSpin = [form](const QString& label, int min, int max) { auto* s = new QSpinBox; s->setRange(min, max); form->addRow(label, s); return s; };
-    canvasWidth_ = integerSpin(QStringLiteral("画布宽 px"), 1, 1000000); canvasHeight_ = integerSpin(QStringLiteral("画布高 px"), 1, 1000000);
-    canvasWidth_->setValue(model_.width); canvasHeight_->setValue(model_.height); background_ = new QLineEdit(qs(model_.background)); form->addRow(QStringLiteral("背景 #RRGGBB[AA]"), background_);
-    auto* applyCanvas = new QPushButton(QStringLiteral("更新画布")); form->addRow(applyCanvas);
+    canvasWidth_ = integerSpin(aitsnap::uiText("画布宽 px"), 1, 1000000); canvasHeight_ = integerSpin(aitsnap::uiText("画布高 px"), 1, 1000000);
+    canvasWidth_->setValue(model_.width); canvasHeight_->setValue(model_.height); background_ = new QLineEdit(qs(model_.background)); form->addRow(aitsnap::uiText("背景 #RRGGBB[AA]"), background_);
+    auto* applyCanvas = new QPushButton(aitsnap::uiText("更新画布")); form->addRow(applyCanvas);
     connect(applyCanvas, &QPushButton::clicked, this, [this] {
         auto candidate = model_; candidate.name = name_->text().trimmed().toStdString(); candidate.width = canvasWidth_->value(); candidate.height = canvasHeight_->value(); candidate.background = background_->text().toStdString();
         if (const auto e = core::validateScene(candidate); e) { status_->setText(qs(e.message)); return; }
         pushUndo(); model_ = candidate; rebuild();
     });
-    form->addRow(new QLabel(QStringLiteral("选中图层属性（目标框像素）")));
-    source_ = new QComboBox; form->addRow(QStringLiteral("源区域"), source_);
+    form->addRow(new QLabel(aitsnap::uiText("选中图层属性（目标框像素）")));
+    source_ = new QComboBox; form->addRow(aitsnap::uiText("源区域"), source_);
     auto numeric = [form](const QString& label, double min, double max, const char* objectName) { auto* s = new QDoubleSpinBox; s->setObjectName(objectName); s->setDecimals(3); s->setRange(min, max); form->addRow(label, s); return s; };
     x_ = numeric("X", -1000000, 1000000, "layerX"); y_ = numeric("Y", -1000000, 1000000, "layerY");
-    width_ = numeric(QStringLiteral("宽"), 0.001, 1000000, "layerWidth"); height_ = numeric(QStringLiteral("高"), 0.001, 1000000, "layerHeight"); rotation_ = numeric(QStringLiteral("旋转 °"), -36000, 36000, "layerRotation");
-    zIndex_ = integerSpin(QStringLiteral("层级 Z"), -1000000, std::numeric_limits<int>::max());
-    visible_ = new QCheckBox(QStringLiteral("可见")); locked_ = new QCheckBox(QStringLiteral("锁定移动")); locked_->setObjectName("layerLocked"); aspect_ = new QCheckBox(QStringLiteral("等比适配（不拉伸图片）")); aspect_->setToolTip(QStringLiteral("保持源图或裁剪后的宽高比，在目标框内居中，可能留白。取消后图片会拉伸铺满目标框。")); form->addRow(visible_); form->addRow(locked_); form->addRow(aspect_);
-    cropX_ = integerSpin(QStringLiteral("裁剪 X"), 0, 32768); cropY_ = integerSpin(QStringLiteral("裁剪 Y"), 0, 32768); cropWidth_ = integerSpin(QStringLiteral("裁剪宽 (0=完整)"), 0, 32768); cropHeight_ = integerSpin(QStringLiteral("裁剪高 (0=完整)"), 0, 32768);
-    missing_ = new QComboBox; missing_->addItems({"fail", "placeholder", "skip"}); form->addRow(QStringLiteral("缺源策略"), missing_);
-    group_ = new QLineEdit; group_->setReadOnly(true); form->addRow(QStringLiteral("组标识"), group_);
-    pinned_ = new QLineEdit; pinned_->setReadOnly(true); form->addRow(QStringLiteral("固定源图"), pinned_);
-    auto* relink = new QPushButton(QStringLiteral("改用当前批次源")); form->addRow(relink);
+    width_ = numeric(aitsnap::uiText("宽"), 0.001, 1000000, "layerWidth"); height_ = numeric(aitsnap::uiText("高"), 0.001, 1000000, "layerHeight"); rotation_ = numeric(aitsnap::uiText("旋转 °"), -36000, 36000, "layerRotation");
+    zIndex_ = integerSpin(aitsnap::uiText("层级 Z"), -1000000, std::numeric_limits<int>::max());
+    visible_ = new QCheckBox(aitsnap::uiText("可见")); locked_ = new QCheckBox(aitsnap::uiText("锁定移动")); locked_->setObjectName("layerLocked"); aspect_ = new QCheckBox(aitsnap::uiText("等比适配（不拉伸图片）")); aspect_->setToolTip(aitsnap::uiText("保持源图或裁剪后的宽高比，在目标框内居中，可能留白。取消后图片会拉伸铺满目标框。")); form->addRow(visible_); form->addRow(locked_); form->addRow(aspect_);
+    cropX_ = integerSpin(aitsnap::uiText("裁剪 X"), 0, 32768); cropY_ = integerSpin(aitsnap::uiText("裁剪 Y"), 0, 32768); cropWidth_ = integerSpin(aitsnap::uiText("裁剪宽 (0=完整)"), 0, 32768); cropHeight_ = integerSpin(aitsnap::uiText("裁剪高 (0=完整)"), 0, 32768);
+    missing_ = new QComboBox; missing_->addItems({"fail", "placeholder", "skip"}); form->addRow(aitsnap::uiText("缺源策略"), missing_);
+    group_ = new QLineEdit; group_->setReadOnly(true); form->addRow(aitsnap::uiText("组标识"), group_);
+    pinned_ = new QLineEdit; pinned_->setReadOnly(true); form->addRow(aitsnap::uiText("固定源图"), pinned_);
+    auto* relink = new QPushButton(aitsnap::uiText("改用当前批次源")); form->addRow(relink);
     connect(relink, &QPushButton::clicked, this, [this] { pushUndo(); for (auto& layer : model_.layers) if (selected_.count(layer.id)) layer.sourceArtifactId.clear(); rebuild(); });
     auto* alignRow = new QWidget; auto* alignment = new QHBoxLayout(alignRow); alignment->setContentsMargins(0, 0, 0, 0);
-    const QStringList alignmentNames{QStringLiteral("左"), QStringLiteral("右"), QStringLiteral("顶"), QStringLiteral("底"), QStringLiteral("中X"), QStringLiteral("中Y")};
+    const QStringList alignmentNames{aitsnap::uiText("左"), aitsnap::uiText("右"), aitsnap::uiText("顶"), aitsnap::uiText("底"), aitsnap::uiText("中X"), aitsnap::uiText("中Y")};
     for (int i = 0; i < alignmentNames.size(); ++i) { auto* b = new QPushButton(alignmentNames[i]); alignment->addWidget(b); connect(b, &QPushButton::clicked, this, [this, i] { geometryAction(i); }); }
-    form->addRow(QStringLiteral("目标框对齐"), alignRow);
+    form->addRow(aitsnap::uiText("目标框对齐"), alignRow);
     auto* distribution = new QWidget; auto* spacing = new QHBoxLayout(distribution); spacing->setContentsMargins(0, 0, 0, 0);
-    auto* horizontal = new QPushButton(QStringLiteral("水平分布")); auto* vertical = new QPushButton(QStringLiteral("垂直分布")); spacing->addWidget(horizontal); spacing->addWidget(vertical); form->addRow(distribution);
+    auto* horizontal = new QPushButton(aitsnap::uiText("水平分布")); auto* vertical = new QPushButton(aitsnap::uiText("垂直分布")); spacing->addWidget(horizontal); spacing->addWidget(vertical); form->addRow(distribution);
     connect(horizontal, &QPushButton::clicked, this, [this] { geometryAction(6); }); connect(vertical, &QPushButton::clicked, this, [this] { geometryAction(7); });
     scroll->setWidget(properties); split->addWidget(scroll); split->setSizes({235, 820, 270});
-    status_ = new QLabel(sources_.empty() ? QStringLiteral("当前为布局占位预览，未伪造截图。先截图或打开历史批次即可看到真实源图。") : QStringLiteral("源图只读；拖动图层，右下角缩放，右侧精确裁剪/旋转。导出会生成新文件。")); status_->setWordWrap(true); outer->addWidget(status_);
-    auto* bottom = new QHBoxLayout; auto* exportImage = new QPushButton(QStringLiteral("导出当前派生 PNG")); bottom->addWidget(exportImage); bottom->addStretch(); auto* buttons = new QDialogButtonBox(QDialogButtonBox::Save | QDialogButtonBox::Cancel); buttons->button(QDialogButtonBox::Save)->setText(QStringLiteral("保存场景")); buttons->button(QDialogButtonBox::Save)->setObjectName("saveScene"); bottom->addWidget(buttons); outer->addLayout(bottom);
-    connect(exportImage, &QPushButton::clicked, this, [this] { const auto path = QFileDialog::getSaveFileName(this, QStringLiteral("保存新的派生拼图"), {}, "PNG (*.png)"); if (path.isEmpty()) return; QString e; status_->setText(exportDerived(path, e) ? QStringLiteral("派生 PNG 已保存，源图未改动。") : e); });
+    status_ = new QLabel(sources_.empty() ? aitsnap::uiText("当前为布局占位预览，未伪造截图。先截图或打开历史批次即可看到真实源图。") : aitsnap::uiText("源图只读；拖动图层，右下角缩放，右侧精确裁剪/旋转。导出会生成新文件。")); status_->setWordWrap(true); outer->addWidget(status_);
+    auto* bottom = new QHBoxLayout; auto* exportImage = new QPushButton(aitsnap::uiText("导出当前派生 PNG")); bottom->addWidget(exportImage); bottom->addStretch(); auto* buttons = new QDialogButtonBox(QDialogButtonBox::Save | QDialogButtonBox::Cancel); buttons->button(QDialogButtonBox::Save)->setText(aitsnap::uiText("保存场景")); buttons->button(QDialogButtonBox::Save)->setObjectName("saveScene"); bottom->addWidget(buttons); outer->addLayout(bottom);
+    connect(exportImage, &QPushButton::clicked, this, [this] { const auto path = QFileDialog::getSaveFileName(this, aitsnap::uiText("保存新的派生拼图"), {}, "PNG (*.png)"); if (path.isEmpty()) return; QString e; status_->setText(exportDerived(path, e) ? aitsnap::uiText("派生 PNG 已保存，源图未改动。") : e); });
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
     connect(buttons, &QDialogButtonBox::accepted, this, [this] {
         auto candidate = model_; candidate.name = name_->text().trimmed().toStdString(); candidate.width = canvasWidth_->value(); candidate.height = canvasHeight_->value(); candidate.background = background_->text().toStdString();
@@ -158,17 +160,17 @@ void SceneEditor::rebuild()
                 : QSize(qRound(layer.destination.width), qRound(layer.destination.height));
             auto thumbnail = geometry.scaled(QSize(640, 400), Qt::KeepAspectRatio);
             thumbnail.setWidth(std::max(1, thumbnail.width())); thumbnail.setHeight(std::max(1, thumbnail.height()));
-            preview = QImage(thumbnail, QImage::Format_RGB32); preview.fill(QColor("#33485d")); QPainter painter(&preview); painter.setPen(Qt::white);
-            auto font = painter.font(); font.setPointSize(18); painter.setFont(font);
-            painter.drawText(preview.rect().adjusted(20, 20, -20, -20), Qt::AlignCenter | Qt::TextWordWrap, QStringLiteral("未采集 / 未匹配源\n布局占位预览\n") + qs(layer.sourceRegionId));
+            preview = QImage(thumbnail, QImage::Format_RGB32); preview.fill(QColor("#33485d"));
         }
-        auto* item = new LayerItem(layer, preview, !actual); item->setZValue(rank++); graphics_->addItem(item); items_.emplace(layer.id, item);
+        const auto sourceRegion = std::find_if(profile_.regions.begin(), profile_.regions.end(), [&](const auto& r) { return r.id == layer.sourceRegionId; });
+        const auto sourceLabel = sourceRegion == profile_.regions.end() ? uiText("缺失源") : regionLabel(*sourceRegion);
+        auto* item = new LayerItem(layer, preview, !actual, sourceLabel + (actual ? QString{} : uiText(" · 未采集"))); item->setZValue(rank++); graphics_->addItem(item); items_.emplace(layer.id, item);
         item->beginEdit = [this] { pushUndo(); }; item->snapEnabled = [this] { return snap_->isChecked() && selected_.size() <= 1; };
         item->changed = [this](const auto& changed) { updateLayer(changed); };
         item->setSelected(selected_.count(layer.id) > 0);
         auto region = std::find_if(profile_.regions.begin(), profile_.regions.end(), [&](const auto& r) { return r.id == layer.sourceRegionId; });
-        const auto label = region == profile_.regions.end() ? qs(layer.sourceRegionId) : qs(region->name);
-        auto* entry = new QListWidgetItem(QString("Z%1 · ").arg(layer.zIndex) + label + (layer.groupId.empty() ? "" : QStringLiteral(" · 组")), layers_);
+        const auto label = region == profile_.regions.end() ? uiText("缺失源") : regionLabel(*region);
+        auto* entry = new QListWidgetItem(QString("Z%1 · ").arg(layer.zIndex) + label + (layer.groupId.empty() ? "" : aitsnap::uiText(" · 组")), layers_);
         entry->setData(Qt::UserRole, qs(layer.id)); entry->setFlags(entry->flags() | Qt::ItemIsUserCheckable); entry->setCheckState(layer.visible ? Qt::Checked : Qt::Unchecked); entry->setSelected(selected_.count(layer.id) > 0);
     }
     syncing_ = false; refreshProperties();
@@ -198,9 +200,9 @@ void SceneEditor::refreshProperties()
     for (auto* widget : widgets) widget->setEnabled(one);
     if (one) {
         const auto& layer = model_.layers[indices.front()]; const auto& d = layer.destination;
-        source_->clear(); for (const auto& r : profile_.regions) source_->addItem(qs(r.name), qs(r.id));
+        source_->clear(); for (const auto& r : profile_.regions) source_->addItem(regionLabel(r), qs(r.id));
         int index = source_->findData(qs(layer.sourceRegionId));
-        if (index < 0) { source_->addItem(qs(layer.sourceRegionId) + QStringLiteral("（未在配置中）"), qs(layer.sourceRegionId)); index = source_->count() - 1; }
+        if (index < 0) { source_->addItem(uiText("缺失源") + aitsnap::uiText("（未在配置中）"), qs(layer.sourceRegionId)); index = source_->count() - 1; }
         source_->setCurrentIndex(index); x_->setValue(d.x); y_->setValue(d.y); width_->setValue(d.width); height_->setValue(d.height); rotation_->setValue(std::fmod(d.rotationDeg, 360));
         zIndex_->setValue(layer.zIndex); visible_->setChecked(layer.visible); locked_->setChecked(layer.locked); aspect_->setChecked(layer.preserveAspect);
         cropX_->setValue(layer.crop.x); cropY_->setValue(layer.crop.y); cropWidth_->setValue(layer.crop.width); cropHeight_->setValue(layer.crop.height);
@@ -212,7 +214,7 @@ void SceneEditor::applyProperties()
 {
     if (loadingProperties_ || syncing_) return;
     const auto indices = selectedIndices(); if (indices.size() != 1) return;
-    if ((cropWidth_->value() == 0) != (cropHeight_->value() == 0)) { status_->setText(QStringLiteral("请填写完整裁剪宽高，或均为 0 使用完整源图。")); return; }
+    if ((cropWidth_->value() == 0) != (cropHeight_->value() == 0)) { status_->setText(aitsnap::uiText("请填写完整裁剪宽高，或均为 0 使用完整源图。")); return; }
     auto layer = model_.layers[indices.front()];
     const auto source = source_->currentData().toString().toStdString();
     layer.destination = {x_->value(), y_->value(), width_->value(), height_->value(), rotation_->value()};
@@ -228,8 +230,8 @@ void SceneEditor::updateLayer(const core::Layer& changed)
     auto candidate = model_; const auto found = std::find_if(candidate.layers.begin(), candidate.layers.end(), [&](const auto& l) { return l.id == changed.id; });
     if (found == candidate.layers.end()) return;
     const auto previous = *found; const double dx = changed.destination.x - previous.destination.x, dy = changed.destination.y - previous.destination.y;
-    if (!previous.groupId.empty() && (dx != 0 || dy != 0) && std::any_of(candidate.layers.begin(), candidate.layers.end(), [&](const auto& layer) { return layer.groupId == previous.groupId && layer.locked && layer.id != changed.id; })) { status_->setText(QStringLiteral("组合中有锁定图层，请先解除锁定。")); items_[previous.id]->sync(previous); return; }
-    if (previous.locked && changed.locked && (dx != 0 || dy != 0 || changed.destination.width != previous.destination.width || changed.destination.height != previous.destination.height || changed.destination.rotationDeg != previous.destination.rotationDeg)) { status_->setText(QStringLiteral("请先解除图层锁定。")); items_[previous.id]->sync(previous); return; }
+    if (!previous.groupId.empty() && (dx != 0 || dy != 0) && std::any_of(candidate.layers.begin(), candidate.layers.end(), [&](const auto& layer) { return layer.groupId == previous.groupId && layer.locked && layer.id != changed.id; })) { status_->setText(aitsnap::uiText("组合中有锁定图层，请先解除锁定。")); items_[previous.id]->sync(previous); return; }
+    if (previous.locked && changed.locked && (dx != 0 || dy != 0 || changed.destination.width != previous.destination.width || changed.destination.height != previous.destination.height || changed.destination.rotationDeg != previous.destination.rotationDeg)) { status_->setText(aitsnap::uiText("请先解除图层锁定。")); items_[previous.id]->sync(previous); return; }
     *found = changed;
     if (!changed.groupId.empty() && (dx != 0 || dy != 0)) for (auto& layer : candidate.layers)
         if (layer.id != changed.id && layer.groupId == changed.groupId && !layer.locked && !selected_.count(layer.id)) { layer.destination.x += dx; layer.destination.y += dy; }
@@ -262,7 +264,7 @@ void SceneEditor::removeSelection()
 }
 void SceneEditor::groupSelection(bool group)
 {
-    if (selected_.size() < (group ? 2u : 1u)) { status_->setText(QStringLiteral("组合需要至少选中两个图层。")); return; }
+    if (selected_.size() < (group ? 2u : 1u)) { status_->setText(aitsnap::uiText("组合需要至少选中两个图层。")); return; }
     pushUndo(); const auto groupId = group ? uuid() : std::string{};
     for (auto& layer : model_.layers) if (selected_.count(layer.id)) layer.groupId = groupId;
     rebuild();
@@ -296,25 +298,25 @@ void SceneEditor::geometryAction(int action)
 }
 bool SceneEditor::exportDerived(const QString& path, QString& error) const
 {
-    if (QFile::exists(path + ".derivation.json")) { error = QStringLiteral("派生清单已存在，请选择新文件名。 "); return false; }
+    if (QFile::exists(path + ".derivation.json")) { error = aitsnap::uiText("派生清单已存在，请选择新文件名。 "); return false; }
     const auto rendered = renderScene(model_, sources_);
     if (rendered.error) { error = qs(rendered.error.message); return false; }
-    if (!rendered.complete) { error = QStringLiteral("源图不完整：") + rendered.warnings.join("; "); return false; }
+    if (!rendered.complete) { error = aitsnap::uiText("源图不完整：") + rendered.warnings.join("; "); return false; }
     QJsonArray originals; std::set<std::string> used;
     for (const auto& layer : model_.layers) if (layer.visible && used.insert(layer.sourceRegionId).second) {
         const auto found = sources_.find(layer.sourceRegionId);
-        if (found == sources_.end() || found->second.path.isEmpty()) { error = QStringLiteral("原图尚未保存。请先截图并保存，或打开历史批次。空白场景可直接导出。 "); return false; }
+        if (found == sources_.end() || found->second.path.isEmpty()) { error = aitsnap::uiText("原图尚未保存。请先截图并保存，或打开历史批次。空白场景可直接导出。 "); return false; }
         QFile original(found->second.path); QCryptographicHash digest(QCryptographicHash::Sha256);
-        if (!original.open(QIODevice::ReadOnly) || !digest.addData(&original)) { error = QStringLiteral("无法核对原图哈希。 "); return false; }
+        if (!original.open(QIODevice::ReadOnly) || !digest.addData(&original)) { error = aitsnap::uiText("无法核对原图哈希。 "); return false; }
         const auto sha = digest.result().toHex();
-        if (!found->second.sha256.empty() && sha.toStdString() != found->second.sha256) { error = QStringLiteral("原图已变化，未导出拼图。 "); return false; }
+        if (!found->second.sha256.empty() && sha.toStdString() != found->second.sha256) { error = aitsnap::uiText("原图已变化，未导出拼图。 "); return false; }
         originals.append(QJsonObject{{"artifactId", qs(found->second.artifactId)}, {"relativePath", QFileInfo(path).absoluteDir().relativeFilePath(found->second.path)}, {"sha256", QString::fromLatin1(sha)}});
     }
     auto snapshot = model_; snapshot.id = "derived-" + uuid(); snapshot.revision = 1; snapshot.revisionCreatedAtUtc = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs).toStdString();
     QJsonObject receipt{{"schemaVersion", 1}, {"kind", "DERIVED_COMPOSITE"}, {"parentSceneId", qs(model_.id)}, {"parentSceneRevision", model_.revision},
         {"sceneSnapshot", sceneJson(snapshot)}, {"createdAtUtc", QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)}, {"file", QFileInfo(path).fileName()}, {"originals", originals}};
     if (!saveImageNew(rendered.image, path, "PNG", error)) return false;
-    if (!saveBytesNew(QJsonDocument(receipt).toJson(), path + ".derivation.json", error)) { error = QStringLiteral("PNG 已写出，但派生清单保存失败：") + error; return false; }
+    if (!saveBytesNew(QJsonDocument(receipt).toJson(), path + ".derivation.json", error)) { error = aitsnap::uiText("PNG 已写出，但派生清单保存失败：") + error; return false; }
     return true;
 }
 } // namespace aitsnap

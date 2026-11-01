@@ -6,6 +6,8 @@
 #include <QGraphicsSceneHoverEvent>
 #include <QGraphicsSceneMouseEvent>
 #include <QGraphicsView>
+#include <QGraphicsSimpleTextItem>
+#include <QGraphicsRectItem>
 #include <QPainter>
 #include <QStyleOptionGraphicsItem>
 #include <functional>
@@ -16,10 +18,17 @@ public:
     std::function<void()> beginEdit;
     std::function<void(const core::Layer&)> changed;
     std::function<bool()> snapEnabled;
-    LayerItem(core::Layer layer, QImage image, bool placeholder = false) : layer_(std::move(layer)), image_(std::move(image)), placeholder_(placeholder)
+    LayerItem(core::Layer layer, QImage image, bool placeholder = false, const QString& label = {}) : layer_(std::move(layer)), image_(std::move(image)), placeholder_(placeholder)
     {
         setData(0, QString::fromStdString(layer_.id)); setAcceptHoverEvents(true);
         sync(layer_);
+        if (!label.isEmpty()) {
+            auto* background = new QGraphicsRectItem(this); background->setFlag(ItemIgnoresTransformations);
+            background->setPos(4, 4); background->setZValue(1000); background->setAcceptedMouseButtons(Qt::NoButton);
+            background->setBrush(QColor(16, 35, 51, 235)); background->setPen(Qt::NoPen);
+            auto* text = new QGraphicsSimpleTextItem(label, background); text->setBrush(Qt::white); text->setPos(6, 3); text->setAcceptedMouseButtons(Qt::NoButton);
+            background->setRect(text->boundingRect().adjusted(0, 0, 12, 6));
+        }
     }
     QRectF boundingRect() const override { return {0, 0, layer_.destination.width, layer_.destination.height}; }
     void sync(const core::Layer& layer)

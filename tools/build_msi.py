@@ -60,7 +60,7 @@ def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--package',type=Path,required=True)
     p.add_argument('--destination',type=Path,required=True)
-    p.add_argument('--version',default='0.6.2')
+    p.add_argument('--version',default='0.7.0')
     a=p.parse_args(); package=a.package.resolve(); output=a.destination.resolve()
     if output.exists(): p.error('Choose a new destination directory')
     manifest=json.loads((package/'package-manifest.json').read_text(encoding='utf-8'))
@@ -99,7 +99,7 @@ def main():
         db.table('Upgrade','`UpgradeCode` CHAR(38) NOT NULL, `VersionMin` CHAR(20), `VersionMax` CHAR(20), `Language` CHAR(255), `Attributes` SHORT NOT NULL, `Remove` CHAR(255), `ActionProperty` CHAR(72) NOT NULL PRIMARY KEY `UpgradeCode`, `VersionMin`, `VersionMax`, `Language`, `Attributes`')
         for table in ['InstallExecuteSequence','InstallUISequence']:
             db.table(table,'`Action` CHAR(72) NOT NULL, `Condition` CHAR(255), `Sequence` SHORT PRIMARY KEY `Action`')
-        props=dict(ProductName='AITSnap Preview',ProductVersion=a.version,ProductCode=product,UpgradeCode=guid(UPGRADE),ProductLanguage='2052',Manufacturer='AITSnap contributors',INSTALLLEVEL='1',ARPNOMODIFY='1',ARPURLINFOABOUT='https://github.com/JerrySkywalker/aitsnap',SecureCustomProperties='OLDPRODUCTS;NEWERPRODUCTS;INSTALLDIR',MsiLogging='v')
+        props=dict(ProductName='AITSnap',ProductVersion=a.version,ProductCode=product,UpgradeCode=guid(UPGRADE),ProductLanguage='2052',Manufacturer='AITSnap contributors',INSTALLLEVEL='1',ARPNOMODIFY='1',ARPURLINFOABOUT='https://github.com/JerrySkywalker/aitsnap',SecureCustomProperties='OLDPRODUCTS;NEWERPRODUCTS;INSTALLDIR',MsiLogging='v')
         for key,value in props.items(): db.insert('Property','Property Value',key,value)
         for row in [('TARGETDIR',None,'SourceDir'),('LocalAppDataFolder','TARGETDIR','.'),('ProgramsDir','LocalAppDataFolder','Programs'),('INSTALLDIR','ProgramsDir','AITSnap'),('ProgramMenuFolder','TARGETDIR','.'),('APPMENU','ProgramMenuFolder','AITSnap')]: db.insert('Directory','Directory Directory_Parent DefaultDir',*row)
         directories={Path('.'):'INSTALLDIR'}

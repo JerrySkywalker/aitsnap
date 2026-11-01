@@ -7,6 +7,11 @@
 #include <limits>
 
 namespace aitsnap::core {
+void numberRegions(CaptureProfile& profile)
+{
+    for (const auto& r : profile.regions) profile.nextRegionNumber = std::max(profile.nextRegionNumber, r.displayNumber + 1);
+    for (auto& r : profile.regions) if (r.displayNumber == 0) r.displayNumber = profile.nextRegionNumber++;
+}
 bool Image::valid() const
 {
     return width > 0 && height > 0 && bgra &&
@@ -20,8 +25,10 @@ Error validateProfile(const CaptureProfile& p)
 {
     if (p.id.empty() || p.revision < 1 || p.regions.empty()) return {"PROFILE", "Profile id, revision and regions required"};
     std::set<std::string> ids;
+    std::set<int> numbers;
     bool enabled = false;
     for (const auto& r : p.regions) {
+        if (r.displayNumber < 0 || (r.displayNumber > 0 && !numbers.insert(r.displayNumber).second)) return {"REGION_NUMBER", "Region numbers must be unique positive integers"};
         if (r.id.empty() || r.name.empty() || !ids.insert(r.id).second || !r.rect.valid()) return {"REGION", "Unique region ids, names and positive physical sizes required"};
         if (std::int64_t(r.rect.x) + r.rect.width > std::numeric_limits<int>::max() ||
             std::int64_t(r.rect.y) + r.rect.height > std::numeric_limits<int>::max()) return {"REGION_COORDINATES", "Region extent exceeds physical coordinate range"};
@@ -66,7 +73,12 @@ std::string safeSegment(const std::string& value)
     if (stem == "CON" || stem == "PRN" || stem == "AUX" || stem == "NUL" ||
         (stem.size() == 4 && (stem.substr(0, 3) == "COM" || stem.substr(0, 3) == "LPT") && stem[3] >= '1' && stem[3] <= '9'))
         result = "_" + result;
-    return result.substr(0, 100);
+    if (result.size() > 100) {
+        std::size_t end = 100;
+        while (end > 0 && (static_cast<unsigned char>(result[end]) & 0xC0) == 0x80) --end;
+        result.resize(end);
+    }
+    return result;
 }
 bool sameTopology(std::vector<Display> a, std::vector<Display> b)
 {

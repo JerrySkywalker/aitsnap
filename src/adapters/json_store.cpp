@@ -36,21 +36,24 @@ Settings defaultSettings()
 }
 QJsonObject profileJson(const core::CaptureProfile& p)
 {
+    auto numbered = p; core::numberRegions(numbered);
     QJsonArray regions, displays, scenes;
-    for (const auto& r : p.regions) regions.append(QJsonObject{{"id", qs(r.id)}, {"name", qs(r.name)}, {"rect", rectJson(r.rect)}, {"enabled", r.enabled}});
+    for (const auto& r : numbered.regions) regions.append(QJsonObject{{"id", qs(r.id)}, {"name", qs(r.name)}, {"rect", rectJson(r.rect)}, {"enabled", r.enabled}, {"displayNumber", r.displayNumber}});
     for (const auto& d : p.calibratedDisplays) displays.append(QJsonObject{{"id", qs(d.id)}, {"rect", rectJson(d.rect)}, {"rotation", d.rotation}});
     for (const auto& id : p.sceneIds) scenes.append(qs(id));
     return {{"id", qs(p.id)}, {"name", qs(p.name)}, {"revision", p.revision}, {"regions", regions}, {"displays", displays},
-        {"sceneIds", scenes}, {"outputMode", qs(p.outputMode)}, {"clipboardSelection", qs(p.clipboardSelection)}};
+        {"sceneIds", scenes}, {"outputMode", qs(p.outputMode)}, {"clipboardSelection", qs(p.clipboardSelection)}, {"nextRegionNumber", numbered.nextRegionNumber}};
 }
 bool profileFromJson(const QJsonObject& o, core::CaptureProfile& p, QString& error)
 {
     p.id = o["id"].toString().toStdString(); p.name = o["name"].toString().toStdString(); p.revision = o["revision"].toInt();
+    p.nextRegionNumber = std::max(1, o["nextRegionNumber"].toInt(1));
     p.regions.clear(); p.calibratedDisplays.clear();
     for (const auto& v : o["regions"].toArray()) {
         const auto r = v.toObject(); core::Region region;
         region.id = r["id"].toString().toStdString(); region.name = r["name"].toString().toStdString();
         region.enabled = r["enabled"].toBool(true);
+        region.displayNumber = r["displayNumber"].toInt();
         if (!readRect(r["rect"], region.rect)) { error = "Invalid physical rectangle"; return false; }
         p.regions.push_back(region);
     }
@@ -60,6 +63,7 @@ bool profileFromJson(const QJsonObject& o, core::CaptureProfile& p, QString& err
         if (display.id.empty() || !readRect(d["rect"], display.rect)) { error = "Invalid calibrated display"; return false; }
         p.calibratedDisplays.push_back(display);
     }
+    core::numberRegions(p);
     const auto e = core::validateProfile(p);
     if (e) { error = qs(e.message); return false; }
     p.sceneIds.clear(); for (const auto& value : o["sceneIds"].toArray()) p.sceneIds.push_back(value.toString().toStdString());
@@ -74,10 +78,15 @@ bool loadSettings(const QString& path, Settings& s, QString& error)
     if (parse.error || !doc.isObject()) { error = "Invalid settings JSON; original file preserved"; return false; }
     const auto o = doc.object();
     const int settingsVersion = o["schemaVersion"].toInt();
-    if (settingsVersion != 1 && settingsVersion != 2 && settingsVersion != 3) { error = "Unsupported settings version; file preserved"; return false; }
-    const QStringList known{"schemaVersion", "profiles", "activeProfile", "outputDirectory", "format", "filenameTemplate", "saveHotkey", "copyHotkey", "bothHotkey", "clipboardRegion", "testId", "device", "station", "operator", "sequence", "startInTray", "scenes", "selectedSceneIds", "outputMode", "wordReport"};
+    if (settingsVersion < 1 || settingsVersion > 4) { error = "Unsupported settings version; file preserved"; return false; }
+    const QStringList known{"schemaVersion", "profiles", "activeProfile", "outputDirectory", "format", "filenameTemplate", "saveHotkey", "copyHotkey", "bothHotkey", "clipboardRegion", "testId", "device", "station", "operator", "sequence", "startInTray", "scenes", "selectedSceneIds", "outputMode", "wordReport", "appearance"};
     for (auto it = o.begin(); it != o.end(); ++it) if (!known.contains(it.key())) { error = "Unknown settings field; file preserved: " + it.key(); return false; }
     Settings candidate = defaultSettings();
+    const auto appearance = o["appearance"].toObject();
+    candidate.language = appearance["language"].toString("system");
+    candidate.colorMode = appearance["colorMode"].toString("system");
+    if (!QStringList{"system", "zh-CN", "en-US"}.contains(candidate.language) ||
+        !QStringList{"system", "light", "dark"}.contains(candidate.colorMode)) { error = "Unsupported appearance preference; file preserved"; return false; }
     for (const auto& value : o["profiles"].toArray()) {
         core::CaptureProfile profile;
         if (!profileFromJson(value.toObject(), profile, error)) return false;
@@ -131,17 +140,18 @@ bool saveSettings(const QString& path, const Settings& s, QString& error)
     QJsonArray scenes, selected;
     for (const auto& scene : s.scenes) scenes.append(sceneJson(scene));
     for (const auto& scene : s.selectedSceneIds) selected.append(scene);
-    QJsonObject o{{"schemaVersion", 3}, {"profiles", profiles}, {"activeProfile", s.activeProfile},
+    QJsonObject o{{"schemaVersion", 4}, {"profiles", profiles}, {"activeProfile", s.activeProfile},
         {"outputDirectory", s.outputDirectory}, {"format", s.format}, {"filenameTemplate", s.filenameTemplate},
         {"saveHotkey", s.saveHotkey}, {"copyHotkey", s.copyHotkey}, {"bothHotkey", s.bothHotkey},
         {"clipboardRegion", s.clipboardRegion}, {"testId", s.testId}, {"device", s.device},
         {"station", s.station}, {"operator", s.operatorName}, {"sequence", double(s.sequence)}, {"startInTray", s.startInTray},
+        {"appearance", QJsonObject{{"language", s.language}, {"colorMode", s.colorMode}}},
         {"scenes", scenes}, {"selectedSceneIds", selected}, {"outputMode", s.outputMode},
         {"wordReport", QJsonObject{{"enabled", s.report.enabled}, {"documentPath", s.report.documentPath}, {"itemMode", s.report.itemMode}, {"layout", s.report.layout}}}};
     if (!QDir().mkpath(QFileInfo(path).absolutePath())) { error = "Cannot create settings directory"; return false; }
     QFile previous(path); int previousVersion = 0;
     if (previous.open(QIODevice::ReadOnly)) { previousVersion = QJsonDocument::fromJson(previous.readAll()).object()["schemaVersion"].toInt(); previous.close(); }
-    if (previousVersion == 1 || previousVersion == 2) {
+    if (previousVersion > 0 && previousVersion < 4) {
         if (!QFile::copy(path, path + QString(".v%1-preserved-").arg(previousVersion) + QUuid::createUuid().toString(QUuid::WithoutBraces))) { error = "Cannot preserve old settings before migration"; return false; }
     }
     QSaveFile file(path);
@@ -156,7 +166,7 @@ QImage toQImage(const core::Image& image)
 QString expandFilename(const Settings& s, const core::CaptureRequest& request, const core::Region& r, QString& error)
 {
     QMap<QString, QString> values{{"datetime", QDateTime::fromString(qs(request.issuedAtUtc), Qt::ISODateWithMs).toUTC().toString("yyyyMMdd-HHmmss-zzz")},
-        {"sequence", QString::number(s.sequence)}, {"region", qs(r.name)}, {"profile", qs(request.profile.name)},
+        {"sequence", QString::number(s.sequence)}, {"region", qs(r.name)}, {"number", QString::number(r.displayNumber)}, {"profile", qs(request.profile.name)},
         {"test", qs(request.context.testId)}, {"device", qs(request.context.deviceId)}, {"station", qs(request.context.stationId)}, {"operator", qs(request.context.operatorId)},
         {"run", qs(request.context.sequenceRunId)}, {"step", qs(request.context.stepExecutionId)}, {"command", qs(request.context.commandInvocationId)}};
     QString name = s.filenameTemplate;
@@ -177,6 +187,17 @@ static bool publishTemp(QTemporaryFile& temp, const QString& path, QString& erro
     // QFile::rename refuses an existing destination. Temp remains auto-removed on failure.
     if (!temp.rename(path)) { error = temp.errorString(); return false; }
     temp.setAutoRemove(false); return true;
+}
+bool saveImageNumbered(const QImage& image, const QString& directory, const QString& stem, const QByteArray& format, QString& path, QString& error)
+{
+    for (int suffix = 1; suffix <= 10000; ++suffix) {
+        path = QDir(directory).filePath(stem + (suffix == 1 ? QString{} : QString("_%1").arg(suffix)) + "." + QString::fromLatin1(format).toLower());
+        if (saveImageNew(image, path, format, error)) return true;
+        // Publication itself is exclusive. A race is retried only when the destination now exists.
+        if (!QFileInfo::exists(path)) return false;
+        error.clear();
+    }
+    error = "Too many existing filenames for this image"; return false;
 }
 bool saveImageNew(const QImage& image, const QString& path, const QByteArray& format, QString& error)
 {

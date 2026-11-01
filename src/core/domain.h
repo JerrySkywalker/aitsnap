@@ -11,7 +11,7 @@
 namespace aitsnap::core {
 inline constexpr int schemaVersion = 1;
 struct Error { std::string code, message; explicit operator bool() const { return !code.empty(); } };
-struct Region { std::string id, name; Rect rect; bool enabled{true}; };
+struct Region { std::string id, name; Rect rect; bool enabled{true}; int displayNumber{}; };
 struct Display { std::string id; Rect rect; int rotation{}; };
 struct CaptureProfile {
     std::string id, name;
@@ -20,6 +20,7 @@ struct CaptureProfile {
     std::vector<Display> calibratedDisplays;
     std::vector<std::string> sceneIds;
     std::string outputMode{"originals"}, clipboardSelection;
+    int nextRegionNumber{1};
 };
 struct Context {
     std::string sourceSystem, eventId, sequenceRunId, stepExecutionId, commandInvocationId;
@@ -100,4 +101,5 @@ Error validateProfile(const CaptureProfile& profile);
 Error validateScene(const SceneTemplate& scene);
 std::string safeSegment(const std::string& value);
 bool sameTopology(std::vector<Display> a, std::vector<Display> b);
+void numberRegions(CaptureProfile& profile);
 } // namespace aitsnap::core

@@ -1,0 +1,298 @@
+{
+  "package": "AITSNAP-V1-UX-ITERATION-002",
+  "productBaseline": "b9fad25d20fb2325b584411acc27e7c5e1534601",
+  "disposition": "CONCEPTS_WITH_070_IMPLEMENTATION_CHECKPOINT_NOT_FINAL_ACCEPTANCE",
+  "files": [
+    {
+      "path": "ACCEPTANCE.md",
+      "sha256": "3ec442bea1cc30078cf598795ec1470aad9c6e8b04cec9e8d81c84f0cc173f9e",
+      "bytes": 3976
+    },
+    {
+      "path": "AI-IMPLEMENTATION-ENTRY.md",
+      "sha256": "37adfc94b8f3608467eec895a9885401c01897daaca739637b9510f9439a3eb2",
+      "bytes": 3862
+    },
+    {
+      "path": "APPEARANCE-070.md",
+      "sha256": "8f400d7d0cbfbe0f8b5d376824876f50218f045aa4c4196384555075ae79e93e",
+      "bytes": 2119
+    },
+    {
+      "path": "BUDGET-SNAPSHOT.md",
+      "sha256": "2d3188db43dcd5780d79da2adf605e837f4aadaaf1e64a03a7744c676724342e",
+      "bytes": 1842
+    },
+    {
+      "path": "concepts/01-workbench-dark.png",
+      "sha256": "400c69bae1f964b712e0ea662bba535091d35ae4c6625d4d54f0e11d17d40cc5",
+      "bytes": 213565
+    },
+    {
+      "path": "concepts/01-workbench-dark.svg",
+      "sha256": "ef6aca4cbf47cf73dda6016645d72c93d4d6815b5f5e45b5a6c4a8e88191e723",
+      "bytes": 12978
+    },
+    {
+      "path": "concepts/01-workbench.png",
+      "sha256": "3cf9e88dcb4af0400c440eb865cff228b9502764ff33258d80c4e2a888653066",
+      "bytes": 137673
+    },
+    {
+      "path": "concepts/01-workbench.svg",
+      "sha256": "756664e1d0ac110a0bd1ed13d5fe960fdf33a757d1f291a69a6fe2c230732b15",
+      "bytes": 12873
+    },
+    {
+      "path": "concepts/02-region-selection-dark.png",
+      "sha256": "bfdb222fd8550cfe8d8b573d82efca523726b2214ba5b601877693a22c482b7d",
+      "bytes": 175110
+    },
+    {
+      "path": "concepts/02-region-selection-dark.svg",
+      "sha256": "e461d85c573e799a1601783beb6361aafca8654c41ee9a1911b226960d60a225",
+      "bytes": 7452
+    },
+    {
+      "path": "concepts/02-region-selection.png",
+      "sha256": "97cbd2ad93d50f2ab20e9367a4f50e6e1ad8a89e8ee139d175a4fbd264b4c1bd",
+      "bytes": 113673
+    },
+    {
+      "path": "concepts/02-region-selection.svg",
+      "sha256": "b7faff7ee8a2912024f90790f6c11820ddb1b8c89fc7ec6d6e10cabe8048ca1e",
+      "bytes": 7400
+    },
+    {
+      "path": "concepts/03-scene-composer-dark.png",
+      "sha256": "54822dff26fab6320a89b99daeaf664c60ef58ad70a02c0fa6182cd34e52883f",
+      "bytes": 221996
+    },
+    {
+      "path": "concepts/03-scene-composer-dark.svg",
+      "sha256": "a2b4468f532b24ae87baff17e03af892d514c4c3709818cc595d9a5024fb7c88",
+      "bytes": 11670
+    },
+    {
+      "path": "concepts/03-scene-composer.png",
+      "sha256": "61c8121584adb404afe43e08f0e368adc7fb6369089f5328ea0edee0db404cbb",
+      "bytes": 147484
+    },
+    {
+      "path": "concepts/03-scene-composer.svg",
+      "sha256": "8e3b87432b9581144f088dd066e8b3d5924b48082ca761dbe2d96749cdad5349",
+      "bytes": 11574
+    },
+    {
+      "path": "concepts/04-sources-tab-dark.png",
+      "sha256": "a51de01029d6e73088838e74a845f42512739eed8c7c7d43b76df413a048d8e3",
+      "bytes": 218801
+    },
+    {
+      "path": "concepts/04-sources-tab-dark.svg",
+      "sha256": "5a78c18aecea87bf4678d16447c6b885e92837405d71f2939ca8b0c9bf8c1f68",
+      "bytes": 12151
+    },
+    {
+      "path": "concepts/04-sources-tab.png",
+      "sha256": "88a791572ab20a7320954a9917fd315791335df61c081b5f1955de1e0b1d54d7",
+      "bytes": 146544
+    },
+    {
+      "path": "concepts/04-sources-tab.svg",
+      "sha256": "2d8902dc74ed17218118fb1a009ef4336f8974a3aa728e74ba33ed7eabbc3e7b",
+      "bytes": 12050
+    },
+    {
+      "path": "concepts/05-scenes-tab-dark.png",
+      "sha256": "b393745db776216c6ed3f03a6a12254a5cff9c921c346fff0cead540c2f00d36",
+      "bytes": 208945
+    },
+    {
+      "path": "concepts/05-scenes-tab-dark.svg",
+      "sha256": "1050dbfaf7145bc42298d145b4087947d377eb28790be0b446e0fadcb8b22e1c",
+      "bytes": 17691
+    },
+    {
+      "path": "concepts/05-scenes-tab.png",
+      "sha256": "9fd89f0c647fc92a4dcc1c1c0c476174789e89d116fe2c01e748e41d79401373",
+      "bytes": 141258
+    },
+    {
+      "path": "concepts/05-scenes-tab.svg",
+      "sha256": "6c7ca8698702cdb2c871dc163bc04f3e137211971a897e2f2c3fe59715137127",
+      "bytes": 17508
+    },
+    {
+      "path": "concepts/06-batches-reports-tab-dark.png",
+      "sha256": "56d20c4cdc25afd984b09c336258ed9d5f2e787d97c5d3599024815de0774ea3",
+      "bytes": 214987
+    },
+    {
+      "path": "concepts/06-batches-reports-tab-dark.svg",
+      "sha256": "dc37b1358fac9507cbf363d79a480f892e19d1b84adc3df63852e5df432568a3",
+      "bytes": 14777
+    },
+    {
+      "path": "concepts/06-batches-reports-tab.png",
+      "sha256": "4052001bc20e2a7b1315df029dcfdbee78e9a386807ac4982df0c5cd95164404",
+      "bytes": 152106
+    },
+    {
+      "path": "concepts/06-batches-reports-tab.svg",
+      "sha256": "86b569dd7d5cf5ce6c3b8f6a43200c87ccd3d01dbf7535e861a2d3b165cba000",
+      "bytes": 14648
+    },
+    {
+      "path": "concepts/07-settings-tab-dark.png",
+      "sha256": "d130bb920342f9569aae103528e61a98cd4ba276aeec1c3fe3787d0ced189ca1",
+      "bytes": 210418
+    },
+    {
+      "path": "concepts/07-settings-tab-dark.svg",
+      "sha256": "ed4fd1927de25f4af2632377b1914ddbba51f86f9b90dad1eecaad96e14233e4",
+      "bytes": 8712
+    },
+    {
+      "path": "concepts/07-settings-tab.png",
+      "sha256": "a26ee98c2d230814f9e83869359c087bcd1d1cedd999e091aead622bdb17a760",
+      "bytes": 128958
+    },
+    {
+      "path": "concepts/07-settings-tab.svg",
+      "sha256": "79f72412398e589381205b1b568c554258df10f3ff7ffdbb2af69aad3ecc4790",
+      "bytes": 8654
+    },
+    {
+      "path": "concepts/08-display-layout-default-dark.png",
+      "sha256": "f61ade0ac5bc6d74d21780afb158ac8147a87906acd683ffcb92aa6a229f4922",
+      "bytes": 232531
+    },
+    {
+      "path": "concepts/08-display-layout-default-dark.svg",
+      "sha256": "2a2a6e5ef56ed33f8dbb443d446d869561fd99548b5704c65297413e509b0b16",
+      "bytes": 12569
+    },
+    {
+      "path": "concepts/08-display-layout-default.png",
+      "sha256": "28623ca2ca69390e2fd5cffa3dfd34b556665aa5a6a72065f741e1ce5af2affe",
+      "bytes": 158071
+    },
+    {
+      "path": "concepts/08-display-layout-default.svg",
+      "sha256": "69ea3cf8e0a9c74ade9c60e82e6b0a595becb1fd630838cd614d462a907da4ad",
+      "bytes": 12481
+    },
+    {
+      "path": "concepts/09-display-layout-change-dark.png",
+      "sha256": "434cd438ae28e0e62f03d1e48b7b093ef49b2c8404eebbf7c0b95bf2da6158c7",
+      "bytes": 236852
+    },
+    {
+      "path": "concepts/09-display-layout-change-dark.svg",
+      "sha256": "6cd3abfcc64d8b41d027def4806d64819191d8f2ef74d6f83e68761796bc51a3",
+      "bytes": 12613
+    },
+    {
+      "path": "concepts/09-display-layout-change.png",
+      "sha256": "c48bc758032e6b57651fcd56db32ebe3e3e4f8e8bfba956e5397bc907289470e",
+      "bytes": 161338
+    },
+    {
+      "path": "concepts/09-display-layout-change.svg",
+      "sha256": "ef0bca3e4c92aef07b12fdedf3c17ed9cc5745ae5466bdab5bb085b1ddce078d",
+      "bytes": 12526
+    },
+    {
+      "path": "concepts/10-appearance-settings-dark.png",
+      "sha256": "c76f788f0b67b2629649a55604dbf094964121cbae25390d3d4946edee133f4e",
+      "bytes": 180793
+    },
+    {
+      "path": "concepts/10-appearance-settings-dark.svg",
+      "sha256": "b71a62be591cd442ded77d3907f9166fd9a56c75ee3d62cea0f538ade585fed6",
+      "bytes": 7064
+    },
+    {
+      "path": "concepts/10-appearance-settings.png",
+      "sha256": "29ce778d70164cb127fd1a523cfb8cfca19ecf18987416c1f679e75f3544b897",
+      "bytes": 181548
+    },
+    {
+      "path": "concepts/10-appearance-settings.svg",
+      "sha256": "ab3db1fd18ff4f4b47cc82af8da15d916361ce0280a58eeb948142a590ff4e4e",
+      "bytes": 7025
+    },
+    {
+      "path": "concepts/appearance-review-board.html",
+      "sha256": "9c767d57d3302b96afc1b2e5d5feb2a5f6164a7a34248393988a0d3245330f16",
+      "bytes": 1282
+    },
+    {
+      "path": "concepts/brandmark-proposal.svg",
+      "sha256": "c822bfabc9abc1e2139758bd306e3264d2f4feda48ff6303085815e24d8fdb2c",
+      "bytes": 328
+    },
+    {
+      "path": "concepts/generate_appearance_concepts.py",
+      "sha256": "860aba755182344350084f409043692213c49a9a55d1b5e6d63e38de7d69fda8",
+      "bytes": 5987
+    },
+    {
+      "path": "concepts/generate_concepts.py",
+      "sha256": "77c96b1d72377cd965b249f79c1e2c961093210d8cd72e957bcd4692940a341f",
+      "bytes": 14300
+    },
+    {
+      "path": "concepts/generate_tab_concepts.py",
+      "sha256": "eca515d2e1763142b364bd6c962e6de7c65759d134b6a8ab0893f03a0c46d778",
+      "bytes": 20498
+    },
+    {
+      "path": "concepts/review-board.html",
+      "sha256": "fd0ca42db9a945bb63fc188f0f0edaee7d5f216bc32d52c7562cb6d18b2365d6",
+      "bytes": 2480
+    },
+    {
+      "path": "concepts/tab-review-board.html",
+      "sha256": "1ef47427e4f832581f4f681753100832e41d64e9ec5e041528a1bda4452b85e4",
+      "bytes": 5136
+    },
+    {
+      "path": "DISPLAY-LAYOUT.md",
+      "sha256": "0b59a7f102669c30fff4278f26c13e16fae1f786bd5c7d8dd8cacc64716faad8",
+      "bytes": 6231
+    },
+    {
+      "path": "EXECUTION-070.md",
+      "sha256": "6f91f32de7f0b4d142bd24e068252266971e256bde89820464b920d164690dad",
+      "bytes": 1795
+    },
+    {
+      "path": "ISSUES-AND-EVIDENCE.md",
+      "sha256": "b2f8c9b523f49d4edd91a5f99ce2459da61cbcd22580999dc42e1daf432504bd",
+      "bytes": 10712
+    },
+    {
+      "path": "OWNER-HANDOFF.md",
+      "sha256": "423199f991e5ab509340b73b36ab85c75c2747b4fd9110d4de838741cbba4cfa",
+      "bytes": 6117
+    },
+    {
+      "path": "ROADMAP-AND-CHECKLIST.md",
+      "sha256": "9e88abe09fa9cf802e6c10445e213a53bec4efb43fd34f0bc8b5da87def6e6ba",
+      "bytes": 13709
+    },
+    {
+      "path": "TABS-CONCEPT.md",
+      "sha256": "4b7cfc8d4d0df0476f14783d24980ceebe26d83565b45c0c4696ad5c87877e31",
+      "bytes": 8509
+    },
+    {
+      "path": "UI-CONCEPT.md",
+      "sha256": "84c431d1427ad9f98a73886e42ce5e52baf40e54f809ad16af6c258a743f9c3b",
+      "bytes": 5304
+    }
+  ],
+  "designScope": "Original concepts plus four tabs, default display-layout subtab and change state; product unchanged; source-backed capability and AI image handoff notes"
+}
