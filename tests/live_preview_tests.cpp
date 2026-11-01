@@ -6,6 +6,11 @@
 #include "adapters/win_capture.h"
 #include "desktop/capture_visibility.h"
 #include "compat/qt_widgets_compat.h"
+#include "desktop/scene_editor.h"
+#include "desktop/scene_layer_item.h"
+#include "core/scene_geometry.h"
+#include <QGraphicsView>
+#include <QJsonDocument>
 #include <QApplication>
 #include <QDateTime>
 #include <QEventLoop>
@@ -38,6 +43,13 @@ int main(int argc,char** argv)
         auto snapshot=sampleLiveSources(profile,backend);check(backend.acquired==2 && snapshot.sources.size()==2,"one frame per needed display shared by sources");
         const auto image=snapshot.sources.at("cross").image;check(image.size()==QSize(8,8) && image.pixelColor(1,1)==QColor(Qt::red) && image.pixelColor(6,1)==QColor(Qt::green),"physical crop across two screens");
         check(snapshot.sources.at("cross").path.isEmpty() && snapshot.sources.at("cross").artifactId.empty(),"preview has no saved evidence identity");
+        {
+            const auto model=core::presetScene(profile,"scene","实时场景",160,100,core::LayoutPreset::Grid);SceneEditor editor(model,profile,{});auto* view=editor.findChild<QGraphicsView*>();check(view,"scene view");
+            for(auto* item:view->scene()->items())if(dynamic_cast<LayerItem*>(item)){item->setSelected(true);break;}
+            const auto before=QJsonDocument(sceneJson(editor.sceneTemplate())).toJson();const auto selected=view->scene()->selectedItems().size();editor.setPreviewSources(snapshot.sources);
+            check(QJsonDocument(sceneJson(editor.sceneTemplate())).toJson()==before && view->scene()->selectedItems().size()==selected,"live frame update preserves scene geometry and selection");
+            QString error;check(!editor.exportDerived("unused-live-output.png",error),"unrecorded live frames cannot masquerade as saved source evidence");editor.setPreviewSources({});check(QJsonDocument(sceneJson(editor.sceneTemplate())).toJson()==before,"frame loss does not change saved scene model");
+        }
         snapshot=sampleLiveSources(profile,backend,{{12,0,8,8}});check(snapshot.sources.size()==1 && snapshot.issues.count("cross"),"unexcluded overlap only holds affected source");
         backend.inventory[0].rect.x=-1;snapshot=sampleLiveSources(profile,backend);check(snapshot.sources.empty() && !snapshot.issues.empty(),"changed topology never pretends current pixels");
         std::atomic<int> calls=0;

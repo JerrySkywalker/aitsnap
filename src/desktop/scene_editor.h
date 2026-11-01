@@ -14,6 +14,7 @@ public:
     ~SceneEditor() override;
     core::SceneTemplate sceneTemplate() const { return model_; }
     bool exportDerived(const QString& path, QString& error) const;
+    void setPreviewSources(SceneSources);
 private:
     core::SceneTemplate model_;
     core::CaptureProfile profile_;

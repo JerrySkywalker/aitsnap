@@ -83,6 +83,7 @@ add_library(aitsnap-adapters STATIC
     src/desktop/desktop_activation.cpp
     src/desktop/mini_capture_window.cpp
     src/desktop/capture_visibility.cpp
+    src/desktop/live_output_window.cpp
     src/desktop/appearance.cpp
     src/desktop/workspace_views.cpp
     resources/aitsnap.qrc
@@ -93,7 +94,7 @@ add_executable(aitsnap-word-bridge src/adapters/word_bridge_main.cpp)
 target_link_libraries(aitsnap-word-bridge PRIVATE aitsnap-adapters ole32 oleaut32 psapi)
 add_executable(aitsnap-cli src/cli_main.cpp)
 target_link_libraries(aitsnap-cli PRIVATE aitsnap-adapters)
-set(aitsnap_ui_sources src/main_window.cpp src/desktop/host_controller.cpp src/desktop/workspace_ui.cpp src/desktop/workspace_browser.cpp src/desktop/workspace_commands.cpp src/desktop/report_text_ui.cpp)
+set(aitsnap_ui_sources src/main_window.cpp src/desktop/host_controller.cpp src/desktop/workspace_ui.cpp src/desktop/workspace_browser.cpp src/desktop/workspace_commands.cpp src/desktop/report_text_ui.cpp src/desktop/live_workspace.cpp)
 add_executable(aitsnap WIN32
     src/main.cpp
     ${aitsnap_ui_sources}

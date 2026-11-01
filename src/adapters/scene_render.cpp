@@ -33,6 +33,14 @@ void paintLayerLocal(QPainter& painter, const core::Layer& layer, const QImage& 
     }
     painter.drawImage(destination, image, crop);
 }
+RenderResult renderScenePreview(core::SceneTemplate scene,const SceneSources& sources,QSize bounds)
+{
+    if(scene.width<=0 || scene.height<=0 || bounds.isEmpty())return {{},false,{"PREVIEW_SIZE","Invalid preview dimensions"},{}};
+    const auto size=QSize(scene.width,scene.height).scaled(bounds,Qt::KeepAspectRatio);const double scale=double(size.width())/scene.width;
+    scene.width=std::max(1,size.width());scene.height=std::max(1,size.height());
+    for(auto& layer:scene.layers){layer.destination.x*=scale;layer.destination.y*=scale;layer.destination.width*=scale;layer.destination.height*=scale;layer.missingSourcePolicy="placeholder";}
+    return renderScene(scene,sources);
+}
 RenderResult renderScene(const core::SceneTemplate& scene, const SceneSources& sources)
 {
     RenderResult result;

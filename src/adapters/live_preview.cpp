@@ -40,6 +40,7 @@ LiveSnapshot sampleLiveSources(const core::CaptureProfile& input,core::ICaptureB
 }
 LivePreviewService::LivePreviewService(QObject* parent,Sampler sampler):QObject(parent),sampler_(std::move(sampler))
 {
+    setObjectName("livePreviewService");
     if(!sampler_)sampler_=[](const auto& profile,const auto& blocked){const std::lock_guard<std::mutex> lock(desktopCaptureMutex());WinCaptureBackend backend;return sampleLiveSources(profile,backend,blocked);};
     pool_.setMaxThreadCount(1);timer_.setInterval(500);connect(&timer_,&QTimer::timeout,this,[this]{requestFrame();});
 }

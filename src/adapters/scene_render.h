@@ -14,6 +14,7 @@ struct RenderResult { QImage image; bool complete{true}; core::Error error; QStr
 QColor sceneColour(const std::string&);
 void paintLayerLocal(QPainter&, const core::Layer&, const QImage& image);
 RenderResult renderScene(const core::SceneTemplate&, const SceneSources&);
+RenderResult renderScenePreview(core::SceneTemplate,const SceneSources&,QSize bounds={720,420});
 QJsonObject sceneJson(const core::SceneTemplate&);
 bool sceneFromJson(const QJsonObject&, core::SceneTemplate&, QString& error);
 SceneSources batchSources(const core::CaptureBatch&);

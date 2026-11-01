@@ -24,6 +24,7 @@ struct Settings {
     QString clipboardRegion, testId, device, station, operatorName;
     qint64 sequence{};
     bool startInTray{};
+    bool livePreviewEnabled{true};int livePreviewFps{2};
     QString language{"system"}, colorMode{"system"};
     std::vector<core::SceneTemplate> scenes;
     QStringList selectedSceneIds;

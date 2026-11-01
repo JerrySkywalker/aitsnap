@@ -80,7 +80,7 @@ bool loadSettings(const QString& path, Settings& s, QString& error)
     const int settingsVersion = o["schemaVersion"].toInt();
     if (settingsVersion < 1 || settingsVersion > 5) { error = "Unsupported settings version; file preserved"; return false; }
     const QStringList known{"schemaVersion", "profiles", "activeProfile", "outputDirectory", "format", "filenameTemplate", "saveHotkey", "copyHotkey", "bothHotkey", "clipboardRegion", "testId", "device", "station", "operator", "sequence", "startInTray", "scenes", "selectedSceneIds", "outputMode", "wordReport", "appearance"};
-    for (auto it = o.begin(); it != o.end(); ++it) if (!known.contains(it.key()) && it.key()!="alternateHotkeys" && it.key()!="hotkeysEnabled") { error = "Unknown settings field; file preserved: " + it.key(); return false; }
+    for (auto it = o.begin(); it != o.end(); ++it) if (!known.contains(it.key()) && it.key()!="alternateHotkeys" && it.key()!="hotkeysEnabled" && it.key()!="livePreview") { error = "Unknown settings field; file preserved: " + it.key(); return false; }
     Settings candidate = defaultSettings();
     const auto appearance = o["appearance"].toObject();
     candidate.language = appearance["language"].toString("system");
@@ -114,6 +114,8 @@ bool loadSettings(const QString& path, Settings& s, QString& error)
     candidate.testId = o["testId"].toString(); candidate.device = o["device"].toString();
     candidate.station = o["station"].toString(); candidate.operatorName = o["operator"].toString();
     candidate.sequence = qint64(o["sequence"].toDouble()); candidate.startInTray = o["startInTray"].toBool();
+    const auto live=o["livePreview"].toObject();candidate.livePreviewEnabled=live["enabled"].toBool(true);candidate.livePreviewFps=live["fps"].toInt(2);
+    if(candidate.livePreviewFps!=1 && candidate.livePreviewFps!=2 && candidate.livePreviewFps!=5){error="Unsupported live preview rate";return false;}
     for (const auto& value : o["scenes"].toArray()) {
         core::SceneTemplate scene;
         if (!sceneFromJson(value.toObject(), scene, error)) return false;
@@ -159,6 +161,7 @@ bool saveSettings(const QString& path, const Settings& s, QString& error)
         {"clipboardRegion", s.clipboardRegion}, {"testId", s.testId}, {"device", s.device},
         {"station", s.station}, {"operator", s.operatorName}, {"sequence", double(s.sequence)}, {"startInTray", s.startInTray},
         {"appearance", QJsonObject{{"language", s.language}, {"colorMode", s.colorMode}}},
+        {"livePreview",QJsonObject{{"enabled",s.livePreviewEnabled},{"fps",s.livePreviewFps}}},
         {"scenes", scenes}, {"selectedSceneIds", selected}, {"outputMode", s.outputMode},
         {"wordReport", QJsonObject{{"enabled", s.report.enabled}, {"documentPath", s.report.documentPath}, {"targetMode", s.report.targetMode}, {"itemMode", s.report.itemMode}, {"layout", s.report.layout},{"text",reportTextJson(s.report.text)}}}};
     if (!QDir().mkpath(QFileInfo(path).absolutePath())) { error = "Cannot create settings directory"; return false; }

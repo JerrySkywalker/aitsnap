@@ -425,5 +425,22 @@
   "上下文信息": "Context information",
   "文字预览": "Text preview",
   "只写入图片，不插入可见文字。": "Write images only, with no visible text.",
-  "可直接输入固定文字。字段：{profile} {datetime} {sequence} {test} {device} {station} {operator} {run} {step} {command} {event}；图片说明还支持 {name} {label} {number} {kind} {scene_revision}。{{ 和 }} 表示字面花括号。": "Enter literal text or fields: {profile} {datetime} {sequence} {test} {device} {station} {operator} {run} {step} {command} {event}. Captions also support {name} {label} {number} {kind} {scene_revision}. Use {{ and }} for literal braces."
+  "可直接输入固定文字。字段：{profile} {datetime} {sequence} {test} {device} {station} {operator} {run} {step} {command} {event}；图片说明还支持 {name} {label} {number} {kind} {scene_revision}。{{ 和 }} 表示字面花括号。": "Enter literal text or fields: {profile} {datetime} {sequence} {test} {device} {station} {operator} {run} {step} {command} {event}. Captions also support {name} {label} {number} {kind} {scene_revision}. Use {{ and }} for literal braces.",
+  "实时预览像素预算已满，请减少启用区域。": "Live preview pixel limit reached. Enable fewer regions.",
+  "预览窗与来源重叠，请移出截图区域。": "A preview window overlaps this source. Move it outside the capture region.",
+  "实时预览不可用": "Live preview unavailable",
+  "实时": "Live",
+  "部分来源不可用": "Some sources unavailable",
+  "预览已暂停": "Preview paused",
+  "预览已过期": "Preview stale",
+  "AITSnap · 实时图窗": "AITSnap · Live view",
+  "截图并保存全部": "Capture and save all",
+  "最近截图 · 实时预览已关闭": "Last capture · Live preview off",
+  "请先选择源区域或拼图场景。": "Select a source region or scene first.",
+  "最多保留 8 个实时图窗，请复用已打开的图窗。": "Up to 8 live windows can be open. Reuse an existing window.",
+  "当前配置中没有这个来源。": "This source is not in the current profile.",
+  "实时预览": "Live preview",
+  "%1 帧/秒": "%1 fps",
+  "打开实时图窗": "Open live view",
+  " · 实时缺帧": " · Live frame unavailable"
 }

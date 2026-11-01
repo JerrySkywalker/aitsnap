@@ -23,14 +23,15 @@ public:
         setData(0, QString::fromStdString(layer_.id)); setAcceptHoverEvents(true);
         sync(layer_);
         if (!label.isEmpty()) {
-            auto* background = new QGraphicsRectItem(this); background->setFlag(ItemIgnoresTransformations);
+            auto* background = new QGraphicsRectItem(this);labelBackground_=background; background->setFlag(ItemIgnoresTransformations);
             background->setPos(4, 4); background->setZValue(1000); background->setAcceptedMouseButtons(Qt::NoButton);
             background->setBrush(QColor(16, 35, 51, 235)); background->setPen(Qt::NoPen);
-            auto* text = new QGraphicsSimpleTextItem(label, background); text->setBrush(Qt::white); text->setPos(6, 3); text->setAcceptedMouseButtons(Qt::NoButton);
+            auto* text = new QGraphicsSimpleTextItem(label, background);labelText_=text; text->setBrush(Qt::white); text->setPos(6, 3); text->setAcceptedMouseButtons(Qt::NoButton);
             background->setRect(text->boundingRect().adjusted(0, 0, 12, 6));
         }
     }
     QRectF boundingRect() const override { return {0, 0, layer_.destination.width, layer_.destination.height}; }
+    void setPreviewImage(QImage image,bool placeholder,const QString& label){image_=std::move(image);placeholder_=placeholder;if(labelText_){labelText_->setText(label);labelBackground_->setRect(labelText_->boundingRect().adjusted(0,0,12,6));}update();}
     void sync(const core::Layer& layer)
     {
         updating_ = true; prepareGeometryChange(); layer_ = layer;
@@ -81,6 +82,7 @@ protected:
     void mouseReleaseEvent(QGraphicsSceneMouseEvent* e) override { resizing_ = false; QGraphicsItem::mouseReleaseEvent(e); }
     void hoverMoveEvent(QGraphicsSceneHoverEvent* e) override { setCursor(!layer_.locked && isSelected() && handle().contains(e->pos()) ? Qt::SizeFDiagCursor : layer_.locked ? Qt::ArrowCursor : Qt::SizeAllCursor); }
 private:
+    QGraphicsRectItem* labelBackground_{};QGraphicsSimpleTextItem* labelText_{};
     core::Layer layer_; QImage image_; bool placeholder_{}, updating_{}, resizing_{};
     QRectF handle() const {
         const double zoom = scene() && !scene()->views().isEmpty() ? std::abs(scene()->views().front()->transform().m11()) : 1;
