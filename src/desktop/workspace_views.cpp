@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "workspace_views.h"
+#include <QAction>
+#include <QApplication>
+#include <QClipboard>
 #include "appearance.h"
 #include <QPainter>
 #include <QMouseEvent>
@@ -82,9 +85,14 @@ int DisplayCanvas::regionAt(const QPoint& position) const
     for (int i = int(profile_.regions.size()) - 1; i >= 0; --i) if (physicalRect(profile_.regions[std::size_t(i)].rect).contains(point)) return i;
     return -1;
 }
-ImagePreview::ImagePreview(QWidget* parent) : QWidget(parent) { setMinimumSize(220, 160); setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding); }
+ImagePreview::ImagePreview(QWidget* parent) : QWidget(parent)
+{
+    setMinimumSize(220,160);setSizePolicy(QSizePolicy::Expanding,QSizePolicy::Expanding);setFocusPolicy(Qt::StrongFocus);
+    copyAction_=new QAction(uiText("复制当前预览"),this);copyAction_->setObjectName("copyPreview");copyAction_->setShortcut(QKeySequence::Copy);copyAction_->setShortcutContext(Qt::WidgetShortcut);copyAction_->setEnabled(false);addAction(copyAction_);setContextMenuPolicy(Qt::ActionsContextMenu);
+    copyAction_->setToolTip(uiText("只复制当前预览分辨率的图片，不重新截图、不保存文件。"));connect(copyAction_,&QAction::triggered,this,[this]{if(!image_.isNull())QApplication::clipboard()->setImage(image_);});
+}
 void ImagePreview::setImage(QImage image, QString caption, QSize placeholder)
-{ image_ = std::move(image); caption_ = std::move(caption); placeholder_ = placeholder; update(); }
+{ image_ = std::move(image); caption_ = std::move(caption); placeholder_ = placeholder; copyAction_->setEnabled(!image_.isNull()); update(); }
 void ImagePreview::paintEvent(QPaintEvent*)
 {
     QPainter p(this); p.setRenderHint(QPainter::SmoothPixmapTransform); p.fillRect(rect(), palette().color(QPalette::Base));

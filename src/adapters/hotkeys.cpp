@@ -3,6 +3,7 @@
 #include <windows.h>
 #include "hotkeys.h"
 #include <QCoreApplication>
+#include <algorithm>
 namespace aitsnap {
 static constexpr int firstId = 0x4150;
 Hotkeys::~Hotkeys() { unregisterKeys(); QCoreApplication::instance()->removeNativeEventFilter(this); }
@@ -46,6 +47,7 @@ bool Hotkeys::configure(const QStringList& shortcuts, QString& error)
         if (!key.vk) { error = "Use A–Z, 0–9, F1–F24, PrintScreen or Space"; return false; }
         candidate.push_back(key);
     }
+    if(registered_ && candidate.size()==keys_.size() && std::equal(candidate.begin(),candidate.end(),keys_.begin(),[](const Key& a,const Key& b){return a.modifiers==b.modifiers && a.vk==b.vk;}))return true;
     const auto old = keys_; const bool wasRegistered = registered_;
     unregisterKeys();
     if (!registerKeys(candidate, error)) {

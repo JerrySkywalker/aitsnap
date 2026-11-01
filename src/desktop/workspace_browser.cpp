@@ -116,8 +116,7 @@ void MainWindow::refreshWorkspace()
     overviewTopology_->setLayout(profile, displays, outputSources.empty() ? selected : -1); overviewTopology_->highlightSources(outputSources);
     appearanceTopology_->setLayout(profile, displays, selected);
     const bool canCapture = !core::validateProfile(profile);
-    for (const auto* name : {"captureSave", "captureCopy", "captureBoth"})
-        if (auto* button = findChild<QPushButton*>(name)) button->setEnabled(canCapture);
+    updateCaptureActions(canCapture);
     if (profile.regions.empty()) {
         sourcePreview_->setImage({}, uiText("请先添加源区域")); preview_->setImage({}, uiText("请先添加源区域"));
         sourceDetail_->setText(uiText("当前配置暂无源区域，可新建或屏幕框选。"));

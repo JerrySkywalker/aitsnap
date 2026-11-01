@@ -87,7 +87,7 @@ MainWindow::MainWindow(QWidget* parent, QString path, QString pipeName, std::fun
     stage("main-report-queue-loaded");
     contextStore_ = std::make_unique<ContextStore>(QFileInfo(configurationPath_).absolutePath() + "/context");
     if (!contextStore_->diagnostic().isEmpty()) contextStatus_->setText(contextStore_->diagnostic());
-    hotkeys_.triggered = [this](int mode) { triggerCapture(mode); };
+    hotkeys_.triggered = [this](int mode) { if(mode>=0 && mode<3)captureActions_[mode]->trigger(); };
     hotkeys_.taskbarCreated = [this] { QTimer::singleShot(250, this, [this] { tray_->hide(); tray_->show(); }); };
     QString e;
     if (!hotkeys_.configure({settings_.saveHotkey, settings_.copyHotkey, settings_.bothHotkey}, e)) setStatus(e, true);
@@ -108,9 +108,8 @@ void MainWindow::setupTray()
 {
     tray_ = new QSystemTrayIcon(windowIcon(), this); auto* menu = new QMenu(this);
     auto* show = menu->addAction(aitsnap::uiText("打开区域与输出设置")); connect(show, &QAction::triggered, this, [this] { showNormal(); raise(); activateWindow(); });
-    auto* edit = menu->addAction(aitsnap::uiText("屏幕框选 / 编辑区域")); connect(edit, &QAction::triggered, this, [this] { QTimer::singleShot(180, this, [this] { editRegions(); }); });
-    const QStringList labels{aitsnap::uiText("截图并保存"), aitsnap::uiText("复制选中图片"), aitsnap::uiText("保存并复制")};
-    for (int i = 0; i < 3; ++i) { auto* action = menu->addAction(labels[i]); connect(action, &QAction::triggered, this, [this, i] { QTimer::singleShot(180, this, [this, i] { triggerCapture(i); }); }); }
+    menu->addAction(regionEditAction_);
+    for(auto* action:captureActions_)menu->addAction(action);
     profileMenu_ = menu->addMenu(aitsnap::uiText("切换截图配置")); rebuildProfileMenu();
     sceneMenu_ = menu->addMenu(aitsnap::uiText("拼图场景 / 启用切换")); rebuildSceneMenu();
     auto* sceneEdit = menu->addAction(aitsnap::uiText("打开自由拼图")); connect(sceneEdit, &QAction::triggered, this, [this] { QTimer::singleShot(180, this, [this] { editScene(false); }); });
@@ -118,6 +117,7 @@ void MainWindow::setupTray()
     connect(pause, &QAction::toggled, this, [this, pause](bool checked) {
         QString e; if (hotkeys_.pause(checked, e)) { paused_ = checked; setStatus(checked ? aitsnap::uiText("截图已暂停") : aitsnap::uiText("截图已恢复")); }
         else { pause->blockSignals(true); pause->setChecked(true); pause->blockSignals(false); paused_ = true; setStatus(e, true); }
+        refreshWorkspace();
     });
     auto* folder = menu->addAction(aitsnap::uiText("打开输出目录")); connect(folder, &QAction::triggered, this, [this] { QDesktopServices::openUrl(QUrl::fromLocalFile(settings_.outputDirectory)); });
     menu->addSeparator(); auto* quit = menu->addAction(aitsnap::uiText("退出 AITSnap")); connect(quit, &QAction::triggered, qApp, &QApplication::quit);
@@ -210,9 +210,20 @@ void MainWindow::setStatus(const QString& text, bool error)
     status_->style()->unpolish(status_); status_->style()->polish(status_); status_->update();
     if (tray_) tray_->setToolTip("AITSnap · " + text.left(100));
 }
+void MainWindow::updateCaptureActions(bool canCapture)
+{
+    if(!captureActions_[0])return;
+    const QStringList labels{uiText("截图并保存"),uiText("截图并复制"),uiText("截图、保存并复制")};
+    const QStringList keys{saveKey_->text().trimmed(),copyKey_->text().trimmed(),bothKey_->text().trimmed()};
+    const QStringList descriptions{uiText("重新采集启用区域并保存原图/拼图；启用时加入 Word 报告。"),uiText("重新采集启用区域，只复制所选输出；不保存文件、不加入 Word。"),uiText("重新采集、保存原图/拼图并复制所选输出；启用时加入 Word。")};
+    for(int i=0;i<3;++i){auto* action=captureActions_[i];action->setText(labels[i]+"\t"+keys[i]);action->setToolTip(descriptions[i]+"\n"+uiText("快捷键：%1（全局）").arg(keys[i]));action->setEnabled(canCapture && !busy_ && !paused_ && !configurationBlocked_);}
+}
 void MainWindow::triggerCapture(int mode)
 {
-    startCapture(mode);
+    if(mode<0 || mode>2){setStatus(uiText("无效的截图动作。"),true);return;}
+    // Every UI entry commits the same draft before taking its immutable snapshot.
+    if(busy_ || paused_ || configurationBlocked_ || editingRegions_ || editingScene_ || managingObjects_){startCapture(mode);return;}
+    if(applySettings())startCapture(mode);
 }
 QString MainWindow::startCapture(int mode, const QJsonObject& options, const QJsonObject& eventSnapshot)
 {
@@ -241,7 +252,7 @@ QString MainWindow::startCapture(int mode, const QJsonObject& options, const QJs
     if (!selectedContextSnapshot_.isEmpty()) { request.context = selectedContext_; request.context.stationId = snapshot.station.toStdString(); request.context.operatorId = snapshot.operatorName.toStdString(); request.contextSnapshotJson = QJsonDocument(selectedContextSnapshot_).toJson(QJsonDocument::Compact).toStdString(); }
     if (!eventSnapshot.isEmpty()) { const auto event = eventSnapshot["event"].toObject(); request.context = contextStore_->context(event["sourceSystem"].toString(), event["eventId"].toString()); request.context.stationId = snapshot.station.toStdString(); request.context.operatorId = snapshot.operatorName.toStdString(); request.contextSnapshotJson = QJsonDocument(eventSnapshot).toJson(QJsonDocument::Compact).toStdString(); }
     currentRequestId_ = qs(request.requestId);
-    busy_ = true; setStatus(aitsnap::uiText("正在后台采集 %1 个源区域…").arg(request.profile.regions.size())); QPointer<MainWindow> self(this);
+    busy_ = true; updateCaptureActions(true); setStatus(aitsnap::uiText("正在后台采集 %1 个源区域…").arg(request.profile.regions.size())); QPointer<MainWindow> self(this);
     QThreadPool::globalInstance()->start(QRunnable::create([self, snapshot, request, mode] {
         WinCaptureBackend backend; auto result = std::make_shared<CaptureOutcome>(captureToFiles(backend, snapshot, request, mode != 1, mode != 0));
         if (self) QMetaObject::invokeMethod(self, [self, result, snapshot, mode] { if (self) self->completeCapture(result, snapshot, mode); }, Qt::QueuedConnection);
