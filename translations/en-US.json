@@ -380,5 +380,16 @@
   "今日报告：": "Today's report: ",
   "自动模式在截图根目录建立当天首个报告，并连续追加；重启续写，跨日另建。仅复制不生成报告。": "Automatic mode creates a daily report in the screenshot root, appends across restarts and starts a new report each day. Copy-only capture creates no report.",
   "首次保存截图后，自动在截图目录建立今日报告。": "The first saved capture creates today's report in the screenshot folder.",
-  "打开当前报告": "Open current report"
+  "打开当前报告": "Open current report",
+  "框选 / 编辑区域": "Select / edit regions",
+  "配置截图区域，不执行截图。Ctrl+Shift+R（应用内）": "Configure capture regions without taking a screenshot. Ctrl+Shift+R (in app).",
+  "截图并复制": "Capture and copy",
+  "截图、保存并复制": "Capture, save and copy",
+  "重新采集启用区域并保存原图/拼图；启用时加入 Word 报告。": "Take a fresh capture of enabled regions and save original/composite outputs; append to Word when enabled.",
+  "重新采集启用区域，只复制所选输出；不保存文件、不加入 Word。": "Take a fresh capture and copy the selected output; do not save files or add a Word job.",
+  "重新采集、保存原图/拼图并复制所选输出；启用时加入 Word。": "Take a fresh capture, save original/composite outputs and copy the selected output; append to Word when enabled.",
+  "快捷键：%1（全局）": "Shortcut: %1 (global)",
+  "无效的截图动作。": "Invalid capture action.",
+  "复制当前预览": "Copy current preview",
+  "只复制当前预览分辨率的图片，不重新截图、不保存文件。": "Copy the current preview at its preview resolution; do not take a new screenshot or save a file."
 }

@@ -4,6 +4,10 @@
 #include "desktop/scene_layer_item.h"
 #include "main_window.h"
 #include <QApplication>
+#include <QAction>
+#include <QClipboard>
+#include <QSystemTrayIcon>
+#include <QMenu>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QFile>
@@ -69,6 +73,13 @@ int main(int argc, char** argv)
         check(uiText("截图并保存") == "Capture and save", "English catalog actually loaded");
         {
             MainWindow window(nullptr, path, "-");
+            auto* tray=window.findChild<QSystemTrayIcon*>();
+            for(const auto* id:{"captureAction.save","captureAction.copy","captureAction.both"})check(tray->contextMenu()->actions().contains(window.findChild<QAction*>(id)),"tray and main buttons share the same capture action");
+            const auto bytesBeforePreview=[&]{QFile file(path);check(file.open(QIODevice::ReadOnly),"preview config read");return file.readAll();}();
+            auto* imagePreview=dynamic_cast<ImagePreview*>(window.findChild<QWidget*>("latestCapturePreview"));QImage previewPixels(17,9,QImage::Format_ARGB32);previewPixels.fill(Qt::magenta);imagePreview->setImage(previewPixels,"cached preview");imagePreview->findChild<QAction*>("copyPreview")->trigger();
+            check(QApplication::clipboard()->image()==previewPixels,"preview copy uses cached pixels without a new capture");
+            {QFile file(path);check(file.open(QIODevice::ReadOnly) && file.readAll()==bytesBeforePreview,"preview copy does not persist settings or consume capture sequence");}
+            imagePreview->setImage({},"none");check(!imagePreview->findChild<QAction*>("copyPreview")->isEnabled(),"empty preview cannot copy stale data");
             auto* mode = window.findChild<QComboBox*>("appearanceColorMode"); auto* language = window.findChild<QComboBox*>("appearanceLanguage");
             check(mode && language, "appearance controls present");
             check(!window.windowIcon().pixmap(16).isNull() && !window.windowIcon().pixmap(256).isNull(), "shipped multi-size icon loaded by Qt");
@@ -83,7 +94,7 @@ int main(int argc, char** argv)
             nav->setCurrentRow(1); check(sourceTabs->currentIndex() == 0, "source default is display layout");
             sourceTabs->setCurrentIndex(1); nav->setCurrentRow(0); nav->setCurrentRow(1); check(sourceTabs->currentIndex() == 0, "source reentry resets to display layout");
             nav->setCurrentRow(3); check(window.findChild<QListWidget*>("batchCards")->count() == 1 && window.findChild<QListWidget*>("batchImages")->count() == 1, "gallery follows portable manifest paths and excludes invalid artifacts");
-            check(window.findChild<QPushButton*>("captureSave")->text() == "Capture and save", "actual button localized");
+            check(window.findChild<QPushButton*>("captureSave")->text().startsWith("Capture and save") && window.findChild<QPushButton*>("captureSave")->text().contains("F20"), "localized capture action displays persisted shortcut");
             if(app.platformName()=="offscreen") {
                 window.resize(1500,960);window.show();settle();
                 auto* left=window.findChild<QWidget*>("workbenchSources");auto* center=window.findChild<QWidget*>("workbenchLayout");auto* right=window.findChild<QWidget*>("workbenchOutputs");

@@ -13,7 +13,7 @@
 class QCheckBox; class QComboBox; class QLabel; class QLineEdit;
 class QMenu; class QSystemTrayIcon; class QTableWidget; class QListWidget;
 class QStackedWidget; class QTabWidget;
-class QPushButton;
+class QPushButton; class QAction;
 
 namespace aitsnap {
 class ReportQueue;
@@ -72,6 +72,9 @@ private:
     QString selectedBatchManifest_;
     QPushButton *appendLast_{}, *appendBatch_{};
     void refreshWorkspace(); void refreshBatches(); void selectBatch(); void selectBatchImage();
+    QAction* captureActions_[3]{};
+    QAction* regionEditAction_{};
+    void updateCaptureActions(bool canCapture);
     bool busy_{}, paused_{}, configurationBlocked_{}, editingRegions_{}, editingScene_{}, refreshingWorkspace_{};
     void buildUi(); void setupTray(); void loadProfile();
     bool collectSettings(Settings&, QString& error);

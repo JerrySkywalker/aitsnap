@@ -6,6 +6,9 @@
 #include "adapters/win_capture.h"
 #include "compat/qt_widgets_compat.h"
 #include <QApplication>
+#include <QAction>
+#include <QCheckBox>
+#include <QLineEdit>
 #include <QClipboard>
 #include <QComboBox>
 #include <QDateTime>
@@ -131,6 +134,20 @@ int main(int argc, char** argv)
             check(QFile::exists(QDir(outcome->directory).filePath("batch.json")), "batch manifest saved");
             Settings restarted; check(loadSettings(path, restarted, error) && restarted.sequence == 1, "persistent capture sequence");
             std::cout << "NATIVE_M1_AUTOMATED_PASS displays=" << profile.calibratedDisplays.size() << " regions=5 saved=5 clipboard=1 focus=preserved elapsed_ms=" << outcome->elapsedMs << " manifest=" << outcome->directory.toStdString() << "/batch.json\n";
+            if(app.arguments().contains("--capture-contract")) {
+                const char* buttons[]{"captureSave","captureCopy","captureBoth"};
+                for(int mode=0;mode<3;++mode){outcome.reset();const auto destination=temp.filePath(QString("mode-%1").arg(mode));
+                    host.findChild<QLineEdit*>("outputDirectory")->setText(destination);host.findChild<QCheckBox*>("reportEnabled")->setChecked(mode==1);
+                    QEventLoop actionWait;host.captureFinished=[&](auto result){outcome=result;actionWait.quit();};
+                    QTimer::singleShot(0,&host,[&]{host.findChild<QPushButton*>(buttons[mode])->click();});QTimer::singleShot(10000,&actionWait,&QEventLoop::quit);actionWait.exec();
+                    check(bool(outcome),"shared capture action completed");int fileCount=0,copyCount=0;for(const auto& output:outcome->batch.outputs){check(!output.error,"shared action output error");fileCount+=output.status=="SAVED";copyCount+=output.status=="COPIED";}
+                    check(fileCount==(mode==1?0:5) && copyCount==(mode==0?0:1),"save/copy/both side effects match named actions");
+                    check(mode!=1 || (outcome->directory.isEmpty() && !QDir(destination).exists()),"fresh copy never writes an image batch");
+                    check(QDir(temp.filePath("report-jobs")).entryList({"*.json"},QDir::Files).empty(),"copy-only mode creates no Word job even when reporting enabled");
+                    Settings captured;check(loadSettings(path,captured,error) && captured.sequence==mode+2 && captured.outputDirectory==destination,"every UI action commits the current draft and advances exactly one sequence");
+                }
+                std::cout<<"CAPTURE_ACTION_CONTRACT_PASS save/copy/both fresh side effects draft routing exact sequence no copy Word job\n";
+            }
             if (app.arguments().contains("--editor")) {
                 const auto before = outcome;
                 auto* edit = host.findChild<QPushButton*>("editRegions"); check(edit != nullptr, "editor entry");

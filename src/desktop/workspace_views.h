@@ -40,6 +40,7 @@ protected:
 private:
     QImage image_;
     QString caption_;
+    QAction* copyAction_{};
     QSize placeholder_{640, 400};
 };
 }

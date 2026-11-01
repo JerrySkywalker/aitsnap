@@ -81,6 +81,7 @@ void MainWindow::buildUi()
     sourceViews_->addTab(topology_, uiText("显示器布局")); sourcePreview_ = new ImagePreview; sourcePreview_->setObjectName("sourceImagePreview"); sourceViews_->addTab(sourcePreview_, uiText("区域浏览")); sourceSplit->addWidget(sourceViews_); sourceSplit->setSizes({240, 750}); sources->addWidget(sourceSplit, 1);
     sourceDetail_ = subtitle(sources, {}); sourceDetail_->setObjectName("sourceDetails");
     auto* buttons = new QHBoxLayout; auto* add = new QPushButton(uiText("添加区域")); auto* remove = new QPushButton(uiText("删除选中")); auto* calibrate = new QPushButton(uiText("确认当前屏幕布局")); auto* visual = new QPushButton(uiText("屏幕框选 / 拖动")); visual->setObjectName("editRegions");
+    regionEditAction_=new QAction(uiText("框选 / 编辑区域"),this);regionEditAction_->setObjectName("editRegionAction");regionEditAction_->setShortcut(QKeySequence("Ctrl+Shift+R"));addAction(regionEditAction_);regionEditAction_->setToolTip(uiText("配置截图区域，不执行截图。Ctrl+Shift+R（应用内）"));connect(regionEditAction_,&QAction::triggered,this,[this]{editRegions();});visual->setText(regionEditAction_->text()+" · Ctrl+Shift+R");visual->setToolTip(regionEditAction_->toolTip());
     buttons->addWidget(visual); buttons->addWidget(add); buttons->addWidget(remove); buttons->addWidget(calibrate); sources->addLayout(buttons);
     add->setObjectName("addRegion");
     auto* regionCount=new QLabel;regionCount->setObjectName("sourceSelectionCount");sources->addWidget(regionCount);
@@ -178,7 +179,7 @@ void MainWindow::buildUi()
     filename_ = new QLineEdit(settings_.filenameTemplate); filename_->setToolTip("{datetime} {sequence} {number} {region} {profile} {test} {device} {station} {operator} {run} {step} {command}"); saveForm->addRow(uiText("文件命名"), filename_);
     filenamePreview_ = new QLabel; filenamePreview_->setObjectName("filenamePreview"); filenamePreview_->setWordWrap(true); saveForm->addRow(uiText("文件名预览"), filenamePreview_);
     connect(format_, &QComboBox::currentTextChanged, this, [refreshTimer] { refreshTimer->start(); });
-    auto* hotkeys = makeForm(); saveKey_ = new QLineEdit(settings_.saveHotkey); copyKey_ = new QLineEdit(settings_.copyHotkey); bothKey_ = new QLineEdit(settings_.bothHotkey); hotkeys->addRow(uiText("保存热键"), saveKey_); hotkeys->addRow(uiText("复制热键"), copyKey_); hotkeys->addRow(uiText("保存并复制"), bothKey_); startTray_ = new QCheckBox(uiText("启动时直接进入托盘")); startTray_->setChecked(settings_.startInTray); hotkeys->addRow(startTray_);
+    auto* hotkeys = makeForm(); saveKey_ = new QLineEdit(settings_.saveHotkey); saveKey_->setObjectName("saveHotkey"); copyKey_ = new QLineEdit(settings_.copyHotkey); copyKey_->setObjectName("copyHotkey"); bothKey_ = new QLineEdit(settings_.bothHotkey); bothKey_->setObjectName("bothHotkey"); hotkeys->addRow(uiText("截图并保存"), saveKey_); hotkeys->addRow(uiText("截图并复制"), copyKey_); hotkeys->addRow(uiText("截图、保存并复制"), bothKey_); startTray_ = new QCheckBox(uiText("启动时直接进入托盘")); startTray_->setChecked(settings_.startInTray); hotkeys->addRow(startTray_);
     auto* reportForm = makeForm(); reportEnabled_ = new QCheckBox(uiText("保存截图后自动追加 Word")); reportEnabled_->setObjectName("reportEnabled"); reportEnabled_->setChecked(settings_.report.enabled); reportForm->addRow(reportEnabled_);
     reportTargetMode_=new QComboBox;reportTargetMode_->setObjectName("reportTargetMode");reportTargetMode_->addItem(uiText("自动 · 按日保存到截图目录"),"automatic");reportTargetMode_->addItem(uiText("指定 DOCX 文件"),"specified");reportTargetMode_->setCurrentIndex(std::max(0,reportTargetMode_->findData(settings_.report.targetMode)));reportForm->addRow(uiText("保存方式"),reportTargetMode_);
     auto* reportPathRow = new QWidget; auto* reportPaths = new QHBoxLayout(reportPathRow); reportPaths->setContentsMargins(0, 0, 0, 0); reportPath_ = new QLineEdit(settings_.report.documentPath); reportPath_->setObjectName("reportDocumentPath"); reportPaths->addWidget(reportPath_); auto* reportBrowse = new QPushButton("…"); reportPaths->addWidget(reportBrowse); reportForm->addRow(uiText("Word 报告"), reportPathRow);
@@ -204,14 +205,16 @@ void MainWindow::buildUi()
     status_ = new QLabel; status_->setObjectName("captureStatus"); status_->setWordWrap(true); status_->setTextInteractionFlags(Qt::TextSelectableByMouse); outer->addWidget(status_); setCentralWidget(central);
     connect(apply, &QPushButton::clicked, this, [this] { applySettings(); });
     connect(add, &QPushButton::clicked, this, [this] { objectAction(ObjectKind::Region, "new"); });
-    connect(visual, &QPushButton::clicked, this, [this] { editRegions(); });
+    connect(visual, &QPushButton::clicked, regionEditAction_, &QAction::trigger);
     connect(remove, &QPushButton::clicked, this, [this] { for (auto* a : sourceCards_->actions()) if (a->objectName() == "sourceCards.delete") a->trigger(); });
     connect(browse, &QPushButton::clicked, this, [this] { auto p = QFileDialog::getExistingDirectory(this, aitsnap::uiText("选择截图保存目录"), directory_->text()); if (!p.isEmpty()) directory_->setText(p); });
     connect(folder, &QPushButton::clicked, this, [this] { QDesktopServices::openUrl(QUrl::fromLocalFile(directory_->text())); });
-    connect(save, &QPushButton::clicked, this, [this] { if (applySettings()) triggerCapture(0); });
     copy->setObjectName("captureCopy"); both->setObjectName("captureBoth");
-    connect(copy, &QPushButton::clicked, this, [this] { if (applySettings()) triggerCapture(1); });
-    connect(both, &QPushButton::clicked, this, [this] { if (applySettings()) triggerCapture(2); });
+    const char* captureIds[]{"captureAction.save","captureAction.copy","captureAction.both"};QPushButton* captureButtons[]{save,copy,both};
+    for(int mode=0;mode<3;++mode){auto* action=new QAction(this);action->setObjectName(captureIds[mode]);captureActions_[mode]=action;auto* button=captureButtons[mode];
+        connect(action,&QAction::triggered,this,[this,mode]{triggerCapture(mode);});connect(button,&QPushButton::clicked,action,&QAction::trigger);
+        connect(action,&QAction::changed,button,[button,action]{button->setText(QString(action->text()).replace('\t'," · "));button->setToolTip(action->toolTip());button->setEnabled(action->isEnabled());});
+    }
     connect(profiles_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index) {
         if (index < 0 || index >= int(settings_.profiles.size())) return;
         const auto wanted = qs(settings_.profiles[std::size_t(index)].id);
