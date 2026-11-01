@@ -36,6 +36,22 @@ Owner 2026-11-01重新授权桌面验证及安装，最终目标改为0.7.2；�
 
 Qt6/Qt5 appearance+management各2/2最终PASS。新增回归检查托盘共用动作、实际持久化键显示、预览缓存像素复制且设置文件完全不变、空预览禁用。Qt6测试初稿findChild<ImagePreview>未有Q_OBJECT编译失败，改为按名字找QWidget后dynamic_cast；未运行旧二进制充数。组件回归还发现短暂managing scope缓存禁用状态在新建区域后留下按钮失效；动作可用性改为稳定捕获/暂停/配置状态，编辑/管理的暂态由真实dispatch guard和模态保证，修复后再跑通过。
 
-真实Windows平台四显示器、五个红绿合成来源：两路native --capture-contract均exit0。先经过WM_HOTKEY路由（非物理按键证明），再真实点击对象的三按钮分别新采集；保存5/复制0、保存0/复制1、保存5/复制1逐项匹配；每次恰好一个sequence，未手工应用的新输出目录生效；复制即使启用报告也无Word job、无图片目录。焦点保持及源像素准确检查PASS。Qt5仍仅Win11/v143宿主，不当Win7资格。
+真实Windows平台四显示器、五个红绿合成来源：两路native --capture-contract均exit0。先经过WM_HOTKEY路由（非物理按键证明），再通过真实QPushButton.click调用三按钮分别新采集（非物理鼠标证明）；保存5/复制0、保存0/复制1、保存5/复制1逐项匹配；每次恰好一个sequence，未手工应用的新输出目录生效；复制即使启用报告也无Word job、无图片目录。焦点保持及源像素准确检查PASS。Qt5仍仅Win11/v143宿主，不当Win7资格。
 
 下一步正常PR并冻结动作源码，再统一0.7.2、全套定向集成、完整包与实际安装/首次打开/已有托盘实例验证。原始日志UX072-ACTIONS，377条本地化PASS，不重复无变化CI。
+
+## 0.7.2 实际系统输入验证
+
+PR35 merge78ddc0bfeb49d506ff1235316193f9c1c9daa9ce，PR36 merge de710f66ac43da20fc279c1ec5bd5402f65f4d09。版本集成c50fcd8，二进制PE0.7.2。构建期间的已完成产品目标在独立data-dir验证，不运行仍在编译的测试二进制。
+
+原已安装白屏PID54396的query-status通过真实UI线程返回OK/busy=false；原队列为空，支持不是构造/事件循环挂死，而是Qt可见状态与外部HWND显示分离。原设置未写入。
+
+最终0.7.2产品程序实际显示完整界面及三动作快捷键，Computer Use原生键盘输入Ctrl+Alt+Shift+F9/F10/F11分别触发save/copy/both：序号1/2/3，磁盘batch数1/1/2，无Word任务；Both磁盘清单有COPIED输出，应用代码已做剪贴板读回检查。仅用16×16隔离ROI，不修改Owner配置。这是系统输入注入+原生画面/文件回读，非Owner人工按键或硬件时延证明。
+
+首轮自定义F20已触发保存，但工具拒绝F21（unsupported key），不算copy验证；未换脚本注入被拒绝的F21，改用已支持的普通F9/F10/F11自定义绑定重新验证完整三组。60s诊断实例正常自行退出。用于可视/截图的smoke idle CPU字段超出其hidden/no capture声明，明确不采用这些性能字段；原生输入与batch回执单独保留physical-key-receipt.json。完整安装/Finish仍待最终包，不提前填PASS。
+
+## 最终集成源码检查点
+
+0.7.2两路全部受影响目标构建完成exit0。Qt6/Qt5各8/8定向集成PASS；两路原生activation及四屏5源capture-contract也均exit0，native-qt6/native-qt5保留合成源PNG和batch清单。产品PE、CLI、WordBridge统一0.7.2。377条本地化、Python构建工具语法、diff检查通过。
+
+仅文档在c50fcd8后更新，产品src/CMake/tools/tests无差异；下一步从干净合并源码生成完整离线候选，真实安装完成/首次UI另验收，不因源码绿灯提前标完成。现场0.7.1进程UI线程响应且无队列作业；安装前会保存原设置证据，不改动捕获历史。当前Owner允许桌面/安装，旧的桌面停止文档已更新，工具拒绝仍不得绕过。
