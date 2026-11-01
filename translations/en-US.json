@@ -371,5 +371,14 @@
   "置顶": "Bring to front",
   "置底": "Send to back",
   "删除 %1 项？": "Delete %1 items?",
-  "受影响场景：%1\n停用事件规则：%2\n历史图片、报告及已排队任务保持不变。": "Affected scenes: %1\nRules to disable: %2\nSaved images, reports and queued jobs are retained."
+  "受影响场景：%1\n停用事件规则：%2\n历史图片、报告及已排队任务保持不变。": "Affected scenes: %1\nRules to disable: %2\nSaved images, reports and queued jobs are retained.",
+  "指定报告需要有效的 DOCX 完整路径。": "An explicit report requires a valid full DOCX path.",
+  "自动 · 按日保存到截图目录": "Automatic · daily report in screenshot folder",
+  "指定 DOCX 文件": "Specific DOCX file",
+  "保存方式": "Save target",
+  "报告目标：": "Report target: ",
+  "今日报告：": "Today's report: ",
+  "自动模式在截图根目录建立当天首个报告，并连续追加；重启续写，跨日另建。仅复制不生成报告。": "Automatic mode creates a daily report in the screenshot root, appends across restarts and starts a new report each day. Copy-only capture creates no report.",
+  "首次保存截图后，自动在截图目录建立今日报告。": "The first saved capture creates today's report in the screenshot folder.",
+  "打开当前报告": "Open current report"
 }

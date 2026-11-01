@@ -6,6 +6,7 @@
 #include <QProcess>
 #include <QTimer>
 #include <QElapsedTimer>
+#include <QDateTime>
 #include <QLockFile>
 #include <functional>
 #include <memory>
@@ -22,6 +23,7 @@ class ReportQueue final : public QObject {
 public:
     ReportQueue(QString directory, QString helper, QObject* parent = nullptr, int timeoutMs = 60000);
     ~ReportQueue() override;
+    QString resolveTarget(const ReportOptions&, const QString& captureRoot, const QDateTime& batchTime, bool reserve, QString& error) const;
     bool enqueue(const CaptureOutcome&, const ReportOptions&, QString& error);
     bool enqueueHistorical(const QString& manifestPath, const ReportOptions&, QString& error);
     bool hasBatchForDocument(const QString& batchId, const QString& documentPath) const;

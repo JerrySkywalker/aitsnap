@@ -50,8 +50,8 @@ private:
     ReportQueue* reportQueue_{};
     QCheckBox* reportEnabled_{};
     QLineEdit* reportPath_{};
-    QComboBox *reportMode_{}, *reportLayout_{};
-    QLabel* reportStatus_{};
+    QComboBox *reportMode_{}, *reportLayout_{}, *reportTargetMode_{};
+    QLabel *reportStatus_{}, *reportTargetStatus_{};
     std::unique_ptr<ContextStore> contextStore_;
     core::Context selectedContext_;
     QJsonObject selectedContextSnapshot_;
@@ -82,6 +82,8 @@ private:
     void rebuildScenes(); void rebuildSceneMenu(); void importScene(); void exportScene();
     void completeCapture(const std::shared_ptr<CaptureOutcome>&, const Settings&, int mode);
     void showReportQueue(); void refreshReportStatus();
+    ReportOptions selectedReportOptions() const;
+    QString reportTarget(const QString& batchDirectory = {}, const QString& issuedAtUtc = {}, QString* error = nullptr) const;
     void showContextStore();
     QString startCapture(int mode, const QJsonObject& options = {}, const QJsonObject& eventSnapshot = {});
     void startHost(QString pipeName); void editEventRules();

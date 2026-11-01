@@ -10,6 +10,7 @@
 #include <QJsonDocument>
 #include <QTemporaryDir>
 #include <QThread>
+#include <QUuid>
 #include <iostream>
 #include <stdexcept>
 using namespace aitsnap;
@@ -27,6 +28,11 @@ static int fakeHelper(const QStringList& args)
     const auto ext = job["extensions"].toObject(); const auto behavior = ext["testBehavior"].toString();
     if (behavior == "hang") { QThread::sleep(20); return 1; }
     if (behavior == "crash") return 7;
+    if(behavior=="daily") {
+        const auto target=job["target"].toObject();QFile document(target["documentPath"].toString());
+        check(target["mode"]=="create" ? !document.exists() : document.exists(),"daily FIFO create precedes append");
+        check(document.open(QIODevice::WriteOnly|QIODevice::Append),"fake daily file");document.write("synthetic-routing-only\n");document.close();
+    }
     const auto state = behavior == "retry" ? "RETRYABLE" : "COMMITTED";
     const QJsonObject result{{"jobId", job["jobId"]}, {"dispatchId", ext["dispatchId"]}, {"state", state}, {"errorCode", behavior == "retry" ? "FAKE_PREMUTATION" : ""}, {"marker", "synthetic-marker"}};
     check(saveBytesNew(QJsonDocument(result).toJson(), args[args.indexOf("--result") + 1], error), "fake result"); return 0;
@@ -47,13 +53,70 @@ static void behavior(ReportQueue& queue, const QString& directory, const QString
     auto job = queue.jobs().back(); auto ext = job["extensions"].toObject(); ext["testBehavior"] = kind; job["extensions"] = ext; QString error;
     check(storeReportJob(QDir(directory).filePath(job["jobId"].toString() + ".json"), job, error), "set fake behavior");
 }
+static void nativeDailyProbe(const QString& evidence,const QString& helper)
+{
+    const auto root=QDir(evidence).absoluteFilePath(QUuid::createUuid().toString(QUuid::WithoutBraces));
+    const auto captures=root+"/截图 空格",batch=captures+"/synthetic-batch",queuePath=root+"/report-jobs";check(QDir().mkpath(batch),"native daily output");
+    auto input=fixture(batch);input.batch.request.issuedAtUtc=QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs).toStdString();ReportOptions options;options.targetMode="automatic";QString target,error;QList<QJsonObject> jobs;
+    for(int step=0;step<2;++step) {
+        ReportQueue queue(queuePath,helper);input.batch.batchId=step?"native-daily-second":"native-daily-first";
+        check(queue.enqueue(input,options,error),qPrintable("native daily enqueue: "+error));
+        const auto current=queue.jobs().back();const auto path=current["target"].toObject()["documentPath"].toString();
+        if(step==0){target=path;check(current["target"].toObject()["mode"]=="create","native first create");}
+        else check(path==target && current["target"].toObject()["mode"]=="append","native restart same daily append");
+        check(await([&]{const auto state=queue.jobs().back()["state"].toString();return state=="COMMITTED" || state=="FAILED" || state=="UNCERTAIN";},90000),"native daily helper completion deadline");
+        jobs=queue.jobs();check(jobs.back()["state"]=="COMMITTED",qPrintable("native daily did not commit: "+QString::fromUtf8(QJsonDocument(jobs.back()).toJson(QJsonDocument::Compact))));
+    }
+    QJsonArray records;for(const auto& job:jobs)records.append(job);
+    check(saveBytesNew(QJsonDocument(QJsonObject{{"status","PASS"},{"scope","modern Word synthetic daily create/restart/append; no desktop input or human acceptance"},{"document",target},{"jobs",records}}).toJson(),root+"/receipt.json",error),"native daily receipt");
+    std::cout<<"NATIVE_DAILY_REPORT_PASS "<<root.toStdString()<<std::endl;
+}
 int main(int argc, char** argv)
 {
     QCoreApplication app(argc, argv);
     try {
         if (app.arguments().contains("--job")) return fakeHelper(app.arguments());
+        const int native=app.arguments().indexOf("--native-daily");
+        if(native>=0){check(native+2<app.arguments().size(),"native evidence directory and helper required");nativeDailyProbe(app.arguments()[native+1],app.arguments()[native+2]);return 0;}
         QTemporaryDir temporary; check(temporary.isValid(), "temporary report root");
         const auto root = temporary.path(); const auto outcome = fixture(root);
+        {
+            auto settings=defaultSettings();settings.profiles={outcome.batch.request.profile};const auto legacyPath=root+"/legacy-report-settings.json";QString e;
+            settings.report.enabled=true;settings.report.documentPath=root+"/existing.docx";check(saveSettings(legacyPath,settings,e),"legacy report fixture");
+            QFile file(legacyPath);check(file.open(QIODevice::ReadOnly),"legacy read");auto object=QJsonDocument::fromJson(file.readAll()).object();file.close();auto report=object["wordReport"].toObject();report.remove("targetMode");object["wordReport"]=report;
+            check(file.open(QIODevice::WriteOnly|QIODevice::Truncate),"legacy rewrite fixture");const auto original=QJsonDocument(object).toJson();file.write(original);file.close();Settings migrated;
+            check(loadSettings(legacyPath,migrated,e) && migrated.report.targetMode=="specified" && migrated.report.enabled && migrated.report.documentPath==settings.report.documentPath,"old explicit target and enabled state preserved");
+            check(file.open(QIODevice::ReadOnly) && file.readAll()==original,"loading does not rewrite old settings");file.close();
+            report["documentPath"]="";object["wordReport"]=report;check(file.open(QIODevice::WriteOnly|QIODevice::Truncate),"legacy blank target fixture");file.write(QJsonDocument(object).toJson());file.close();
+            check(loadSettings(legacyPath,migrated,e) && migrated.report.targetMode=="automatic" && migrated.report.enabled,"old blank target uses daily default without changing enabled state");
+        }
+        const auto dailyRoot=root+"/截图 空间",dailyBatch=dailyRoot+"/batch-one",dailyQueue=root+"/daily-queue";
+        check(QDir().mkpath(dailyBatch),"daily capture root");auto daily=fixture(dailyBatch);ReportOptions automatic;automatic.targetMode="automatic";
+        const auto when=QDateTime::fromString(QString::fromStdString(daily.batch.request.issuedAtUtc),Qt::ISODateWithMs);QString firstTarget;QByteArray queuedFingerprint;
+        {
+            ReportQueue queue(dailyQueue,app.applicationFilePath());QString e;
+            const auto preview=queue.resolveTarget(automatic,dailyRoot,when,false,e);
+            check(!preview.isEmpty() && !QFileInfo::exists(dailyQueue+"/routing/daily-targets-v1.json"),"preview does not reserve or create Word");
+            check(saveBytesNew("preexisting-report-must-survive",preview,e),"collision sentinel");
+            check(queue.enqueue(daily,automatic,e),"first daily reserve and enqueue");auto first=queue.jobs()[0];firstTarget=first["target"].toObject()["documentPath"].toString();
+            check(firstTarget!=preview && QFileInfo(firstTarget).absolutePath()==QDir(dailyRoot).canonicalPath() && first["target"].toObject()["mode"]=="create","daily report directly in screenshot root without overwrite");
+            daily.batch.batchId="second-daily-batch";daily.batch.request.issuedAtUtc=when.addSecs(60).toString(Qt::ISODateWithMs).toStdString();
+            check(queue.enqueue(daily,automatic,e) && queue.jobs().size()==2,"second batch queues before first DOCX exists");
+            check(queue.jobs()[1]["target"].toObject()["documentPath"]==firstTarget && queue.jobs()[1]["target"].toObject()["mode"]=="append","same daily reservation and FIFO mode");
+            queuedFingerprint=QJsonDocument(queue.jobs()[0]).toJson();
+        }
+        {
+            ReportQueue queue(dailyQueue,app.applicationFilePath());QString e;
+            check(queue.resolveTarget(automatic,dailyRoot,when.addSecs(3600),false,e)==firstTarget && QJsonDocument(queue.jobs()[0]).toJson()==queuedFingerprint,"restart reuses reservation and frozen jobs");
+            check(queue.resolveTarget(automatic,dailyRoot,when.addDays(1),false,e)!=firstTarget,"local-day rollover");
+            const auto otherRoot=root+"/another-root";check(QDir().mkpath(otherRoot),"other screenshot root");
+            check(queue.resolveTarget(automatic,otherRoot,when,true,e)!=firstTarget && QJsonDocument(queue.jobs()[0]).toJson()==queuedFingerprint,"root switch does not retarget queued job");
+            for(auto job:queue.jobs()){auto ext=job["extensions"].toObject();ext["testBehavior"]="daily";job["extensions"]=ext;check(storeReportJob(dailyQueue+"/"+job["jobId"].toString()+".json",job,e),"daily fake worker fixture");}
+            check(await([&]{const auto jobs=queue.jobs();return jobs.size()==2 && jobs[0]["state"]=="COMMITTED" && jobs[1]["state"]=="COMMITTED";}),"fake daily create and append committed in order");
+            check(QFile::rename(firstTarget,firstTarget+".moved"),"simulate moved report");
+            check(queue.resolveTarget(automatic,dailyRoot,when,false,e).isEmpty() && e.contains("moved or deleted"),"missing committed report holds without silent replacement");
+            ReportOptions specified;specified.documentPath=firstTarget+".moved";check(queue.resolveTarget(specified,dailyRoot,when,false,e).isEmpty(),"specified invalid extension is not replaced by automatic mode");
+        }
         ReportOptions options; options.documentPath = root + "/synthetic.docx";
         QString error; auto job = makeReportJob(outcome, options, "create", error); check(!job.isEmpty(), "make schema job");
         check(job["items"].toArray()[0].toObject()["caption"].toString().startsWith("#1 Voltage | ") && !job["extensions"].toObject()["heading"].toString().contains("synthetic-report-batch"), "report names are readable rather than internal ids");
