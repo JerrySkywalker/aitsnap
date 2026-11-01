@@ -68,6 +68,7 @@ endif()
 add_library(aitsnap-adapters STATIC
     src/adapters/win_capture.cpp
     src/adapters/json_store.cpp
+    src/adapters/settings_commands.cpp
     src/adapters/hotkeys.cpp
     src/adapters/capture_files.cpp
     src/adapters/report_queue.cpp
@@ -87,7 +88,7 @@ add_executable(aitsnap-word-bridge src/adapters/word_bridge_main.cpp)
 target_link_libraries(aitsnap-word-bridge PRIVATE aitsnap-adapters ole32 oleaut32 psapi)
 add_executable(aitsnap-cli src/cli_main.cpp)
 target_link_libraries(aitsnap-cli PRIVATE aitsnap-adapters)
-set(aitsnap_ui_sources src/main_window.cpp src/desktop/host_controller.cpp src/desktop/workspace_ui.cpp src/desktop/workspace_browser.cpp)
+set(aitsnap_ui_sources src/main_window.cpp src/desktop/host_controller.cpp src/desktop/workspace_ui.cpp src/desktop/workspace_browser.cpp src/desktop/workspace_commands.cpp)
 add_executable(aitsnap WIN32
     src/main.cpp
     ${aitsnap_ui_sources}
@@ -134,6 +135,11 @@ if(BUILD_TESTING)
     add_test(NAME scene-lifecycle COMMAND aitsnap-scene-lifecycle-tests)
     set_tests_properties(scene-lifecycle PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 30)
     list(APPEND aitsnap_targets aitsnap-scene-lifecycle-tests)
+    add_executable(aitsnap-management-tests tests/management_tests.cpp ${aitsnap_ui_sources})
+    target_link_libraries(aitsnap-management-tests PRIVATE aitsnap-adapters)
+    add_test(NAME management COMMAND aitsnap-management-tests)
+    set_tests_properties(management PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 40)
+    list(APPEND aitsnap_targets aitsnap-management-tests)
     add_executable(aitsnap-scene-tests tests/scene_tests.cpp)
     target_link_libraries(aitsnap-scene-tests PRIVATE aitsnap-adapters)
     add_test(NAME scene COMMAND aitsnap-scene-tests)
@@ -142,6 +148,10 @@ if(BUILD_TESTING)
     target_link_libraries(aitsnap-report-tests PRIVATE aitsnap-adapters)
     add_test(NAME report-queue COMMAND aitsnap-report-tests)
     list(APPEND aitsnap_targets aitsnap-report-tests)
+    add_executable(aitsnap-settings-command-tests tests/settings_command_tests.cpp)
+    target_link_libraries(aitsnap-settings-command-tests PRIVATE aitsnap-adapters)
+    add_test(NAME settings-commands COMMAND aitsnap-settings-command-tests)
+    list(APPEND aitsnap_targets aitsnap-settings-command-tests)
     # Office-dependent synthetic integration is opt-in, never an ordinary CTest.
     add_executable(aitsnap-word-bridge-tests tests/word_bridge_tests.cpp)
     target_link_libraries(aitsnap-word-bridge-tests PRIVATE aitsnap-adapters ole32 oleaut32)

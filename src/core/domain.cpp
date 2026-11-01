@@ -21,12 +21,11 @@ Error validateVersion(int version)
 {
     return version == schemaVersion ? Error{} : Error{"SCHEMA_VERSION", "Unsupported schema version; no automatic migration"};
 }
-Error validateProfile(const CaptureProfile& p)
+Error validateProfileDefinition(const CaptureProfile& p)
 {
-    if (p.id.empty() || p.revision < 1 || p.regions.empty()) return {"PROFILE", "Profile id, revision and regions required"};
+    if (p.id.empty() || p.revision < 1) return {"PROFILE", "Profile id and revision required"};
     std::set<std::string> ids;
     std::set<int> numbers;
-    bool enabled = false;
     for (const auto& r : p.regions) {
         if (r.displayNumber < 0 || (r.displayNumber > 0 && !numbers.insert(r.displayNumber).second)) return {"REGION_NUMBER", "Region numbers must be unique positive integers"};
         if (r.id.empty() || r.name.empty() || !ids.insert(r.id).second || !r.rect.valid()) return {"REGION", "Unique region ids, names and positive physical sizes required"};
@@ -34,9 +33,15 @@ Error validateProfile(const CaptureProfile& p)
             std::int64_t(r.rect.y) + r.rect.height > std::numeric_limits<int>::max()) return {"REGION_COORDINATES", "Region extent exceeds physical coordinate range"};
         if (r.rect.width > 32768 || r.rect.height > 32768 ||
             std::int64_t(r.rect.width) * r.rect.height > 100000000) return {"REGION_SIZE", "Region exceeds preview memory limit"};
-        enabled = enabled || r.enabled;
     }
-    return enabled ? Error{} : Error{"NO_REGIONS", "Enable at least one region"};
+    return {};
+}
+Error validateProfile(const CaptureProfile& p)
+{
+    if (auto error = validateProfileDefinition(p); error) return error;
+    if (std::none_of(p.regions.begin(), p.regions.end(), [](const auto& r) { return r.enabled; }))
+        return {"NO_REGIONS", "Add and enable at least one region"};
+    return {};
 }
 Error validateScene(const SceneTemplate& s)
 {

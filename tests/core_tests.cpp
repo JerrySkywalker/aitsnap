@@ -34,6 +34,12 @@ int main()
         check(service.capture(req).captures[0].error.code == "UNCOVERED_REGION", "gap rejected");
         req.profile.regions.push_back(req.profile.regions.front());
         check(bool(validateProfile(req.profile)), "duplicate region rejected");
+        auto draft = req.profile; draft.regions.clear();
+        check(!validateProfileDefinition(draft) && validateProfile(draft).code == "NO_REGIONS", "empty persisted draft is not capture-ready");
+        draft.regions = {{"disabled", "Disabled", {0, 0, 16, 16}, false, 1}};
+        check(!validateProfileDefinition(draft) && validateProfile(draft).code == "NO_REGIONS", "disabled sources can be saved but cannot capture");
+        draft.regions.front().rect.width = 0;
+        check(bool(validateProfileDefinition(draft)), "disabled draft still enforces source geometry");
         check(bool(validateVersion(2)) && !validateVersion(1), "migration guard");
         check(safeSegment("../x:y") == ".._x_y" && safeSegment("CON.txt") == "_CON.txt" && safeSegment("..") == "unnamed", "safe segments");
         std::string longName; for (int i = 0; i < 40; ++i) longName += "\xe4\xb8\xad";

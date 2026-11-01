@@ -114,6 +114,24 @@ int main(int argc, char** argv)
         installLanguage("zh-CN"); check(uiText("外观") == QString::fromUtf8("外观"), "Chinese fallback");
         QDialogButtonBox chinese(QDialogButtonBox::Cancel); check(chinese.button(QDialogButtonBox::Cancel)->text().contains(QString::fromUtf8("取消")), "Chinese standard dialog buttons translated");
         installLanguage("en-US"); QDialogButtonBox english(QDialogButtonBox::Cancel); check(english.button(QDialogButtonBox::Cancel)->text().contains("Cancel"), "English standard dialog buttons restored");
+        auto draft = loaded; draft.profiles[0].regions.clear(); draft.profiles[0].sceneIds.clear(); draft.profiles[0].outputMode = "originals";
+        draft.scenes.clear(); draft.selectedSceneIds.clear(); draft.outputMode = "originals"; draft.clipboardRegion.clear();
+        const auto emptyPath = temp.filePath("empty-settings.json");
+        check(saveSettings(emptyPath, draft, error), "empty profile persistence");
+        Settings empty; check(loadSettings(emptyPath, empty, error) && empty.profiles[0].regions.empty(), "empty profile roundtrip");
+        {
+            MainWindow window(nullptr, emptyPath, "-"); settle();
+            check(!window.findChild<QPushButton*>("captureSave")->isEnabled() && !window.findChild<QPushButton*>("captureCopy")->isEnabled(), "empty-state capture actions disabled");
+            window.findChild<QPushButton*>("applySettings")->click(); settle();
+            check(loadSettings(emptyPath, empty, error) && empty.profiles[0].regions.empty(), "apply empty draft does not create fake regions");
+            const auto sequence = empty.sequence; bool captured = false; window.captureFinished = [&](auto) { captured = true; };
+            window.triggerCapture(0); settle();
+            check(loadSettings(emptyPath, empty, error) && empty.sequence == sequence && !captured, "programmatic capture also rejects empty profile before admission");
+            window.findChild<QPushButton*>("addRegion")->click(); settle();
+            check(window.findChild<QPushButton*>("captureSave")->isEnabled(), "adding source makes actions available");
+            window.findChild<QPushButton*>("applySettings")->click();
+            check(loadSettings(emptyPath, empty, error) && empty.profiles[0].regions.size() == 1 && empty.profiles[0].regions[0].displayNumber >= 4, "empty draft can add a source without number reuse");
+        }
         std::cout << "APPEARANCE_IDENTITY_MIGRATION_PASS\n"; return 0;
     } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
 }

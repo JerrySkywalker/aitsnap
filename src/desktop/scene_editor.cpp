@@ -1,6 +1,8 @@
-#include "appearance.h"
 // SPDX-License-Identifier: Apache-2.0
+#include "appearance.h"
 #include "scene_editor.h"
+#include <QAction>
+#include <QMenu>
 #include "scene_layer_item.h"
 #include "core/scene_geometry.h"
 #include "adapters/json_store.h"
@@ -137,6 +139,26 @@ void SceneEditor::buildUi()
     for (auto* value : {visible_, locked_, aspect_}) connect(value, &QCheckBox::toggled, this, [this] { applyProperties(); });
     connect(missing_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this] { applyProperties(); });
     connect(source_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this] { applyProperties(); });
+    auto layerAction=[this](const QString& title,const QString& id,const std::function<void()>& operation,const QKeySequence& key=QKeySequence{}) {
+        auto* action=new QAction(title,this);action->setObjectName(id);layers_->addAction(action);view_->addAction(action);
+        if(!key.isEmpty()){action->setShortcut(key);action->setShortcutContext(Qt::WidgetWithChildrenShortcut);}connect(action,&QAction::triggered,this,operation);return action;
+    };
+    layerAction(uiText("复制"),"layer.duplicate",[this]{duplicateSelection();},QKeySequence(int(Qt::CTRL)|int(Qt::Key_D)));
+    layerAction(uiText("删除图层"),"layer.delete",[this]{removeSelection();},QKeySequence::Delete);
+    layerAction(uiText("组合"),"layer.group",[this]{groupSelection(true);});layerAction(uiText("取消组合"),"layer.ungroup",[this]{groupSelection(false);});
+    for(bool visible:{true,false})layerAction(visible?uiText("显示图层"):uiText("隐藏图层"),visible?"layer.show":"layer.hide",[this,visible]{if(selected_.empty())return;pushUndo();for(auto& l:model_.layers)if(selected_.count(l.id))l.visible=visible;rebuild();});
+    for(bool locked:{true,false})layerAction(locked?uiText("锁定图层"):uiText("解锁图层"),locked?"layer.lock":"layer.unlock",[this,locked]{if(selected_.empty())return;pushUndo();for(auto& l:model_.layers)if(selected_.count(l.id))l.locked=locked;rebuild();});
+    for(bool front:{true,false})layerAction(front?uiText("置顶"):uiText("置底"),front?"layer.front":"layer.back",[this,front]{
+        if(selected_.empty())return;pushUndo();std::vector<core::Layer*> ordered;for(auto& l:model_.layers)ordered.push_back(&l);
+        std::stable_sort(ordered.begin(),ordered.end(),[](auto* a,auto* b){return a->zIndex<b->zIndex;});
+        std::stable_partition(ordered.begin(),ordered.end(),[&](auto* l){return front?selected_.count(l->id)==0:selected_.count(l->id)>0;});
+        for(int i=0;i<int(ordered.size());++i)ordered[std::size_t(i)]->zIndex=i;rebuild();
+    });
+    auto popup=[this](const QPoint& global){QMenu menu(this);menu.addSection(uiText("已选 %1 项").arg(selected_.size()));for(auto* action:layers_->actions()){action->setEnabled(!selected_.empty());menu.addAction(action);}menu.exec(global);};
+    layers_->setContextMenuPolicy(Qt::CustomContextMenu);connect(layers_,&QWidget::customContextMenuRequested,this,[this,popup](const QPoint& pos){auto* item=layers_->itemAt(pos);if(item&&!item->isSelected()){layers_->clearSelection();item->setSelected(true);}else if(!item)layers_->clearSelection();popup(layers_->viewport()->mapToGlobal(pos));});
+    view_->setContextMenuPolicy(Qt::CustomContextMenu);connect(view_,&QWidget::customContextMenuRequested,this,[this,popup](const QPoint& pos){auto* hit=graphics_->itemAt(view_->mapToScene(pos),view_->viewportTransform());while(hit&&!dynamic_cast<LayerItem*>(hit))hit=hit->parentItem();if(hit&&!hit->isSelected()){graphics_->clearSelection();hit->setSelected(true);}else if(!hit)graphics_->clearSelection();popup(view_->viewport()->mapToGlobal(pos));});
+    auto* sourceAdd=new QAction(uiText("添加到画布"),sourceList_);sourceAdd->setObjectName("source.addToCanvas");sourceList_->addAction(sourceAdd);sourceList_->setContextMenuPolicy(Qt::ActionsContextMenu);connect(sourceAdd,&QAction::triggered,this,[this]{addSource();});
+
 }
 void SceneEditor::pushUndo()
 {
@@ -202,6 +224,7 @@ void SceneEditor::syncSelection()
 void SceneEditor::refreshProperties()
 {
     loadingProperties_ = true;
+    for(auto* action:layers_->actions()) action->setEnabled(!selected_.empty());
     const auto indices = selectedIndices(); const bool one = indices.size() == 1;
     const std::vector<QWidget*> widgets{source_, x_, y_, width_, height_, rotation_, zIndex_, visible_, locked_, aspect_, cropX_, cropY_, cropWidth_, cropHeight_, missing_, group_, pinned_};
     for (auto* widget : widgets) widget->setEnabled(one);

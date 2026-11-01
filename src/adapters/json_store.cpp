@@ -64,7 +64,7 @@ bool profileFromJson(const QJsonObject& o, core::CaptureProfile& p, QString& err
         p.calibratedDisplays.push_back(display);
     }
     core::numberRegions(p);
-    const auto e = core::validateProfile(p);
+    const auto e = core::validateProfileDefinition(p);
     if (e) { error = qs(e.message); return false; }
     p.sceneIds.clear(); for (const auto& value : o["sceneIds"].toArray()) p.sceneIds.push_back(value.toString().toStdString());
     p.outputMode = o["outputMode"].toString("originals").toStdString(); p.clipboardSelection = o["clipboardSelection"].toString().toStdString();

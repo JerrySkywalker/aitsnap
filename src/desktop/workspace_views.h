@@ -11,6 +11,7 @@ public:
     explicit DisplayCanvas(QWidget* parent = nullptr);
     void setLayout(core::CaptureProfile profile, std::vector<core::Display> current, int selected);
     void highlightSources(std::vector<std::string> ids);
+    int regionAt(const QPoint&) const;
     std::function<void(int)> selected;
 protected:
     void paintEvent(QPaintEvent*) override;

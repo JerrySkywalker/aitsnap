@@ -32,6 +32,17 @@ static QImage smallImage(const QString& path)
     if (size.width() > 1200 || size.height() > 800) { size.scale({1200, 800}, Qt::KeepAspectRatio); reader.setScaledSize(size); }
     return reader.read();
 }
+static QSet<QString> selectionIds(QListWidget* list)
+{
+    QSet<QString> ids; for (const auto* item : list->selectedItems()) ids.insert(item->data(Qt::UserRole).toString()); return ids;
+}
+static void restoreSelection(QListWidget* list, int current, const QSet<QString>& ids, bool fallback)
+{
+    fallback = fallback && !list->property("selectionInitialized").toBool();
+    list->setCurrentItem(current >= 0 ? list->item(current) : nullptr, QItemSelectionModel::NoUpdate);
+    for (int row=0; row<list->count(); ++row) list->item(row)->setSelected(ids.contains(list->item(row)->data(Qt::UserRole).toString()) || (fallback && ids.empty() && row==current));
+    list->setProperty("selectionInitialized", true);
+}
 static RenderResult sceneThumbnail(core::SceneTemplate scene, const SceneSources& sources)
 {
     const auto size = QSize(scene.width, scene.height).scaled({720, 420}, Qt::KeepAspectRatio);
@@ -42,7 +53,7 @@ static RenderResult sceneThumbnail(core::SceneTemplate scene, const SceneSources
 }
 void MainWindow::refreshWorkspace()
 {
-    if (refreshingWorkspace_ || !sourceCards_ || settings_.profiles.empty()) return;
+    if (refreshingWorkspace_ || objectMenuOpen_ || !sourceCards_ || settings_.profiles.empty()) return;
     QScopedValueRollback<bool> guard(refreshingWorkspace_, true);
     auto candidate = settings_; QString error; if (!collectSettings(candidate, error)) candidate = settings_;
     const auto& profile = candidate.profiles[std::size_t(candidate.activeProfile)];
@@ -57,6 +68,7 @@ void MainWindow::refreshWorkspace()
         sample.context.stationId = candidate.station.toStdString(); sample.context.operatorId = candidate.operatorName.toStdString();
         const auto region = std::find_if(profile.regions.begin(), profile.regions.end(), [](const auto& r) { return r.enabled; });
         if (region != profile.regions.end()) filenamePreview_->setText(expandFilename(next, sample, *region, error) + "." + candidate.format.toLower());
+        else filenamePreview_->setText(uiText("添加并启用区域后显示文件名"));
     } else filenamePreview_->setText(error);
     std::vector<core::Display> displays; try { WinCaptureBackend backend; displays = backend.displays(); } catch (...) { /* Unknown layout is rendered explicitly. */ }
     int selected = regions_->currentRow(); if (selected < 0 && !profile.regions.empty()) selected = 0;
@@ -69,6 +81,7 @@ void MainWindow::refreshWorkspace()
     } else if (!overviewOutputKey_.isEmpty()) {
         for (int i = 0; i < int(profile.regions.size()); ++i) if (qs(profile.regions[std::size_t(i)].id) == overviewOutputKey_) { selected = i; regions_->setCurrentCell(i, 1); break; }
     }
+    const auto selectedCards=selectionIds(sourceCards_), selectedOverview=selectionIds(overviewSources_), selectedOutputs=selectionIds(overviewOutputs_);
     const QSignalBlocker blocker(sourceCards_), overviewBlock(overviewSources_), outputBlock(overviewOutputs_);
     sourceCards_->clear(); overviewSources_->clear(); overviewOutputs_->clear();
     const bool sameProfile = lastOutcome_ && lastOutcome_->batch.request.profile.id == profile.id;
@@ -98,10 +111,17 @@ void MainWindow::refreshWorkspace()
         }
         ++regionIndex;
     }
-    sourceCards_->setCurrentRow(selected); topology_->setLayout(profile, displays, selected);
-    overviewSources_->setCurrentRow(outputSources.empty() ? selected : -1);
+    restoreSelection(sourceCards_,selected,selectedCards,true); topology_->setLayout(profile, displays, selected);
+    restoreSelection(overviewSources_,outputSources.empty() ? selected : -1,selectedOverview,outputSources.empty());
     overviewTopology_->setLayout(profile, displays, outputSources.empty() ? selected : -1); overviewTopology_->highlightSources(outputSources);
     appearanceTopology_->setLayout(profile, displays, selected);
+    const bool canCapture = !core::validateProfile(profile);
+    for (const auto* name : {"captureSave", "captureCopy", "captureBoth"})
+        if (auto* button = findChild<QPushButton*>(name)) button->setEnabled(canCapture);
+    if (profile.regions.empty()) {
+        sourcePreview_->setImage({}, uiText("请先添加源区域")); preview_->setImage({}, uiText("请先添加源区域"));
+        sourceDetail_->setText(uiText("当前配置暂无源区域，可新建或屏幕框选。"));
+    }
     if (selected >= 0 && selected < int(profile.regions.size())) {
         const auto& region = profile.regions[std::size_t(selected)]; const auto source = sources.find(region.id);
         const auto image = source == sources.end() ? QImage{} : source->second.image;
@@ -140,6 +160,8 @@ void MainWindow::refreshWorkspace()
         if (item == scenes_->currentItem()) scenePreview_->setImage(thumbnail, caption);
     }
     if (scenes_->count() == 0) scenePreview_->setImage({}, uiText("尚无场景，请先新建拼图"));
+    for (int row=0; row<overviewOutputs_->count(); ++row) if(selectedOutputs.contains(overviewOutputs_->item(row)->data(Qt::UserRole).toString())) overviewOutputs_->item(row)->setSelected(true);
+    updateObjectActions();
     if (!overviewOutputs_->count()) { auto* empty = new QListWidgetItem(uiText("请在拼图场景中选择输出"), overviewOutputs_); empty->setFlags(Qt::NoItemFlags); }
 }
 static QJsonObject readManifest(const QString& path)
@@ -202,6 +224,7 @@ void MainWindow::selectBatch()
     const QMap<QString, QString> states{{"COMMITTED", uiText("已提交")}, {"QUEUED", uiText("排队中")}, {"RUNNING", uiText("正在写入")}, {"UNCERTAIN", uiText("待核对")}, {"FAILED", uiText("失败")}, {"RETRYABLE", uiText("等待重试")}};
     for (const auto& job : reportQueue_->jobs()) {
         const auto state = job["state"].toString(); auto* card = new QListWidgetItem(QFileInfo(job["target"].toObject()["documentPath"].toString()).fileName() + "\n" + states.value(state, state), reportCards_);
+        card->setData(Qt::UserRole, job["target"].toObject()["documentPath"].toString());
         card->setSizeHint({200, 74}); card->setToolTip(job["errorMessage"].toString());
         if (job["batchId"] == manifest["batchId"] && batchCards_->currentItem()) card->setIcon(batchCards_->currentItem()->icon());
     }

@@ -66,8 +66,13 @@ void DisplayCanvas::paintEvent(QPaintEvent*)
 void DisplayCanvas::mousePressEvent(QMouseEvent* event)
 {
     if (event->button() != Qt::LeftButton || !selected) return;
-    const auto point = transform_.inverted().map(QPointF(event->pos()));
-    for (int i = int(profile_.regions.size()) - 1; i >= 0; --i) if (physicalRect(profile_.regions[std::size_t(i)].rect).contains(point)) { selected(i); return; }
+    const auto index = regionAt(event->pos()); if (index >= 0) selected(index);
+}
+int DisplayCanvas::regionAt(const QPoint& position) const
+{
+    const auto point = transform_.inverted().map(QPointF(position));
+    for (int i = int(profile_.regions.size()) - 1; i >= 0; --i) if (physicalRect(profile_.regions[std::size_t(i)].rect).contains(point)) return i;
+    return -1;
 }
 ImagePreview::ImagePreview(QWidget* parent) : QWidget(parent) { setMinimumSize(220, 160); setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding); }
 void ImagePreview::setImage(QImage image, QString caption, QSize placeholder)
