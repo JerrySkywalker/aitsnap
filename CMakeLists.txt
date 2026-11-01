@@ -78,6 +78,7 @@ add_library(aitsnap-adapters STATIC
     src/desktop/region_editor.cpp
     src/adapters/scene_render.cpp
     src/desktop/scene_editor.cpp
+    src/desktop/desktop_activation.cpp
     src/desktop/appearance.cpp
     src/desktop/workspace_views.cpp
     resources/aitsnap.qrc
@@ -122,6 +123,9 @@ endif()
 target_link_libraries(aitsnap PRIVATE aitsnap-adapters psapi)
 set(aitsnap_targets aitsnap aitsnap-adapters aitsnap-word-bridge aitsnap-cli)
 if(BUILD_TESTING)
+    add_executable(aitsnap-desktop-activation-tests tests/desktop_activation_tests.cpp)
+    target_link_libraries(aitsnap-desktop-activation-tests PRIVATE aitsnap-adapters)
+    list(APPEND aitsnap_targets aitsnap-desktop-activation-tests)
     add_executable(aitsnap-desktop-tests tests/desktop_tests.cpp ${aitsnap_ui_sources})
     target_link_libraries(aitsnap-desktop-tests PRIVATE aitsnap-adapters dwmapi)
     add_test(NAME desktop-adapters COMMAND aitsnap-desktop-tests)

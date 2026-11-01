@@ -4,6 +4,7 @@
 #include "main_window.h"
 #include "compat/qt_widgets_compat.h"
 #include "desktop/appearance.h"
+#include "desktop/desktop_activation.h"
 
 #include <QApplication>
 #include <QString>
@@ -38,25 +39,11 @@ static QString modulePath(const QString& name)
     if (!module) return {}; wchar_t path[32768]{}; const auto size = GetModuleFileNameW(module, path, 32768);
     return size ? QFileInfo(QString::fromWCharArray(path, int(size))).canonicalFilePath() : QString{};
 }
-struct ExistingWindow { DWORD pid{}; HWND handle{}; };
-static BOOL CALLBACK findExistingWindow(HWND window, LPARAM parameter)
-{
-    auto& found = *reinterpret_cast<ExistingWindow*>(parameter); DWORD pid{};
-    GetWindowThreadProcessId(window, &pid);
-    if (pid != found.pid || GetWindow(window, GW_OWNER) || (GetWindowLongPtrW(window, GWL_EXSTYLE) & WS_EX_TOOLWINDOW)) return TRUE;
-    wchar_t title[256]{}; GetWindowTextW(window, title, 256);
-    if (QString::fromWCharArray(title).startsWith("AITSnap")) { found.handle = window; return FALSE; }
-    return TRUE;
-}
 static bool showExistingWindow(QLockFile& lock)
 {
     qint64 pid{}; QString host, name;
     if (!lock.getLockInfo(&pid, &host, &name) || pid <= 0) return false;
-    ExistingWindow found{DWORD(pid)}; EnumWindows(findExistingWindow, reinterpret_cast<LPARAM>(&found));
-    if (!found.handle) return false;
-    auto target = GetLastActivePopup(found.handle); if (!target || !IsWindowVisible(target)) target = found.handle;
-    AllowSetForegroundWindow(found.pid); ShowWindow(target, SW_RESTORE); SetForegroundWindow(target);
-    return IsWindowVisible(target);
+    return aitsnap::activateDesktopProcess(DWORD(pid));
 }
 
 // Opt-in, append-only phase evidence. It records no configuration/document contents.
@@ -112,7 +99,8 @@ int main(int argc, char* argv[])
 
     aitsnap::MainWindow window(nullptr, configuration, parser.isSet("smoke-report") ? QStringLiteral("-") : QString{}, [&trace](const QString& stage){trace.stage(stage);});
     window.installEventFilter(&trace);
-    window.winId(); // Keep a native main window available for activation when initially hidden in the tray.
+    window.winId(); // Keep an addressable target even while Qt has hidden the main window.
+    aitsnap::DesktopActivation activation(window);
     trace.stage("main-native-handle-ready");
     QTimer::singleShot(0,&app,[&trace]{trace.stage("event-loop-first-turn");});
     quint64 cpuBefore{}; QElapsedTimer idleClock;
