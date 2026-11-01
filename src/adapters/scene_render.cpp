@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "scene_render.h"
 #include "json_store.h"
+#include "desktop/appearance.h"
 #include <QCryptographicHash>
 #include <QDir>
 #include <QFile>
@@ -52,14 +53,18 @@ RenderResult renderScene(const core::SceneTemplate& scene, const SceneSources& s
     painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
     auto layers = scene.layers;
     std::sort(layers.begin(), layers.end(), [](const auto& a, const auto& b) { return a.zIndex == b.zIndex ? a.id < b.id : a.zIndex < b.zIndex; });
+    int layerNumber=0;
     for (const auto& layer : layers) {
+        ++layerNumber;
         if (!layer.visible) continue;
         const auto it = sources.find(layer.sourceRegionId);
         const bool missing = it == sources.end() || it->second.image.isNull() ||
             (!layer.sourceArtifactId.empty() && it->second.artifactId != layer.sourceArtifactId);
+        QString missingLabel;
         if (missing) {
-            if (layer.missingSourcePolicy == "fail") { painter.end(); result.image = {}; result.error = {"MISSING_SOURCE", "Missing/pinned source: " + layer.sourceRegionId}; return result; }
-            result.complete = false; result.warnings << "Missing source: " + qs(layer.sourceRegionId);
+            missingLabel=uiText("图层 %1 的来源不可用").arg(layerNumber);
+            if (layer.missingSourcePolicy == "fail") { painter.end(); result.image = {}; result.error = {"MISSING_SOURCE",missingLabel.toStdString()}; return result; }
+            result.complete = false; result.warnings << missingLabel;
             if (layer.missingSourcePolicy == "skip") continue;
         } else if (layer.crop.valid() && (layer.crop.x < 0 || layer.crop.y < 0 ||
             std::int64_t(layer.crop.x) + layer.crop.width > it->second.image.width() || std::int64_t(layer.crop.y) + layer.crop.height > it->second.image.height())) {
@@ -67,7 +72,7 @@ RenderResult renderScene(const core::SceneTemplate& scene, const SceneSources& s
         }
         const auto& d = layer.destination;
         painter.save(); painter.translate(d.x + d.width / 2, d.y + d.height / 2); painter.rotate(std::fmod(d.rotationDeg, 360)); painter.translate(-d.width / 2, -d.height / 2);
-        if (missing) { painter.fillRect(QRectF(0, 0, d.width, d.height), QColor("#5c2630")); painter.setPen(Qt::white); painter.drawText(QRectF(0, 0, d.width, d.height), Qt::AlignCenter | Qt::TextWordWrap, "MISSING\n" + qs(layer.sourceRegionId)); }
+        if (missing) { painter.fillRect(QRectF(0, 0, d.width, d.height), QColor("#5c2630")); painter.setPen(Qt::white); painter.drawText(QRectF(0, 0, d.width, d.height), Qt::AlignCenter | Qt::TextWordWrap,missingLabel); }
         else paintLayerLocal(painter, layer, it->second.image);
         painter.restore();
     }
