@@ -93,3 +93,21 @@ GDI4→4，共180张合成输出。模式间波动不解释为开启预览提升
 自身排除使WGC截图显示下层窗口，该图不记作AITSnap视觉证明，未关闭排除以绕过。实际操作仅用本应用UIA控件和系统输入。组合框弹出列表一次点击被窗口命中保护拒绝，保留限制；取消后通过正常开关/Tab完成三项关闭，未伪称点击预设成功。迷你窗作为所属主窗控件树中的已观察子窗操作，不构造HWND。合成夹具15分钟定时退出；只清理自建测试实例，无Owner进程/配置变更。
 
 W06 SOURCE/自动HOST=PASS；人工视觉、Word新增分支实际Office、Win10/Win7/Word2010等保持原分项HOLD，安装验证属于W07，不由本节预填通过。
+
+
+## 恢复检查点：桌面验证由物理 Escape 停止
+
+2026-11-02，Computer Use 返回“stopped by the user with the physical Escape key”，按工具要求停止本轮，不继续操作桌面。不是产品失败，也不是完整交付完成。PR40–46已合并；最新产品源码 `143e95c8591424adda85c2ad489beb7872e4c874`。PR46缺源提示回归在Qt6/Qt5的scene、appearance各2/2通过，原完整14/14及原生动作证据保留范围。
+
+第一份候选位于 `out/releases/0.8.0-candidate-001`，其三份工件复制保留于artifacts。第二份位于 `out/releases/0.8.0-candidate-002`；只完成封装阶段，不预填payload/readback、运行或安装通过。当前规范out安装包仍是第一份，尚不能作为最终交付推荐。0.8.0 MSI只读ProductState=-1（未安装），未调用安装器。
+
+恢复：核对工作树 `codex/aitsnap-080-delivery`、所有权和账本→恢复原48h/120h余额→完成candidate002静态清单/CAB/ZIP/Setup解包及普通/中文路径运行→依许可完成桌面增量验证→生成完整执行回执/更新清单→正常PR合并、同步main。安装器/新增真实Word/目标环境与人工视觉HOLD保持，禁止绕过先前拒绝。ledger已停止计费，不计用户等待；不得重置预算。
+
+
+## W07/W08 — 候选002及接续封存
+
+安全恢复后未调用Computer Use，未调用msiexec或真实Word。PR45 merge `fd0e98b8e2630c0739b64e8d7dc4db392452d91e`；PR46 merge `143e95c8591424adda85c2ad489beb7872e4c874`，远端40–46全部merged已复核。缺源可读编号的Qt6/Qt5 scene和appearance各2/2通过。
+
+候选002从PR46干净树封装：125项包manifest、127项MSI CAB、126项ZIP逐文件SHA匹配；安装表9个dialog/61控件、路径可见启用和启动勾选通过。Setup extract-only所得MSI等于独立MSI，未调用安装器。普通与中文空格路径在仅Windows PATH下真实隐藏事件循环退出0，Qt模块来自各自包内。自建中文便携副本卸载保留修改README和未知文件，不能代替MSI升级/卸载。候选001所有工件已保留；out三个标准工件现指候选002。
+
+产品源SHA、三工件SHA、实际运行范围、PR、M1–M5和原生环境阻断详见 [DELIVERY-RECEIPT.md](DELIVERY-RECEIPT.md)。W07现代候选PASS，安装/升级/新文字Office部分HOLD；W08材料完成，不代签Owner。预算按原账本累计，最终停止后机器汇总为权威，不重置原120h或本轮48h。
