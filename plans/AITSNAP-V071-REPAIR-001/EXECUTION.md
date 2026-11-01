@@ -80,3 +80,13 @@ W02源核对：ExitDlg使用MsiLaunchApp [#filekey] --show，条件含LAUNCH_AIT
 
 
 追加W02只读隔离检查：从默认AppLocalData的Owner配置复制到独立目录，只复制settings、不复制原Word作业。Qt6 offscreen复制配置smoke exit0、原配置SHA前后一致；构造33ms/首loop68ms。Qt5最小配置offscreen exit0，构造71ms/首loop135ms。三组日志都明确没有first-paint记录，phase-readback.json未伪造首帧。原机文档/原队列和已装应用未作实验，实际Finish白屏仍根因UNPROVEN、验收HOLD。完成现有安全源调查后进入W07候选集成，不能把诊断功能当白屏修复。
+
+## W07版本与最终源检查点
+
+PR32源码94f8034888bbf881e538cfd58945962fc2303458，merge 3c52c830fe755e29acca8a106e686dba82c04d31。W02保留PARTIAL，不把诊断当根因修复。
+
+集成分支codex/aitsnap-071-candidate：CMake/PE/runtime统一0.7.1，标题/关于改用构建版本宏；MSI默认版本及实表检查支持0.7.1，打包附中文README，操作手册与release说明更新且白屏HOLD醒目保留。
+
+最终源审阅发现删除当前配置后动态“当前配置”规则可能转到缺源备用配置。新增定向回归修复前exit1，修复后检查：有效备用保留规则，无来源空容器及缺少场景源的备用停用规则。修正f50172c4e1b349ad5ca68d150aba9624a43feb99，未改历史身份。两路完整受影响目标已重建exit0；Qt6/Qt5 core/context/appearance/scene-lifecycle/management/scene/report-queue/settings-commands各8/8 PASS，localization369及Python构建脚本语法/diff检查PASS。PE读取aitsnap显示FileVersion/ProductVersion均0.7.1。
+
+证据UX071-STARTUP/{qt6,qt5}-071-final-{build,tests}.log及dynamic-rule-before.log。冻结后只做候选包构建、文件回读、隔离隐藏smoke与回执，不重复无变化CI。真实桌面/安装Finish、OS/旧Word和人工边界继续HOLD，尚不能正式声称0.7.1全验收完成。

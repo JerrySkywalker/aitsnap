@@ -7,7 +7,11 @@ and associating them with test execution records.
 
 ## Status
 
-The 0.7.0 candidate adds a visual workspace, source/display and scene browsers,
+The 0.7.1 repair candidate adds scoped bulk object management, shared context actions,
+aligned workbench panels and optional daily Word reports, and fixes the reproduced
+scene-save lifetime crash. Installer-Finish white-screen root cause remains
+UNPROVEN/HOLD; startup phase diagnostics are included. It retains the 0.7.0
+visual workspace, source/display and scene browsers,
 batch/report browsing, readable region identities and filenames, a shared multi-size
 icon, and Settings → Appearance with Chinese/English and system/light/dark modes.
 It retains capture, tray/hotkeys, scene editing, durable Word jobs and read-only

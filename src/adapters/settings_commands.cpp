@@ -71,7 +71,17 @@ RemovalSummary removeProfiles(Settings& s, QJsonArray& rules, const QStringList&
     int active = 0; for (int i = 0; i < int(s.profiles.size()); ++i) if (s.profiles[std::size_t(i)].id == activeId) active = i;
     for (int i = 0; i < rules.size(); ++i) {
         auto rule = rules[i].toObject();
-        if (removed.contains(rule["profileId"].toString()) && rule["enabled"].toBool()) { rule["enabled"] = false; rules[i] = rule; ++result.disabledRules; }
+        bool affected=removed.contains(rule["profileId"].toString());
+        if(rule["profileId"].toString().isEmpty() && removed.contains(qs(activeId))) {
+            const auto& replacement=s.profiles[std::size_t(active)];
+            affected=std::none_of(replacement.regions.begin(),replacement.regions.end(),[](const auto& r){return r.enabled;});
+            for(const auto& id:rule["sceneIds"].toArray()) {
+                const auto scene=std::find_if(s.scenes.begin(),s.scenes.end(),[&](const auto& value){return qs(value.id)==id.toString();});
+                if(scene==s.scenes.end()){affected=true;continue;}
+                affected|=std::any_of(scene->layers.begin(),scene->layers.end(),[&](const auto& layer){return layer.visible && std::none_of(replacement.regions.begin(),replacement.regions.end(),[&](const auto& r){return r.enabled && r.id==layer.sourceRegionId;});});
+            }
+        }
+        if (affected && rule["enabled"].toBool()) { rule["enabled"] = false; rules[i] = rule; ++result.disabledRules; }
     }
     selectProfile(s, active); return result;
 }

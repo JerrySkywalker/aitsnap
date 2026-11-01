@@ -17,6 +17,13 @@ int main(int argc, char** argv)
         core::SceneTemplate first; first.id="s1"; first.name="First"; first.layers.push_back({"l1","r1"});
         auto second=first; second.id="s2"; second.name="Second"; second.layers[0].sourceRegionId="r2"; s.scenes={first,second}; selectProfile(s,0);
         QJsonArray rules{QJsonObject{{"enabled",true},{"sceneIds",QJsonArray{"s1"}},{"profileId","p1"}},QJsonObject{{"enabled",true},{"sceneIds",QJsonArray{"s2"}},{"profileId","p2"}}};
+        {
+            auto fallback=s;QJsonArray dynamic{QJsonObject{{"enabled",true},{"profileId",""},{"sceneIds",QJsonArray{"s1"}}}};
+            removeProfiles(fallback,dynamic,{"p1"},"Default");check(dynamic[0].toObject()["enabled"].toBool(),"dynamic rule keeps valid replacement profile");
+            removeProfiles(fallback,dynamic,{"p2"},"Default");check(!dynamic[0].toObject()["enabled"].toBool(),"dynamic rule disabled when replacement profile has no capture sources");
+            fallback=s;fallback.profiles[1].regions.erase(fallback.profiles[1].regions.begin());dynamic[0]=QJsonObject{{"enabled",true},{"profileId",""},{"sceneIds",QJsonArray{"s1"}}};
+            removeProfiles(fallback,dynamic,{"p1"},"Default");check(!dynamic[0].toObject()["enabled"].toBool(),"dynamic scene override disabled when replacement profile lacks its source");
+        }
         auto result=removeRegions(s,rules,"p1",{"r1"});
         check(result.removed==1 && s.profiles[0].regions.size()==1 && s.profiles[0].nextRegionNumber==9,"region identity/highwater preserved");
         check(s.scenes.size()==2 && s.profiles[0].sceneIds==std::vector<std::string>{"s2"} && s.clipboardRegion.isEmpty(),"keep templates, remove only affected current outputs");

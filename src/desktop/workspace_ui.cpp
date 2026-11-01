@@ -39,7 +39,7 @@ void MainWindow::buildUi()
 {
     auto* central = new QWidget(this); auto* outer = new QVBoxLayout(central); outer->setContentsMargins(18, 16, 18, 12); outer->setSpacing(12);
     auto* titleRow = new QHBoxLayout;
-    auto* title = new QLabel("AITSnap 0.7.0"); title->setStyleSheet("font-size:25px;font-weight:600;"); titleRow->addWidget(title);
+    auto* title = new QLabel(QString("AITSnap %1").arg(AITSNAP_VERSION)); title->setStyleSheet("font-size:25px;font-weight:600;"); titleRow->addWidget(title);
     titleRow->addWidget(new QLabel(uiText("多屏证据工作台"))); titleRow->addStretch();
     profiles_ = new QComboBox; profiles_->setObjectName("profiles"); for (const auto& p : settings_.profiles) profiles_->addItem(qs(p.name)); profiles_->setCurrentIndex(settings_.activeProfile);
     titleRow->addWidget(new QLabel(uiText("截图配置"))); titleRow->addWidget(profiles_);
@@ -195,7 +195,7 @@ void MainWindow::buildUi()
     auto* metadata = makeForm(); testId_ = new QLineEdit(settings_.testId); device_ = new QLineEdit(settings_.device); station_ = new QLineEdit(settings_.station); operator_ = new QLineEdit(settings_.operatorName); metadata->addRow(uiText("试验标识"), testId_); metadata->addRow(uiText("设备标识"), device_); metadata->addRow(uiText("工位"), station_); metadata->addRow(uiText("操作员"), operator_);
     auto* contextButton = new QPushButton(uiText("静态目录 / 执行事件 / 选择截图上下文")); contextButton->setObjectName("openContextStore"); metadata->addRow(contextButton); contextStatus_ = new QLabel(uiText("截图上下文：未关联。事件到达不会自动切换当前上下文。")); contextStatus_->setWordWrap(true); metadata->addRow(contextStatus_); connect(contextButton, &QPushButton::clicked, this, [this] { showContextStore(); });
     auto* rules = new QPushButton(uiText("事件截图规则（默认无自动规则）")); rules->setObjectName("editEventRules"); metadata->addRow(rules); connect(rules, &QPushButton::clicked, this, [this] { editEventRules(); }); hostStatus_ = new QLabel; hostStatus_->setWordWrap(true); metadata->addRow(hostStatus_);
-    auto* about = makeForm(); about->addRow(new QLabel("AITSnap 0.7.0")); auto* aboutNote = new QLabel(uiText("多屏截图、托盘操作、自由拼图与 Word 报告。Word 报告需要已安装 Microsoft Word。截图、配置和报告保存在本机。")); aboutNote->setWordWrap(true); about->addRow(aboutNote);
+    auto* about = makeForm(); about->addRow(new QLabel(QString("AITSnap %1").arg(AITSNAP_VERSION))); auto* aboutNote = new QLabel(uiText("多屏截图、托盘操作、自由拼图与 Word 报告。Word 报告需要已安装 Microsoft Word。截图、配置和报告保存在本机。")); aboutNote->setWordWrap(true); about->addRow(aboutNote);
     for (auto* line : {profileName_, filename_, testId_, device_, station_, operator_}) connect(line, &QLineEdit::textChanged, this, [refreshTimer] { refreshTimer->start(); });
     connect(categories, &QListWidget::currentRowChanged, settingPages, &QStackedWidget::setCurrentIndex); categories->setCurrentRow(0);
     connect(navigation_, &QListWidget::currentRowChanged, this, [this](int index) { pages_->setCurrentIndex(index); if (index == 1) sourceViews_->setCurrentIndex(0); if (index == 3) refreshBatches(); }); navigation_->setCurrentRow(0);
