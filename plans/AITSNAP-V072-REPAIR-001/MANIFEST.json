@@ -1,19 +1,19 @@
 {
   "package": "AITSNAP-V072-REPAIR-001",
-  "status": "CANDIDATE_READY_INSTALLATION_PENDING_OWNER",
+  "status": "INSTALLED_WIN11_VERIFIED_OWNER_MANUAL_WIZARD_AGENT_POSTCHECK",
   "version": "0.7.2",
   "candidateSourceCommit": "ec82339c78304e67e5d8b3b5937134608ba39972",
   "parentBudget": "AITSNAP-V1-GOAL-TRAIN-001 existing cumulative120h",
   "files": [
     {
       "path": "DELIVERY-RECEIPT.md",
-      "bytes": 4369,
-      "sha256": "e4523777589f1930212d9cf54cf21d728e93d14d7198d40e8d488e0829c28122"
+      "bytes": 5478,
+      "sha256": "4b43bc98427d5352a20ca2102158e45fa6c694392de5f70fb7db5317b7a639ee"
     },
     {
       "path": "EXECUTION.md",
-      "bytes": 8973,
-      "sha256": "b07e9b2fbf6d4aef1840eca02bdd609dff1283fa0b11fa7048d1ed6e9c15ac99"
+      "bytes": 9965,
+      "sha256": "8ec1a1cd889ea75c59353b737a0cff65abaffdf699d4e19e80c2519f70caa1ac"
     }
   ]
 }

@@ -1,6 +1,6 @@
-# AITSnap 0.7.2 候选与待安装回执
+# AITSnap 0.7.2 安装与修正闭环回执
 
-**软件修正和完整包已完成，实际安装尚未完成。最后核对的已安装版本仍为0.7.1；不能宣称0.7.2已安装或Finish全流程已通过。**
+**0.7.2 已在当前Win11主机完成安装闭环：Owner执行向导并确认完成页启动正常；agent复核安装内容、首次运行现场及同进程托盘隐藏/恢复。Win10/Win7/Word2010资格仍独立HOLD。**
 
 ## 已完成
 
@@ -22,18 +22,22 @@ Qt6/Qt5宿主各8/8定向集成；两路原生4屏5合成来源的按钮副作�
 | [AITSnap-0.7.2-windows-x64-setup.exe](C:/Dev/src/aitsnap/out/AITSnap-0.7.2-windows-x64-setup.exe) | 18512384 | `d34199f17dbfb25a23b485f95a4743ccc0fd1d24352beda18c2f36afc19a6bd7` |
 | [AITSnap-0.7.2-windows-x64.zip](C:/Dev/src/aitsnap/out/AITSnap-0.7.2-windows-x64.zip) | 18545035 | `7251eafa09db4bdb64611584108c6ca8afb5851915b596562620963f326036f4` |
 
-## 安装阻断和下一步
+## 实际安装与启动闭环
 
-品牌Setup已实际启动系统安装器，返回窗口AITSnap 0.7.2安装向导（PID35448）。读取该窗口时Computer Use明确拒绝：`product policy blocks this app: msiexec.exe`。没有点击安装，也没有通过CLI安装、代理UI、重命名或提权绕过。最后只读文件核对仍为0.7.1，旧PID54396未被终止，原配置/规则已在preinstall下备份。
+安装器控制曾被产品策略拒绝，原文`product policy blocks this app: msiexec.exe`。该限制没有被撤销或绕过。Owner按已给步骤退出旧版、手动完成0.7.2向导并保留立即启动，随后明确回复“已安装，完成后窗口正常”。欢迎/路径/安装/完成页点击属于Owner执行，不冒充agent自动点击证明。
 
-已通过异步问题请求Owner从托盘退出旧版，手动完成欢迎→路径→安装→完成，保留“立即启动AITSnap”，并报告结果。此回答尚未收到，不把超时当批准/验收。后续先核对安装目录EXE SHA/版本与包一致、保留原配置哈希，再观察Finish首次窗口；不要先手动二次启动掩盖首次失败。确认后才能继续托盘隐藏/重开、冷启动和已安装动作验证。
+在任何主动二次启动前，agent只读核对实际安装目录`C:/Users/jerry/AppData/Local/Programs/AITSnap`：EXE FileVersion/ProductVersion均0.7.2，主EXE SHA`8e26588c37ebbcd1328df0e92b9f223f65eb8b0255e5ecb7a6dae56caea5b192`，并逐项匹配全部125个MSI文件，无差异。原0.7.1 PID54396已退出，新安装目录进程PID56060命令`--show`；Computer Use直接观察该现有窗口的0.7.2标题、完整控件树/画面、三动作及实际默认快捷键，客户区非白屏。
 
-工具/原生阻断之外的已授权独立源码、定向验证、版本和离线包路线均已完成。不能把源码绿灯当真实安装验收；Windows10/Win7/Word2010和Owner人工资格仍单独HOLD。
+冷启动证据为本次安装完成后新PID的首次打开，由Owner报告与agent现场复核共同支持；没有额外强制结束Owner进程来制造另一次冷启动。随后agent用Alt+F4关闭到托盘，返回窗口清单中主窗消失而PID56060继续存在；正常打开已安装程序后，同PID及HWND24908086恢复，完整UI正常，实际点击工作台成功。原配置/规则相对preinstall快照哈希未变，未触发Owner截图或改写捕获历史。
+
+原生截图与文字证据在`out/releases/0.7.2-candidate-001/installed-validation/`，含finish-observation、tray-restored及receipt.json。完整机器回执`out/AITSnap-0.7.2-EXECUTION-RECEIPT.json`已由pending更新为已安装验证。包仍来自PR37的干净源码，安装文件与已交付包完全一致，无需重复改包或无变化CI。
+
+本轮安装/启动目标完成。保留边界：本机为Win11，不是Win10/Win7；Word2010及额外0.7.2包内Word探针未执行（后者受先前自动审批拒绝，Word实现未变）；不把本轮结果写成原列车M3全目标资格或Owner全面视觉/硬件验收。
 
 ## 恢复与预算
 
-本轮源码PR：[35](https://github.com/JerrySkywalker/aitsnap/pull/35)、[36](https://github.com/JerrySkywalker/aitsnap/pull/36)、[37](https://github.com/JerrySkywalker/aitsnap/pull/37)，均同会话审阅、正常预期head合并，无独立审查/配置Actions声明。完整阶段证据见EXECUTION.md及ignored UX072-AUDIT/ACTIONS/INTEGRATION、out/releases/0.7.2-candidate-001。
+本轮源码PR：[35](https://github.com/JerrySkywalker/aitsnap/pull/35)、[36](https://github.com/JerrySkywalker/aitsnap/pull/36)、[37](https://github.com/JerrySkywalker/aitsnap/pull/37)；[38](https://github.com/JerrySkywalker/aitsnap/pull/38)记录先前人工接续边界。均同会话审阅、正常预期head合并，无独立审查/配置Actions声明。完整阶段证据见EXECUTION.md及ignored UX072-AUDIT/ACTIONS/INTEGRATION、out/releases/0.7.2-candidate-001。
 
-原120h累计账未重置：快照累计15.1484h，余104.8516h。当前072-W04待人工安装；最终计费以原ledger为准，等待外部动作时停止本轮计费，不标目标完成。
+原120h累计账未重置：快照累计15.1484h，余104.8516h。此为此前等待人工安装时的历史快照。072-W04已闭环，最终计费以原ledger及机器回执budgetFinal为准；原120h账不续期。
 
-收到Owner结果后先核对现有worktree/HEAD与原ledger再恢复；不重放已完成CI、不改旧job、不假定安装已完成。不恢复被工具禁止的安装器控制。
+Owner结果已收到并复核。后续从当前main、候选sourceCommit、artifact SHA及原ledger恢复；不重放CI/旧job，不恢复被工具禁止的安装器控制。
