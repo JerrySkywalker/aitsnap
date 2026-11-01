@@ -69,3 +69,5 @@ Owner回复“已安装，完成后窗口正常”。在任何二次启动前核
 随后Alt+F4主窗从可见窗口清单消失、PID56060仍在；正常打开已安装EXE后同PID/HWND24908086恢复，画面/控件正常、工作台实际点击通过。配置/规则哈希仍与preinstall一致，没有截图或重写Owner历史。安装后的新PID与Owner首次正常报告构成冷启动证据，不声明另做强制退出重启。UI点击向导由Owner执行，agent未控制被禁止的msiexec。
 
 机器回执和DELIVERY-RECEIPT已从pending改为当前Win11已安装闭环；其他系统/旧Word及全面人工资格保持独立HOLD。仅更新文档，候选源码ec82339和已安装包字节不变，不重跑无变化CI。
+
+最终只读登记检查：MsiQueryProductStateW新0.7.2为5、旧0.7.1为-1，MsiGetProductInfoW版本0.7.2；平铺HKCU键未找到仅为发现位置假设不成立，不当作安装失败。四个Qt/Windows平台模块实际均加载自安装目录。原始msi-registration.json及loaded-modules.json留存。
