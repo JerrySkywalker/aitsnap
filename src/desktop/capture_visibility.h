@@ -4,6 +4,7 @@
 #include <vector>
 class QWidget;
 namespace aitsnap {
+void setOwnCaptureExclusionEnabled(bool);
 bool excludeOwnCaptureWindow(QWidget&);
 std::vector<core::Rect> unexcludedOwnWindowRects();
 }

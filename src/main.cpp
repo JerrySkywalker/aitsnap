@@ -68,6 +68,7 @@ int main(int argc, char* argv[])
     QCommandLineParser parser; parser.addHelpOption(); parser.addVersionOption();
     parser.addOption(QCommandLineOption("tray", "Start in tray"));
     parser.addOption(QCommandLineOption("show", "Open the main window, overriding the saved tray preference"));
+    parser.addOption(QCommandLineOption("compatible-display", "Use compatibility display for this launch; does not rewrite settings"));
     parser.addOption(QCommandLineOption("data-dir", "Explicit configuration/evidence directory", "directory"));
     parser.addOption(QCommandLineOption("startup-trace", "Write startup phase evidence to a new JSONL file (no content capture)", "new-jsonl"));
     parser.addOption(QCommandLineOption("smoke-report", "Hidden event-loop/dependency smoke; create a new JSON receipt", "new-json"));
@@ -97,7 +98,7 @@ int main(int argc, char* argv[])
     trace.stage("single-instance-lock-acquired");
     QApplication::setQuitOnLastWindowClosed(false);
 
-    aitsnap::MainWindow window(nullptr, configuration, parser.isSet("smoke-report") ? QStringLiteral("-") : QString{}, [&trace](const QString& stage){trace.stage(stage);});
+    aitsnap::MainWindow window(nullptr, configuration, parser.isSet("smoke-report") ? QStringLiteral("-") : QString{}, [&trace](const QString& stage){trace.stage(stage);}, parser.isSet("compatible-display"));
     window.installEventFilter(&trace);
     window.winId(); // Keep an addressable target even while Qt has hidden the main window.
     aitsnap::DesktopActivation activation(window);

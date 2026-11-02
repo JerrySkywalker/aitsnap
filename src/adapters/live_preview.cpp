@@ -21,7 +21,7 @@ LiveSnapshot sampleLiveSources(const core::CaptureProfile& input,core::ICaptureB
         const auto size=std::int64_t(region.rect.width)*region.rect.height;
         if(!region.rect.valid() || pixels+size>32000000){region.enabled=false;result.issues[region.id]=uiText("实时预览像素预算已满，请减少启用区域。");continue;}
         if(std::any_of(blocked.begin(),blocked.end(),[&](const auto& rect){return core::intersect(region.rect,rect).has_value();})){
-            region.enabled=false;result.issues[region.id]=uiText("预览窗与来源重叠，请移出截图区域。");
+            region.enabled=false;result.issues[region.id]=uiText("AITSnap 窗口与来源重叠，请移开窗口后预览；正式截图仍会隐藏自身。");
         }
         if(region.enabled)pixels+=size;
     }

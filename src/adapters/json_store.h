@@ -26,6 +26,7 @@ struct Settings {
     bool startInTray{};
     bool livePreviewEnabled{true};int livePreviewFps{2};
     QString language{"system"}, colorMode{"system"};
+    bool compatibleDisplay{true};
     std::vector<core::SceneTemplate> scenes;
     QStringList selectedSceneIds;
     QString outputMode{"originals"};

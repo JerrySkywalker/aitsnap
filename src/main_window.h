@@ -27,7 +27,7 @@ class LivePreviewService;class LiveOutputWindow;class SceneEditor;
 class MainWindow final : public QMainWindow
 {
 public:
-    explicit MainWindow(QWidget* parent = nullptr, QString configurationPath = {}, QString pipeName = {}, std::function<void(const QString&)> startupStage = {});
+    explicit MainWindow(QWidget* parent = nullptr, QString configurationPath = {}, QString pipeName = {}, std::function<void(const QString&)> startupStage = {}, bool forceCompatibleDisplay = false);
     ~MainWindow() override;
     void triggerCapture(int mode);
     bool startInTray() const { return settings_.startInTray; }
@@ -46,6 +46,7 @@ private:
     QMenu* sceneMenu_{};
     QComboBox *profiles_{}, *format_{}, *clipboard_{};
     QComboBox *language_{}, *colorMode_{};
+    QCheckBox* compatibleDisplay_{};
     QLineEdit *profileName_{}, *directory_{}, *filename_{}, *saveKey_{}, *copyKey_{}, *bothKey_{};
     QLineEdit* alternateKeys_[3]{};
     QCheckBox* hotkeyEnabled_[3]{};
@@ -90,6 +91,7 @@ private:
     QAction* pauseCaptureAction_{};
     MiniCaptureWindow* mini_{};
     bool restoreMiniAfterCapture_{};
+    bool restoreMainAfterCapture_{};
     void showMiniWindow();
     LivePreviewService* livePreview_{};QCheckBox* livePreviewEnabled_{};QComboBox* livePreviewRate_{};QLabel* livePreviewStatus_{};
     std::vector<LiveOutputWindow*> liveOutputs_;std::vector<QWidget*> restoreLiveWindows_;

@@ -448,5 +448,8 @@
   "全局热键暂不可用；仍可编辑和使用鼠标截图。%1": "Global hotkeys unavailable; editing and mouse capture remain available. %1",
   "配置已保存 · 全局热键暂不可用，仍可编辑和使用鼠标截图。%1": "Settings saved · Global hotkeys unavailable; editing and mouse capture remain available. %1",
   "配置已保存 · 离开热键输入框后恢复注册": "Settings saved · Hotkeys resume when you leave the shortcut field",
-  "%1 的快捷键“%2”注册失败（冲突或系统限制，Win32 %3）。请更换该键，或关闭此动作的全局热键。": "Could not register %1 shortcut \"%2\" (conflict or system restriction, Win32 %3). Choose another key or disable global hotkeys for this action."
+  "%1 的快捷键“%2”注册失败（冲突或系统限制，Win32 %3）。请更换该键，或关闭此动作的全局热键。": "Could not register %1 shortcut \"%2\" (conflict or system restriction, Win32 %3). Choose another key or disable global hotkeys for this action.",
+  "兼容显示（避免部分显卡黑屏，下次启动生效）": "Compatibility display (avoids blank windows on some GPUs; restart required)",
+  "推荐保持开启。正式截图临时隐藏本程序；实时预览遇自身遮挡会提示。关闭后使用 Windows 窗口排除，部分本机或虚拟显示驱动可能黑屏。": "Recommended. Capture temporarily hides AITSnap; live preview reports overlapping windows. Disabling this uses Windows content exclusion, which can blank windows on some physical or virtual display drivers.",
+  "AITSnap 窗口与来源重叠，请移开窗口后预览；正式截图仍会隐藏自身。": "An AITSnap window overlaps this source. Move it for live preview; formal capture will hide AITSnap."
 }

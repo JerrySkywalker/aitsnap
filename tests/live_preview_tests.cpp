@@ -62,7 +62,7 @@ int main(int argc,char** argv)
             const auto origin=QGuiApplication::primaryScreen()->availableGeometry().topLeft()+QPoint(80,80);
             for(auto* widget:{&pattern,&overlay}){widget->setAttribute(Qt::WA_ShowWithoutActivating);widget->setGeometry(QRect(origin,QSize(160,100)));}
             pattern.setStyleSheet("background:#ff0000");overlay.setStyleSheet("background:#0000ff");pattern.show();overlay.show();settle(150);DwmFlush();
-            check(excludeOwnCaptureWindow(overlay),"native exclusion API supported");settle(150);DwmFlush();RECT rect{};check(GetWindowRect(reinterpret_cast<HWND>(overlay.winId()),&rect),"own overlay native bounds");
+            setOwnCaptureExclusionEnabled(true);check(excludeOwnCaptureWindow(overlay),"explicit opt-in native exclusion API supported");settle(150);DwmFlush();RECT rect{};check(GetWindowRect(reinterpret_cast<HWND>(overlay.winId()),&rect),"own overlay native bounds");
             WinCaptureBackend native;core::CaptureProfile p;p.id="native-live";p.name="Synthetic";p.calibratedDisplays=native.displays();p.regions={{"r","known red under blue",{rect.left+20,rect.top+20,16,16},true,1}};
             const auto actual=sampleLiveSources(p,native);check(actual.sources.size()==1 && actual.sources.at("r").image.pixelColor(4,4)==QColor(Qt::red),"actual GDI excluded window reveals underlying pixels, not black");
             std::cout<<"LIVE_NATIVE_EXCLUSION_PASS actual GDI exact red under excluded blue; span_ms="<<actual.displaySpanMs<<" elapsed_ms="<<actual.elapsedMs<<'\n';

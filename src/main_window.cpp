@@ -67,7 +67,7 @@ static QIcon appIcon()
 {
     return QIcon(":/brand/aitsnap.ico");
 }
-MainWindow::MainWindow(QWidget* parent, QString path, QString pipeName, std::function<void(const QString&)> startupStage) : QMainWindow(parent), configurationPath_(path.isEmpty() ? settingsPath() : path)
+MainWindow::MainWindow(QWidget* parent, QString path, QString pipeName, std::function<void(const QString&)> startupStage, bool forceCompatibleDisplay) : QMainWindow(parent), configurationPath_(path.isEmpty() ? settingsPath() : path)
 {
     const auto stage=[&](const char* name){if(startupStage)startupStage(QString::fromLatin1(name));};
     stage("main-constructor-enter");
@@ -75,6 +75,8 @@ MainWindow::MainWindow(QWidget* parent, QString path, QString pipeName, std::fun
     settings_ = defaultSettings(); QString loadError;
     settings_.outputDirectory = QFileInfo(configurationPath_).absolutePath() + "/captures";
     if (QFile::exists(configurationPath_)) loadSettings(configurationPath_, settings_, loadError);
+    if(forceCompatibleDisplay)settings_.compatibleDisplay=true;
+    setOwnCaptureExclusionEnabled(!settings_.compatibleDisplay);
     if (settings_.profiles.empty()) {
         WinCaptureBackend backend; core::CaptureProfile p; p.id = id(); p.name = uiText("默认多屏").toStdString();
         try { p.calibratedDisplays = backend.displays(); } catch (const std::exception& e) { loadError = QString::fromUtf8(e.what()); }
@@ -206,6 +208,7 @@ bool MainWindow::collectSettings(Settings& c, QString& e)
     for(int mode=0;mode<3;++mode)if(c.hotkeysEnabled[std::size_t(mode)] && primary[mode].trimmed().isEmpty() && alternate[mode].trimmed().isEmpty()){e=uiText("动作 %1 至少需要一个快捷键，或关闭该动作的热键。").arg(mode+1);return false;}
     c.testId = testId_->text(); c.device = device_->text(); c.station = station_->text(); c.operatorName = operator_->text(); c.startInTray = startTray_->isChecked();
     c.language = language_->currentData().toString(); c.colorMode = colorMode_->currentData().toString();
+    c.compatibleDisplay=compatibleDisplay_->isChecked();
     c.livePreviewEnabled=livePreviewEnabled_->isChecked();c.livePreviewFps=livePreviewRate_->currentData().toInt();
     c.outputMode = outputMode_->currentData().toString(); c.selectedSceneIds.clear();
     for (int i = 0; i < scenes_->count(); ++i) if (scenes_->item(i)->checkState() == Qt::Checked) c.selectedSceneIds.append(scenes_->item(i)->data(Qt::UserRole).toString());
@@ -311,8 +314,9 @@ QString MainWindow::startCapture(int mode, const QJsonObject& options, const QJs
     currentRequestId_ = qs(request.requestId);
     busy_=true;if(livePreview_)livePreview_->setActive(false);restoreLiveWindows_.clear();for(auto* window:liveOutputs_)if(window->isVisible()){restoreLiveWindows_.push_back(window);window->hide();}
     restoreMiniAfterCapture_=mini_ && mini_->isVisible();if(restoreMiniAfterCapture_)mini_->hide();
+    restoreMainAfterCapture_=isVisible();if(restoreMainAfterCapture_)hide();
     busy_ = true; updateCaptureActions(true); setStatus(aitsnap::uiText("正在后台采集 %1 个源区域…").arg(request.profile.regions.size())); QPointer<MainWindow> self(this);
-    const bool flushWindow=restoreMiniAfterCapture_ || !restoreLiveWindows_.empty();
+    const bool flushWindow=restoreMainAfterCapture_ || restoreMiniAfterCapture_ || !restoreLiveWindows_.empty();
     QThreadPool::globalInstance()->start(QRunnable::create([self, snapshot, request, mode,flushWindow] {
         if(flushWindow)DwmFlush();
         WinCaptureBackend backend; auto result = std::make_shared<CaptureOutcome>(captureToFiles(backend, snapshot, request, mode != 1, mode != 0));
@@ -343,7 +347,9 @@ void MainWindow::completeCapture(const std::shared_ptr<CaptureOutcome>& result, 
     for (const auto& o : result->batch.outputs) { if (o.status == "SAVED") ++saved; if (o.error) { ++failed; detail = qs(o.error.code + ": " + o.error.message); } }
     setStatus(aitsnap::uiText("已采集 %1 张 · 已保存 %2 张 · %3 ms%4").arg(captured).arg(saved).arg(result->elapsedMs, 0, 'f', 1).arg(failed ? " · " + detail : aitsnap::uiText(" · 完成")), failed > 0);
     for (const auto& c : result->batch.captures) if (c.image.valid()) { preview_->setImage(toQImage(c.image), regionLabel(c.region) + uiText(" · 最近批次")); break; }
-    busy_ = false; lastOutcome_ = result;if(restoreMiniAfterCapture_){restoreMiniAfterCapture_=false;mini_->showMini();}for(auto* window:restoreLiveWindows_)window->show();restoreLiveWindows_.clear(); if (captureFinished) captureFinished(result);
+    busy_ = false; lastOutcome_ = result;
+    if(restoreMainAfterCapture_){restoreMainAfterCapture_=false;const bool previous=testAttribute(Qt::WA_ShowWithoutActivating);setAttribute(Qt::WA_ShowWithoutActivating,true);show();setAttribute(Qt::WA_ShowWithoutActivating,previous);}
+    if(restoreMiniAfterCapture_){restoreMiniAfterCapture_=false;mini_->showMini();}for(auto* window:restoreLiveWindows_)window->show();restoreLiveWindows_.clear(); if (captureFinished) captureFinished(result);
     refreshWorkspace(); refreshBatches();
     if (mode != 1 && snapshot.report.enabled && !result->directory.isEmpty()) {
         QString error; if (!reportQueue_->enqueue(*result, snapshot.report, error)) { reportStatus_->setText(aitsnap::uiText("截图已完成，报告未入队：") + error); }
