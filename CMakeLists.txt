@@ -68,6 +68,7 @@ endif()
 add_library(aitsnap-adapters STATIC
     src/adapters/win_capture.cpp
     src/adapters/json_store.cpp
+    src/adapters/display_profiles.cpp
     src/adapters/settings_commands.cpp
     src/adapters/hotkeys.cpp
     src/adapters/capture_files.cpp
@@ -94,7 +95,7 @@ add_executable(aitsnap-word-bridge src/adapters/word_bridge_main.cpp)
 target_link_libraries(aitsnap-word-bridge PRIVATE aitsnap-adapters ole32 oleaut32 psapi)
 add_executable(aitsnap-cli src/cli_main.cpp)
 target_link_libraries(aitsnap-cli PRIVATE aitsnap-adapters)
-set(aitsnap_ui_sources src/main_window.cpp src/desktop/host_controller.cpp src/desktop/workspace_ui.cpp src/desktop/workspace_browser.cpp src/desktop/workspace_commands.cpp src/desktop/report_text_ui.cpp src/desktop/live_workspace.cpp)
+set(aitsnap_ui_sources src/main_window.cpp src/desktop/host_controller.cpp src/desktop/workspace_ui.cpp src/desktop/workspace_browser.cpp src/desktop/workspace_commands.cpp src/desktop/report_text_ui.cpp src/desktop/live_workspace.cpp src/desktop/display_profiles.cpp)
 add_executable(aitsnap WIN32
     src/main.cpp
     ${aitsnap_ui_sources}
@@ -128,6 +129,11 @@ endif()
 target_link_libraries(aitsnap PRIVATE aitsnap-adapters psapi)
 set(aitsnap_targets aitsnap aitsnap-adapters aitsnap-word-bridge aitsnap-cli)
 if(BUILD_TESTING)
+    add_executable(aitsnap-display-profile-tests tests/display_profile_tests.cpp ${aitsnap_ui_sources})
+    target_link_libraries(aitsnap-display-profile-tests PRIVATE aitsnap-adapters)
+    add_test(NAME display-profiles COMMAND aitsnap-display-profile-tests)
+    set_tests_properties(display-profiles PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 30)
+    list(APPEND aitsnap_targets aitsnap-display-profile-tests)
     add_executable(aitsnap-live-preview-tests tests/live_preview_tests.cpp)
     target_link_libraries(aitsnap-live-preview-tests PRIVATE aitsnap-adapters dwmapi)
     add_test(NAME live-preview COMMAND aitsnap-live-preview-tests)

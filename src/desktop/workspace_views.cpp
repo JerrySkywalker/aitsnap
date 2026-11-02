@@ -30,8 +30,6 @@ void DisplayCanvas::paintEvent(QPaintEvent*)
     p.drawText(QRect(16, 10, width() - 32, 44), Qt::AlignLeft | Qt::TextWordWrap,
         matches ? uiText("布局匹配 · 点击区域查看来源") : uiText("布局有变化或尚未确认 · 核对区域后确认布局"));
     auto displays = current_;
-    for (const auto& saved : profile_.calibratedDisplays)
-        if (std::none_of(displays.begin(), displays.end(), [&](const auto& d) { return d.id == saved.id; })) displays.push_back(saved);
     std::sort(displays.begin(), displays.end(), [](const auto& a, const auto& b) { return a.rect.x == b.rect.x ? a.rect.y < b.rect.y : a.rect.x < b.rect.x; });
     QRectF bounds;
     for (const auto& d : displays) bounds = bounds.united(physicalRect(d.rect));
@@ -51,7 +49,9 @@ void DisplayCanvas::paintEvent(QPaintEvent*)
     }
     std::vector<QRectF> badges;
     for (int i = 0; i < int(profile_.regions.size()); ++i) {
-        const auto& r = profile_.regions[std::size_t(i)]; const auto frame = transform_.mapRect(physicalRect(r.rect));
+        const auto& r = profile_.regions[std::size_t(i)];
+        if(std::none_of(current_.begin(),current_.end(),[&](const auto& d){return core::intersect(r.rect,d.rect).has_value();}))continue;
+        const auto frame = transform_.mapRect(physicalRect(r.rect));
         const bool highlighted = i == selected_ || std::find(highlighted_.begin(), highlighted_.end(), r.id) != highlighted_.end();
         QColor accent = palette().color(QPalette::Link); QColor fill = accent; fill.setAlpha(highlighted ? 100 : 35);
         const auto image=images_.find(r.id);if(image!=images_.end() && !image->second.isNull())p.drawImage(frame,image->second);
@@ -82,8 +82,12 @@ void DisplayCanvas::mousePressEvent(QMouseEvent* event)
 }
 int DisplayCanvas::regionAt(const QPoint& position) const
 {
+    if(current_.empty())return -1;
     const auto point = transform_.inverted().map(QPointF(position));
-    for (int i = int(profile_.regions.size()) - 1; i >= 0; --i) if (physicalRect(profile_.regions[std::size_t(i)].rect).contains(point)) return i;
+    for (int i = int(profile_.regions.size()) - 1; i >= 0; --i) {
+        const auto& region=profile_.regions[std::size_t(i)];
+        if(physicalRect(region.rect).contains(point) && std::any_of(current_.begin(),current_.end(),[&](const auto& d){return core::intersect(region.rect,d.rect).has_value();}))return i;
+    }
     return -1;
 }
 ImagePreview::ImagePreview(QWidget* parent) : QWidget(parent)

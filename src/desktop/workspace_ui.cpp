@@ -85,7 +85,10 @@ void MainWindow::buildUi()
     sourceViews_ = new QTabWidget; sourceViews_->setObjectName("sourceViews"); topology_ = new DisplayCanvas; topology_->setObjectName("sourceDisplayLayout");
     sourceViews_->addTab(topology_, uiText("显示器布局")); sourcePreview_ = new ImagePreview; sourcePreview_->setObjectName("sourceImagePreview"); sourceViews_->addTab(sourcePreview_, uiText("区域浏览")); sourceSplit->addWidget(sourceViews_); sourceSplit->setSizes({240, 750}); sources->addWidget(sourceSplit, 1);
     sourceDetail_ = subtitle(sources, {}); sourceDetail_->setObjectName("sourceDetails");
-    auto* buttons = new QHBoxLayout; auto* add = new QPushButton(uiText("添加区域")); auto* remove = new QPushButton(uiText("删除选中")); auto* calibrate = new QPushButton(uiText("确认当前屏幕布局")); auto* visual = new QPushButton(uiText("屏幕框选 / 拖动")); visual->setObjectName("editRegions");
+    displayBindingStatus_=subtitle(sources,{});displayBindingStatus_->setObjectName("displayBindingStatus");displayBindingStatus_->setTextFormat(Qt::PlainText);
+    auto* memoryRow=new QHBoxLayout;autoDisplayProfile_=new QCheckBox(uiText("自动恢复显示器组合的方案"));autoDisplayProfile_->setObjectName("displayAutoRestore");memoryRow->addWidget(autoDisplayProfile_);memoryRow->addStretch();
+    auto* forgetLayout=new QPushButton(uiText("解除当前组合绑定"));forgetLayout->setObjectName("forgetDisplayProfile");memoryRow->addWidget(forgetLayout);sources->addLayout(memoryRow);connect(forgetLayout,&QPushButton::clicked,this,[this]{forgetDisplayProfile();});
+    auto* buttons = new QHBoxLayout; auto* add = new QPushButton(uiText("添加区域")); auto* remove = new QPushButton(uiText("删除选中")); auto* calibrate = new QPushButton(uiText("确认当前布局并绑定此方案"));calibrate->setObjectName("bindDisplayProfile"); auto* visual = new QPushButton(uiText("屏幕框选 / 拖动")); visual->setObjectName("editRegions");
     regionEditAction_=new QAction(uiText("框选 / 编辑区域"),this);regionEditAction_->setObjectName("editRegionAction");regionEditAction_->setShortcut(QKeySequence("Ctrl+Shift+R"));addAction(regionEditAction_);regionEditAction_->setToolTip(uiText("配置截图区域，不执行截图。Ctrl+Shift+R（应用内）"));connect(regionEditAction_,&QAction::triggered,this,[this]{editRegions();});visual->setText(regionEditAction_->text()+" · Ctrl+Shift+R");visual->setToolTip(regionEditAction_->toolTip());
     buttons->addWidget(visual); buttons->addWidget(add); buttons->addWidget(remove); buttons->addWidget(calibrate); sources->addLayout(buttons);
     add->setObjectName("addRegion");
@@ -242,14 +245,7 @@ void MainWindow::buildUi()
         if (profiles_->currentIndex() != settings_.activeProfile) { const QSignalBlocker block(profiles_); profiles_->setCurrentIndex(settings_.activeProfile); }
     });
     connect(addProfile, &QPushButton::clicked, this, [this] { objectAction(ObjectKind::Profile, "new"); });
-    connect(calibrate, &QPushButton::clicked, this, [this] {
-        Settings candidate = settings_; QString e;
-        if (!collectSettings(candidate, e)) { setStatus(e, true); return; }
-        try { WinCaptureBackend b; candidate.profiles[std::size_t(candidate.activeProfile)].calibratedDisplays = b.displays(); }
-        catch (const std::exception& x) { setStatus(QString::fromUtf8(x.what()), true); return; }
-        if (configurationBlocked_) { setStatus(aitsnap::uiText("原配置无法读取。请先核对并应用配置。"), true); return; }
-        if (saveSettings(configurationPath_, candidate, e)) { settings_ = candidate; refreshWorkspace(); setStatus(aitsnap::uiText("已确认显示器布局。请核对物理区域后截图。")); } else setStatus(e, true);
-    });
+    connect(calibrate, &QPushButton::clicked, this, [this] {bindCurrentDisplayProfile();});
     setupObjectActions();
 }
 

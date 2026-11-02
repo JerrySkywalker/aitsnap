@@ -35,6 +35,7 @@ struct Settings {
 QString settingsPath();
 Settings defaultSettings();
 bool loadSettings(const QString& path, Settings& settings, QString& error);
+QJsonObject settingsJson(const Settings&);
 bool saveSettings(const QString& path, const Settings&, QString& error);
 QJsonObject profileJson(const core::CaptureProfile&);
 bool profileFromJson(const QJsonObject&, core::CaptureProfile&, QString& error);

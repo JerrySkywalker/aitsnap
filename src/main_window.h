@@ -12,7 +12,7 @@
 
 class QCheckBox; class QComboBox; class QLabel; class QLineEdit;
 class QMenu; class QSystemTrayIcon; class QTableWidget; class QListWidget;
-class QStackedWidget; class QTabWidget;
+class QStackedWidget; class QTabWidget; class QTimer;
 class QPushButton; class QAction;
 class QPlainTextEdit;class QFormLayout;
 
@@ -22,12 +22,13 @@ class ContextStore;
 class LocalPipeServer;
 class DisplayCanvas; class ImagePreview;
 class MiniCaptureWindow;
-class LivePreviewService;class LiveOutputWindow;class SceneEditor;
+class LivePreviewService;class LiveOutputWindow;class SceneEditor;class DisplayProfiles;
 
 class MainWindow final : public QMainWindow
 {
 public:
-    explicit MainWindow(QWidget* parent = nullptr, QString configurationPath = {}, QString pipeName = {}, std::function<void(const QString&)> startupStage = {}, bool forceCompatibleDisplay = false);
+    using DisplayInventory=std::function<std::vector<core::Display>()>;
+    explicit MainWindow(QWidget* parent = nullptr, QString configurationPath = {}, QString pipeName = {}, std::function<void(const QString&)> startupStage = {}, bool forceCompatibleDisplay = false, DisplayInventory inventory = {});
     ~MainWindow() override;
     void triggerCapture(int mode);
     bool startInTray() const { return settings_.startInTray; }
@@ -41,6 +42,18 @@ private:
     Settings settings_;
     QString configurationPath_;
     Hotkeys hotkeys_;
+    DisplayInventory displayInventory_;
+    std::unique_ptr<DisplayProfiles> displayProfiles_;
+    QTimer* displayChangeTimer_{};
+    QLabel* displayBindingStatus_{};
+    QCheckBox* autoDisplayProfile_{};
+    QByteArray displayDraftBaseline_;
+    QString displayMemoryWarning_;
+    std::vector<core::Display> observedDisplays_;
+    bool displayRestorePending_{true},loadingProfile_{},processingDisplays_{};
+    void setupDisplayProfiles();void scheduleDisplayChange();void processDisplayChange();
+    void rememberDisplayProfile();void refreshDisplayProfileStatus(const std::vector<core::Display>&);
+    void captureDisplayDraftBaseline();bool hasDisplayDraft();void bindCurrentDisplayProfile();void forgetDisplayProfile();
     QSystemTrayIcon* tray_{};
     QMenu* profileMenu_{};
     QMenu* sceneMenu_{};

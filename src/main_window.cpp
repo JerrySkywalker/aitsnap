@@ -16,6 +16,7 @@
 #include "adapters/live_preview.h"
 #include "desktop/live_output_window.h"
 #include "desktop/capture_visibility.h"
+#include "adapters/display_profiles.h"
 #include "core/scene_geometry.h"
 #include <QAction>
 #include <QApplication>
@@ -48,6 +49,7 @@
 #include <QSplitter>
 #include <QScrollArea>
 #include <QSignalBlocker>
+#include <QScopedValueRollback>
 #include <QSystemTrayIcon>
 #include <QStyle>
 #include <QTableWidget>
@@ -67,8 +69,9 @@ static QIcon appIcon()
 {
     return QIcon(":/brand/aitsnap.ico");
 }
-MainWindow::MainWindow(QWidget* parent, QString path, QString pipeName, std::function<void(const QString&)> startupStage, bool forceCompatibleDisplay) : QMainWindow(parent), configurationPath_(path.isEmpty() ? settingsPath() : path)
+MainWindow::MainWindow(QWidget* parent, QString path, QString pipeName, std::function<void(const QString&)> startupStage, bool forceCompatibleDisplay, DisplayInventory inventory) : QMainWindow(parent), configurationPath_(path.isEmpty() ? settingsPath() : path)
 {
+    displayInventory_=std::move(inventory);if(!displayInventory_)displayInventory_=[] {WinCaptureBackend backend;return backend.displays();};
     const auto stage=[&](const char* name){if(startupStage)startupStage(QString::fromLatin1(name));};
     stage("main-constructor-enter");
     setWindowTitle(aitsnap::uiText("AITSnap · 多屏截图")); resize(1120, 780); setWindowIcon(appIcon());
@@ -78,8 +81,8 @@ MainWindow::MainWindow(QWidget* parent, QString path, QString pipeName, std::fun
     if(forceCompatibleDisplay)settings_.compatibleDisplay=true;
     setOwnCaptureExclusionEnabled(!settings_.compatibleDisplay);
     if (settings_.profiles.empty()) {
-        WinCaptureBackend backend; core::CaptureProfile p; p.id = id(); p.name = uiText("默认多屏").toStdString();
-        try { p.calibratedDisplays = backend.displays(); } catch (const std::exception& e) { loadError = QString::fromUtf8(e.what()); }
+        core::CaptureProfile p; p.id = id(); p.name = uiText("默认多屏").toStdString();
+        try { p.calibratedDisplays = displayInventory_(); } catch (const std::exception& e) { loadError = QString::fromUtf8(e.what()); }
         for (int i = 0; i < 5; ++i) {
             const auto b = p.calibratedDisplays.empty() ? core::Rect{0, 0, 1920, 1080} : p.calibratedDisplays[std::size_t(i) % p.calibratedDisplays.size()].rect;
             p.regions.push_back({id(), uiText("区域 %1").arg(i + 1).toStdString(), {b.x + 60 + i * 20, b.y + 60 + i * 20, std::max(1, std::min(640, b.width / 2)), std::max(1, std::min(400, b.height / 2))}, true});
@@ -112,6 +115,7 @@ MainWindow::MainWindow(QWidget* parent, QString path, QString pipeName, std::fun
     if (!loadError.isEmpty()) setStatus(aitsnap::uiText("配置未载入，原文件保留：") + loadError + aitsnap::uiText("。核对后应用配置。"), true);
     stage("main-context-hotkeys-loaded");
     startHost(std::move(pipeName)); stage("main-constructor-return");
+    setupDisplayProfiles();
 }
 MainWindow::~MainWindow()
 {
@@ -156,6 +160,7 @@ void MainWindow::rebuildProfileMenu()
 }
 void MainWindow::loadProfile()
 {
+    QScopedValueRollback<bool> loading(loadingProfile_,true);
     const auto* previous = regions_->currentRow() >= 0 ? regions_->item(regions_->currentRow(), 1) : nullptr;
     const auto selectedId = previous ? previous->data(Qt::UserRole).toString() : QString{};
     const QSignalBlocker regionBlock(regions_);
@@ -178,7 +183,8 @@ void MainWindow::loadProfile()
     int index = clipboard_->findData(wantedClipboard); if (index >= 0) clipboard_->setCurrentIndex(index);
     settings_.clipboardRegion = clipboard_->currentData().toString();
     outputMode_->setCurrentIndex(std::max(0, outputMode_->findData(settings_.outputMode))); rebuildScenes(); rebuildSceneMenu();
-    refreshWorkspace();
+    captureDisplayDraftBaseline();rememberDisplayProfile();refreshWorkspace();
+    if(displayRestorePending_ && displayChangeTimer_)QTimer::singleShot(0,this,[this]{scheduleDisplayChange();});
 }
 void MainWindow::addRegion()
 {
