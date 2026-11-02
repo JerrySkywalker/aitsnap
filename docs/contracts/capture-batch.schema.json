@@ -162,8 +162,23 @@
         },
         "allOf": [
           {
-            "if": { "properties": { "outcome": { "const": "SUCCEEDED" } }, "required": ["outcome"] },
-            "then": { "properties": { "displayIds": { "minItems": 1 } } }
+            "if": {
+              "properties": {
+                "outcome": {
+                  "const": "SUCCEEDED"
+                }
+              },
+              "required": [
+                "outcome"
+              ]
+            },
+            "then": {
+              "properties": {
+                "displayIds": {
+                  "minItems": 1
+                }
+              }
+            }
           }
         ],
         "required": [
@@ -208,7 +223,8 @@
           },
           "relativePath": {
             "type": "string",
-            "minLength": 1
+            "minLength": 1,
+            "description": "Path relative to the image root selected by extensions.storageLayout. No absolute paths or parent traversal; resolve canonical containment and verify the recorded source SHA256."
           },
           "sha256": {
             "type": "string",
@@ -248,7 +264,17 @@
       ]
     },
     "extensions": {
-      "type": "object"
+      "type": "object",
+      "properties": {
+        "storageLayout": {
+          "type": "string",
+          "enum": [
+            "batch",
+            "flat"
+          ],
+          "description": "Absent/batch: artifacts relative to manifest directory. Flat: manifest must be <output>/.aitsnap/batches/<batch>/batch.json; artifact paths are relative to <output>, inferred only from that fixed hierarchy."
+        }
+      }
     }
   },
   "required": [

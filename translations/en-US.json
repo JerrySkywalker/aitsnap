@@ -468,5 +468,13 @@
   "布局记忆不可用，请先核对记忆文件。": "Display layout memory unavailable; check the memory file.",
   "当前没有活动显示器，未绑定方案。": "No active displays; profile was not bound.",
   "已绑定当前显示器组合与方案，请核对物理区域后截图。": "Bound profile to current display layout. Check physical regions before capture.",
-  "已解除当前组合绑定，方案和历史图片保留。": "Display layout unbound. Profiles and saved images are retained."
+  "已解除当前组合绑定，方案和历史图片保留。": "Display layout unbound. Profiles and saved images are retained.",
+  "每次截图新建批次文件夹": "Create a batch folder for each capture",
+  "图片直接保存到输出目录": "Save images directly in the output folder",
+  "图片保存方式": "Image folder mode",
+  "直接保存时重名自动编号；批次记录保存在 .aitsnap 子目录，仍可历史重排和加入 Word。JPEG 会保留无损源证据。": "Direct mode numbers duplicate names. Batch records stay in .aitsnap for historical composition and Word reports; JPEG retains lossless source evidence.",
+  "OLED 黑": "OLED black",
+  "文字字段规则与示例": "Report text fields and examples",
+  "Word 文字字段帮助": "Word report text field help",
+  "帮助文件无法读取。": "The help document could not be loaded."
 }

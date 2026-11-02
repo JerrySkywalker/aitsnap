@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "report_queue.h"
+#include "batch_paths.h"
 #include <QCoreApplication>
 #include <QCryptographicHash>
 #include <QDateTime>
@@ -200,7 +201,7 @@ bool ReportQueue::enqueue(const CaptureOutcome& outcome, const ReportOptions& op
     if (!ready_) { error = diagnostic_; return false; }
     auto resolved=options;
     const auto when=QDateTime::fromString(QString::fromStdString(outcome.batch.request.issuedAtUtc),Qt::ISODateWithMs);
-    const auto root=QFileInfo(outcome.directory).absolutePath();
+    const auto root=outcome.imageDirectory.isEmpty()?QFileInfo(outcome.directory).absolutePath():outcome.imageDirectory;
     resolved.documentPath=resolveTarget(options,root,when,false,error);if(resolved.documentPath.isEmpty())return false;
     // Validate sources before reserving the first report filename.
     if(makeReportJob(outcome,resolved,"create",error).isEmpty())return false;
@@ -234,10 +235,12 @@ bool ReportQueue::enqueueHistorical(const QString& manifestPath, const ReportOpt
     QJsonParseError parse; const auto document = QJsonDocument::fromJson(file.readAll(), &parse); const auto saved = document.object();
     if (parse.error || !document.isObject() || saved["schemaVersion"].toInt() != 1 || saved["batchId"].toString().isEmpty() ||
         !QDateTime::fromString(saved["createdAtUtc"].toString(), Qt::ISODateWithMs).isValid()) { error = "Invalid saved batch identity or timestamp"; return false; }
-    const auto target=resolveTarget(options,QFileInfo(QFileInfo(manifestPath).absolutePath()).absolutePath(),QDateTime::fromString(saved["createdAtUtc"].toString(),Qt::ISODateWithMs),false,error);
+    const auto captureRoot=batchCaptureRoot(manifestPath,saved);if(captureRoot.isEmpty()){error="Invalid batch storage layout";return false;}
+    const auto target=resolveTarget(options,captureRoot,QDateTime::fromString(saved["createdAtUtc"].toString(),Qt::ISODateWithMs),false,error);
     if(target.isEmpty())return false;
     if (hasBatchForDocument(saved["batchId"].toString(), target)) { error = "This batch is already linked to this report; inspect or recover its existing job"; return false; }
     CaptureOutcome input; input.directory = QFileInfo(manifestPath).absolutePath();
+    if(saved["extensions"].toObject()["storageLayout"]=="flat")input.imageDirectory=captureRoot;
     input.batch.batchId = saved["batchId"].toString().toStdString(); input.batch.request.requestId = saved["requestId"].toString().toStdString();
     input.batch.request.issuedAtUtc = saved["createdAtUtc"].toString().toStdString();
     const auto ext = saved["extensions"].toObject();
@@ -252,13 +255,12 @@ bool ReportQueue::enqueueHistorical(const QString& manifestPath, const ReportOpt
     c.stationId = context["stationId"].toString().toStdString(); c.operatorId = context["operatorId"].toString().toStdString();
     c.sequenceRunId = context["sequenceRunId"].toString().toStdString(); c.stepExecutionId = context["stepExecutionId"].toString().toStdString();
     c.commandInvocationId = context["commandInvocationId"].toString().toStdString(); c.eventId = context["eventId"].toString().toStdString();
-    const auto root = QDir(input.directory).canonicalPath() + '/';
     for (const auto& value : saved["artifacts"].toArray()) {
         const auto artifact = value.toObject(); const auto kind = artifact["kind"].toString();
         if (artifact["saveStatus"] != "SAVED" || (kind != "ORIGINAL" && kind != "COMPOSITE") ||
             (options.itemMode == "originals" && kind != "ORIGINAL") || (options.itemMode == "composites" && kind != "COMPOSITE")) continue;
-        const auto path = QFileInfo(QDir(input.directory).filePath(artifact["relativePath"].toString())).canonicalFilePath();
-        if (path.isEmpty() || !path.startsWith(root, Qt::CaseInsensitive)) { error = "Saved report artifact is missing or outside its batch"; return false; }
+        const auto path = batchArtifactPath(manifestPath,saved,artifact);
+        if (path.isEmpty()) { error = "Saved report artifact is missing or outside its image root"; return false; }
         QFile image(path); QCryptographicHash hash(QCryptographicHash::Sha256);
         if (!image.open(QIODevice::ReadOnly) || !hash.addData(&image) || hash.result().toHex() != artifact["sha256"].toString().toLatin1()) { error = "Saved report artifact changed; not queued"; return false; }
         core::OutputResult output{kind.toStdString(), path.toStdString(), "SAVED", {}};

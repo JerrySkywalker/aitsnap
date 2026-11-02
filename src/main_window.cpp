@@ -17,6 +17,7 @@
 #include "desktop/live_output_window.h"
 #include "desktop/capture_visibility.h"
 #include "adapters/display_profiles.h"
+#include "adapters/batch_paths.h"
 #include "core/scene_geometry.h"
 #include <QAction>
 #include <QApplication>
@@ -207,6 +208,7 @@ bool MainWindow::collectSettings(Settings& c, QString& e)
     }
     if (auto err = core::validateProfileDefinition(p); err) { e = qs(err.message); return false; }
     ++p.revision; c.outputDirectory = QDir(directory_->text().trimmed()).absolutePath(); c.format = format_->currentText(); c.filenameTemplate = filename_->text();
+    c.imagePathMode=imagePathMode_->currentData().toString();
     c.saveHotkey = saveKey_->text(); c.copyHotkey = copyKey_->text(); c.bothHotkey = bothKey_->text(); c.clipboardRegion = clipboard_->currentData().toString();
     c.saveHotkeyAlternate=alternateKeys_[0]->text();c.copyHotkeyAlternate=alternateKeys_[1]->text();c.bothHotkeyAlternate=alternateKeys_[2]->text();
     for(int mode=0;mode<3;++mode){c.hotkeysEnabled[std::size_t(mode)]=hotkeyEnabled_[mode]->isChecked();}
@@ -381,7 +383,8 @@ QString MainWindow::reportTarget(const QString& batchDirectory,const QString& is
 {
     if(!reportQueue_)return {};
     QString error;const auto time=issuedAtUtc.isEmpty()?QDateTime::currentDateTime():QDateTime::fromString(issuedAtUtc,Qt::ISODateWithMs);
-    const auto root=batchDirectory.isEmpty()?directory_->text().trimmed():QFileInfo(batchDirectory).absolutePath();
+    auto root=batchDirectory.isEmpty()?directory_->text().trimmed():QFileInfo(batchDirectory).absolutePath();
+    if(!batchDirectory.isEmpty()){const auto manifest=QDir(batchDirectory).filePath("batch.json");QFile file(manifest);if(file.open(QIODevice::ReadOnly)){const auto saved=QJsonDocument::fromJson(file.readAll()).object();root=batchCaptureRoot(manifest,saved);}}
     const auto path=reportQueue_->resolveTarget(selectedReportOptions(),root,time,false,error);if(diagnostic)*diagnostic=error;return path;
 }
 void MainWindow::refreshReportStatus()

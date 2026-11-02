@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "capture_files.h"
 #include "win_capture.h"
+#define NOMINMAX
+#include <windows.h>
 #include <QCryptographicHash>
 #include <QDir>
 #include <QElapsedTimer>
@@ -45,7 +47,14 @@ CaptureOutcome captureToFiles(core::ICaptureBackend& backend, const Settings& se
         const QString batchName = QString("%1_%2_%3").arg(
             QDateTime::fromString(QString::fromStdString(request.issuedAtUtc), Qt::ISODateWithMs).toUTC().toString("yyyyMMdd-HHmmss-zzz"),
             QString::number(settings.sequence).rightJustified(4, '0'), QString::fromStdString(core::safeSegment(request.profile.name)));
+        const bool flat=settings.imagePathMode=="flat";
         QDir root(settings.outputDirectory);
+        if(flat){
+            if(QDir().mkpath(root.filePath(".aitsnap/batches"))){
+                const auto native=QDir::toNativeSeparators(root.absoluteFilePath(".aitsnap")).toStdWString();const auto flags=GetFileAttributesW(native.c_str());if(flags!=INVALID_FILE_ATTRIBUTES)SetFileAttributesW(native.c_str(),flags|FILE_ATTRIBUTE_HIDDEN);
+            }
+            out.imageDirectory=root.absolutePath();root=QDir(root.filePath(".aitsnap/batches"));
+        }
         bool ready = false;
         if (QDir().mkpath(root.absolutePath())) for (int suffix = 1; suffix <= 10000; ++suffix) {
             const auto candidate = batchName + (suffix == 1 ? QString{} : QString("_%1").arg(suffix));
@@ -64,18 +73,19 @@ CaptureOutcome captureToFiles(core::ICaptureBackend& backend, const Settings& se
                 const auto format = directLossless ? settings.format.toLatin1() : QByteArray("PNG");
                 const auto prefix = QString::number(c.region.displayNumber).rightJustified(2, '0') + "_";
                 const auto evidenceName = prefix + QString::fromStdString(core::safeSegment(c.region.name));
-                const auto directory = directLossless ? out.directory : QDir(out.directory).filePath("source-evidence");
+                const auto imageRoot=flat?out.imageDirectory:out.directory;
+                const auto directory = directLossless ? imageRoot : QDir(out.directory).filePath("source-evidence");
                 QString path;
                 if (!directLossless) QDir().mkpath(directory);
                 if (saveImageNumbered(toQImage(c.image), directory, directLossless ? name : evidenceName, format, path, error)) { result.status = "SAVED"; }
                 else result.error = {"SAVE", error.toStdString()};
-                result.path = path.toStdString(); result.relativePath = QDir(out.directory).relativeFilePath(path).toStdString();
+                result.path = path.toStdString(); result.relativePath = QDir(imageRoot).relativeFilePath(path).toStdString();
                 if (result.status == "SAVED") digest(result);
                 if (settings.outputMode != "composites" && settings.format == "JPEG") {
                     core::OutputResult exported{"IMAGE_EXPORT", "", "FAILED", {}}; QString exportPath;
-                    if (saveImageNumbered(toQImage(c.image), out.directory, name, "JPEG", exportPath, error)) exported.status = "SAVED";
+                    if (saveImageNumbered(toQImage(c.image), imageRoot, name, "JPEG", exportPath, error)) exported.status = "SAVED";
                     else exported.error = {"SAVE", error.toStdString()};
-                    exported.path = exportPath.toStdString(); exported.relativePath = QDir(out.directory).relativeFilePath(exportPath).toStdString();
+                    exported.path = exportPath.toStdString(); exported.relativePath = QDir(imageRoot).relativeFilePath(exportPath).toStdString();
                     if (exported.status == "SAVED") digest(exported);
                     out.batch.outputs.push_back(exported);
                 }
@@ -102,10 +112,18 @@ CaptureOutcome captureToFiles(core::ICaptureBackend& backend, const Settings& se
             if (save && settings.outputMode != "originals" && settings.selectedSceneIds.contains(sceneId)) {
                 output.kind = "COMPOSITE"; output.status = "FAILED";
                 QString error, savedPath;
-                if (out.directory.isEmpty() || !QDir().mkpath(QDir(out.directory).filePath("composites"))) output.error = {"OUTPUT_DIRECTORY", "Cannot create composite directory"};
-                else if (saveImageNumbered(rendered.image, QDir(out.directory).filePath("composites"), QString::fromStdString(core::safeSegment(selected->name)) + QString("_r%1").arg(selected->revision), "PNG", savedPath, error)) { output.status = "SAVED"; }
+                const auto imageRoot=out.imageDirectory.isEmpty()?out.directory:out.imageDirectory;
+                const auto destination=out.imageDirectory.isEmpty()?QDir(out.directory).filePath("composites"):imageRoot;
+                auto stem=QString::fromStdString(core::safeSegment(selected->name)) + QString("_r%1").arg(selected->revision);
+                if(!out.imageDirectory.isEmpty()){
+                    core::Region sceneRegion;sceneRegion.name=selected->name;
+                    stem=expandFilename(settings,request,sceneRegion,error)+QString("_r%1").arg(selected->revision);
+                }
+                if(!error.isEmpty())output.error={"FILENAME",error.toStdString()};
+                else if (out.directory.isEmpty() || !QDir().mkpath(destination)) output.error = {"OUTPUT_DIRECTORY", "Cannot create composite directory"};
+                else if (saveImageNumbered(rendered.image, destination, stem, "PNG", savedPath, error)) { output.status = "SAVED"; }
                 else output.error = {"SCENE_SAVE", error.toStdString()};
-                if (!savedPath.isEmpty()) { output.path = savedPath.toStdString(); output.relativePath = QDir(out.directory).relativeFilePath(savedPath).toStdString(); }
+                if (!savedPath.isEmpty()) { output.path = savedPath.toStdString(); output.relativePath = QDir(imageRoot).relativeFilePath(savedPath).toStdString(); }
                 if (output.status == "SAVED") digest(output);
             }
             if (!rendered.complete && !output.error) output.error = {"SCENE_INCOMPLETE", rendered.warnings.join("; ").toStdString()};
@@ -120,6 +138,7 @@ bool writeBatchManifest(const CaptureOutcome& out, QString& error)
     if (out.directory.isEmpty()) { error = "No saved batch directory"; return false; }
     auto object = batchJson(out.batch);
     auto ext = object["extensions"].toObject(); ext["captureAndSaveMs"] = out.captureSaveMs; ext["sceneRenderMs"] = out.renderMs; ext["totalCaptureOutputMs"] = out.elapsedMs;
+    if(!out.imageDirectory.isEmpty())ext["storageLayout"]="flat";
     QJsonArray scenes; for (const auto& scene : out.sceneSnapshots) scenes.append(sceneJson(scene)); ext["sceneSnapshots"] = scenes; object["extensions"] = ext;
     return saveBytesNew(QJsonDocument(object).toJson(), QDir(out.directory).filePath("batch.json"), error);
 }

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "scene_render.h"
+#include "batch_paths.h"
 #include "json_store.h"
 #include "desktop/appearance.h"
 #include <QCryptographicHash>
@@ -169,13 +170,13 @@ bool loadHistoricalSources(const QString& manifest, SceneSources& sources, core:
     if (parse.error || !doc.isObject()) { error = "Invalid batch JSON"; return false; }
     const auto object = doc.object(); if (core::validateVersion(object["schemaVersion"].toInt())) { error = "Unsupported batch version"; return false; }
     if (!profileFromJson(object["extensions"].toObject()["profileSnapshot"].toObject(), profile, error)) return false;
-    const auto root = QFileInfo(manifest).absoluteDir().canonicalPath(); SceneSources candidate;
+    const auto root = batchImageRoot(manifest,object);if(root.isEmpty()){error="Invalid batch storage layout";return false;} SceneSources candidate;
     for (const auto& value : object["artifacts"].toArray()) {
         const auto artifact = value.toObject(); if (artifact["kind"] != "ORIGINAL" || artifact["saveStatus"] != "SAVED") continue;
         const auto relative = QDir::fromNativeSeparators(artifact["relativePath"].toString());
         if (relative.isEmpty() || QDir::isAbsolutePath(relative) || relative.contains(':') || relative.split('/').contains("..")) { error = "Artifact path must remain relative to batch"; return false; }
-        const auto path = QDir(root).filePath(relative); const auto canonical = QFileInfo(path).canonicalFilePath();
-        if (canonical.isEmpty() || !canonical.startsWith(root + '/', Qt::CaseInsensitive)) { error = "Artifact missing or outside batch directory"; return false; }
+        const auto canonical = batchArtifactPath(manifest,object,artifact);
+        if (canonical.isEmpty()) { error = "Artifact missing or outside image directory"; return false; }
         QFile imageFile(canonical); if (!imageFile.open(QIODevice::ReadOnly)) { error = imageFile.errorString(); return false; }
         if (artifact.contains("sha256")) { QCryptographicHash hash(QCryptographicHash::Sha256); hash.addData(&imageFile);
             if (hash.result().toHex() != artifact["sha256"].toString().toLatin1().toLower()) { error = "Original artifact SHA-256 mismatch"; return false; } }

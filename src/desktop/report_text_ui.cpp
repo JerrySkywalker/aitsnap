@@ -11,6 +11,12 @@
 #include <QSignalBlocker>
 #include <QTimer>
 #include <QTableWidget>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QTextBrowser>
+#include <QFile>
+#include <QPushButton>
+#include <QVBoxLayout>
 #include <algorithm>
 namespace aitsnap {
 void MainWindow::buildReportTextUi(QFormLayout* form)
@@ -18,6 +24,14 @@ void MainWindow::buildReportTextUi(QFormLayout* form)
     reportTextPreset_=new QComboBox;reportTextPreset_->setObjectName("reportTextPreset");
     reportTextPreset_->addItem(uiText("保持原有图文"),"legacy");reportTextPreset_->addItem(uiText("仅名称"),"name");reportTextPreset_->addItem(uiText("名称与时间"),"time");reportTextPreset_->addItem(uiText("自定义文字"),"custom");reportTextPreset_->addItem(uiText("只写图片"),"images");
     reportTextPreset_->setCurrentIndex(std::max(0,reportTextPreset_->findData(settings_.report.text.preset)));form->addRow(uiText("写入文字"),reportTextPreset_);
+    auto* help=new QPushButton(uiText("文字字段规则与示例"));help->setObjectName("reportTextHelp");form->addRow(help);
+    connect(help,&QPushButton::clicked,this,[this]{
+        QDialog dialog(this);dialog.setObjectName("reportTextHelpDialog");dialog.setWindowTitle(uiText("Word 文字字段帮助"));dialog.resize(740,640);auto* layout=new QVBoxLayout(&dialog);
+        auto* content=new QTextBrowser;content->setObjectName("reportTextHelpContent");content->setOpenExternalLinks(false);
+        const auto language=effectiveLanguage(language_->currentData().toString());QFile file(":/help/word-text-"+language+".md");
+        if(file.open(QIODevice::ReadOnly))content->setMarkdown(QString::fromUtf8(file.readAll()));else content->setPlainText(uiText("帮助文件无法读取。"));
+        layout->addWidget(content);auto* buttons=new QDialogButtonBox(QDialogButtonBox::Close);connect(buttons,&QDialogButtonBox::rejected,&dialog,&QDialog::reject);layout->addWidget(buttons);dialog.exec();
+    });
     const auto& text=settings_.report.text;const bool flags[]{text.titleEnabled,text.captionEnabled,text.contextEnabled};const QString templates[]{text.titleTemplate,text.captionTemplate,text.contextTemplate};
     const QStringList labels{uiText("批次标题"),uiText("图片说明"),uiText("上下文信息")};
     for(int i=0;i<3;++i){reportTextEnabled_[i]=new QCheckBox(labels[i]);reportTextEnabled_[i]->setChecked(flags[i]);reportTextEnabled_[i]->setObjectName(QString("reportTextEnabled%1").arg(i));form->addRow(reportTextEnabled_[i]);

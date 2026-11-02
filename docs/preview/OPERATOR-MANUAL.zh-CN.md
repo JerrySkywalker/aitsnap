@@ -1,4 +1,6 @@
-# AITSnap 0.8.0 候选版操作手册
+# AITSnap 0.8.3 候选版操作手册
+
+0.8.3新增图片保存方式、Word字段帮助、OLED黑和NASA Punk主题，详见[本版说明](RELEASE-0.8.3.md)。在“设置→保存”选择按批次或直接输出；“设置→Word报告→文字字段规则与示例”可离线查阅字段；主题在“设置→外观”选择后应用。0.8.2起显示器图只画当前活动屏幕，组合绑定按当前布局恢复；默认兼容显示避免部分显示路径整窗发黑。
 
 当前可体验：多屏多区域截图、托盘/快捷键、区域校准、自由拼图、Word 异步队列、静态目录与只读事件关联。当前主机为 Win11；Win10、Win7、Word 2010、人工视觉验收仍为 HOLD。
 
@@ -10,7 +12,7 @@
 
 MSI 用户从开始菜单运行 AITSnap，标准数据目录是用户本地应用数据目录下的 AITSnap。便携体验可运行 `Launch-Preview.ps1`，使用独立的 `AITSnap-preview-0.8` 目录。也可直接运行 `aitsnap.exe`，或使用 `--tray` 启动到托盘、`--data-dir D:\AITSnapDemo` 隔离设置、队列、上下文及初始截图输出。已保存配置中的输出路径保持原值，可在窗口中调整。
 
-正式安装候选使用 `AITSnap-0.7.2-windows-x64.msi`，提供开始菜单、修复、升级和 Windows 标准卸载。目标为 Win10 1809+ x64 / Win11；当前 Win10 原生验收仍 HOLD，详见安装说明。
+正式安装候选使用 `AITSnap-0.8.3-windows-x64.msi`，提供开始菜单、修复、升级和 Windows 标准卸载。目标为 Win10 1809+ x64 / Win11；当前 Win10 原生验收仍 HOLD，详见安装说明。
 
 便携包也支持按用户复制：在包目录执行 `powershell -File .\install-preview.ps1 -Destination "$env:LOCALAPPDATA\Programs\AITSnap-preview"`，目标必须尚不存在。此方式不注册 Windows Installer；也可直接搬迁整个解压目录。
 

@@ -78,9 +78,9 @@ bool loadSettings(const QString& path, Settings& s, QString& error)
     if (parse.error || !doc.isObject()) { error = "Invalid settings JSON; original file preserved"; return false; }
     const auto o = doc.object();
     const int settingsVersion = o["schemaVersion"].toInt();
-    if (settingsVersion < 1 || settingsVersion > 5) { error = "Unsupported settings version; file preserved"; return false; }
+    if (settingsVersion < 1 || settingsVersion > 6) { error = "Unsupported settings version; file preserved"; return false; }
     const QStringList known{"schemaVersion", "profiles", "activeProfile", "outputDirectory", "format", "filenameTemplate", "saveHotkey", "copyHotkey", "bothHotkey", "clipboardRegion", "testId", "device", "station", "operator", "sequence", "startInTray", "scenes", "selectedSceneIds", "outputMode", "wordReport", "appearance"};
-    for (auto it = o.begin(); it != o.end(); ++it) if (!known.contains(it.key()) && it.key()!="alternateHotkeys" && it.key()!="hotkeysEnabled" && it.key()!="livePreview") { error = "Unknown settings field; file preserved: " + it.key(); return false; }
+    for (auto it = o.begin(); it != o.end(); ++it) if (!known.contains(it.key()) && it.key()!="imagePathMode" && it.key()!="alternateHotkeys" && it.key()!="hotkeysEnabled" && it.key()!="livePreview") { error = "Unknown settings field; file preserved: " + it.key(); return false; }
     Settings candidate = defaultSettings();
     const auto appearance = o["appearance"].toObject();
     candidate.language = appearance["language"].toString("system");
@@ -88,7 +88,7 @@ bool loadSettings(const QString& path, Settings& s, QString& error)
     if(appearance.contains("compatibleDisplay") && !appearance["compatibleDisplay"].isBool()){error="Invalid display compatibility preference";return false;}
     candidate.compatibleDisplay=appearance["compatibleDisplay"].toBool(true);
     if (!QStringList{"system", "zh-CN", "en-US"}.contains(candidate.language) ||
-        !QStringList{"system", "light", "dark"}.contains(candidate.colorMode)) { error = "Unsupported appearance preference; file preserved"; return false; }
+        !QStringList{"system", "light", "dark", "oled", "nasa-punk"}.contains(candidate.colorMode)) { error = "Unsupported appearance preference; file preserved"; return false; }
     for (const auto& value : o["profiles"].toArray()) {
         core::CaptureProfile profile;
         if (!profileFromJson(value.toObject(), profile, error)) return false;
@@ -99,6 +99,9 @@ bool loadSettings(const QString& path, Settings& s, QString& error)
     candidate.activeProfile = o["activeProfile"].toInt();
     if (candidate.activeProfile < 0 || candidate.activeProfile >= int(candidate.profiles.size())) { error = "Invalid selected profile"; return false; }
     candidate.outputDirectory = o["outputDirectory"].toString(candidate.outputDirectory);
+    if(o.contains("imagePathMode") && !o["imagePathMode"].isString()){error="Image path mode must be a string; original preserved";return false;}
+    candidate.imagePathMode=o["imagePathMode"].toString("batch");
+    if(!QStringList{"batch","flat"}.contains(candidate.imagePathMode)){error="Unsupported image path mode; original preserved";return false;}
     candidate.format = o["format"].toString("PNG");
     if (candidate.format != "PNG" && candidate.format != "JPEG" && candidate.format != "BMP") { error = "Unknown output format"; return false; }
     candidate.filenameTemplate = o["filenameTemplate"].toString(candidate.filenameTemplate);
@@ -155,7 +158,8 @@ QJsonObject settingsJson(const Settings& s)
     QJsonArray scenes, selected;
     for (const auto& scene : s.scenes) scenes.append(sceneJson(scene));
     for (const auto& scene : s.selectedSceneIds) selected.append(scene);
-    QJsonObject o{{"schemaVersion", 5}, {"profiles", profiles}, {"activeProfile", s.activeProfile},
+    QJsonObject o{{"schemaVersion", 6}, {"profiles", profiles}, {"activeProfile", s.activeProfile},
+        {"imagePathMode",s.imagePathMode},
         {"outputDirectory", s.outputDirectory}, {"format", s.format}, {"filenameTemplate", s.filenameTemplate},
         {"saveHotkey", s.saveHotkey}, {"copyHotkey", s.copyHotkey}, {"bothHotkey", s.bothHotkey},
         {"alternateHotkeys",QJsonObject{{"save",s.saveHotkeyAlternate},{"copy",s.copyHotkeyAlternate},{"both",s.bothHotkeyAlternate}}},
@@ -174,7 +178,7 @@ bool saveSettings(const QString& path, const Settings& s, QString& error)
     if (!QDir().mkpath(QFileInfo(path).absolutePath())) { error = "Cannot create settings directory"; return false; }
     QFile previous(path); int previousVersion = 0;
     if (previous.open(QIODevice::ReadOnly)) { previousVersion = QJsonDocument::fromJson(previous.readAll()).object()["schemaVersion"].toInt(); previous.close(); }
-    if (previousVersion > 0 && previousVersion < 5) {
+    if (previousVersion > 0 && previousVersion < 6) {
         if (!QFile::copy(path, path + QString(".v%1-preserved-").arg(previousVersion) + QUuid::createUuid().toString(QUuid::WithoutBraces))) { error = "Cannot preserve old settings before migration"; return false; }
     }
     QSaveFile file(path);

@@ -6,4 +6,8 @@
     <file alias="en-US.json">../translations/en-US.json</file>
     <file alias="zh-CN.json">../translations/zh-CN.json</file>
   </qresource>
+  <qresource prefix="/help">
+    <file alias="word-text-zh-CN.md">../docs/preview/WORD-TEXT-FIELDS.zh-CN.md</file>
+    <file alias="word-text-en-US.md">../docs/preview/WORD-TEXT-FIELDS.en-US.md</file>
+  </qresource>
 </RCC>
