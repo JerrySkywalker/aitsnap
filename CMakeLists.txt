@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 cmake_minimum_required(VERSION 3.24)
 
-project(AITSnap VERSION 0.8.2 LANGUAGES CXX)
+project(AITSnap VERSION 0.8.3 LANGUAGES CXX)
 
 if(NOT WIN32)
     message(FATAL_ERROR "The current AITSnap build baseline requires Windows.")
@@ -129,6 +129,11 @@ endif()
 target_link_libraries(aitsnap PRIVATE aitsnap-adapters psapi)
 set(aitsnap_targets aitsnap aitsnap-adapters aitsnap-word-bridge aitsnap-cli)
 if(BUILD_TESTING)
+    add_executable(aitsnap-practical-tests tests/practical_tests.cpp ${aitsnap_ui_sources})
+    target_link_libraries(aitsnap-practical-tests PRIVATE aitsnap-adapters)
+    add_test(NAME practical COMMAND aitsnap-practical-tests)
+    set_tests_properties(practical PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 40)
+    list(APPEND aitsnap_targets aitsnap-practical-tests)
     add_executable(aitsnap-display-profile-tests tests/display_profile_tests.cpp ${aitsnap_ui_sources})
     target_link_libraries(aitsnap-display-profile-tests PRIVATE aitsnap-adapters)
     add_test(NAME display-profiles COMMAND aitsnap-display-profile-tests)

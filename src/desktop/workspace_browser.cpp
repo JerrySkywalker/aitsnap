@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "main_window.h"
+#include "adapters/batch_paths.h"
 #include "desktop/appearance.h"
 #include "desktop/workspace_views.h"
 #include "adapters/win_capture.h"
@@ -177,27 +178,24 @@ static QJsonObject readManifest(const QString& path)
 }
 static QString artifactPath(const QString& manifest, const QJsonObject& output)
 {
-    const auto root = QFileInfo(manifest).absolutePath();
-    const auto relative = output["relativePath"].toString();
-    const auto path = QFileInfo(relative.isEmpty() ? output["path"].toString() : QDir(root).filePath(relative)).canonicalFilePath();
-    const auto canonicalRoot = QFileInfo(root).canonicalFilePath() + '/';
-    if (path.isEmpty() || !path.startsWith(canonicalRoot, Qt::CaseInsensitive)) return {};
-    return path;
+    return batchArtifactPath(manifest,readManifest(manifest),output);
 }
 void MainWindow::refreshBatches()
 {
     if (!batchCards_) return;
     const auto previous = selectedBatchManifest_; const QSignalBlocker guard(batchCards_); batchCards_->clear();
     const QDir root(settings_.outputDirectory);
-    const auto directories = root.entryList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Time);
+    QStringList manifests;
+    for(const auto& name:root.entryList(QDir::Dirs|QDir::NoDotAndDotDot,QDir::Time))if(QFileInfo::exists(root.filePath(name+"/batch.json")))manifests.append(root.filePath(name+"/batch.json"));
+    const QDir flat(root.filePath(".aitsnap/batches"));for(const auto& name:flat.entryList(QDir::Dirs|QDir::NoDotAndDotDot,QDir::Time))if(QFileInfo::exists(flat.filePath(name+"/batch.json")))manifests.append(flat.filePath(name+"/batch.json"));
+    std::sort(manifests.begin(),manifests.end(),[](const auto& a,const auto& b){return QFileInfo(a).lastModified()>QFileInfo(b).lastModified();});
     int chosen = 0;
-    for (const auto& name : directories) {
+    for (const auto& manifest : manifests) {
         if (batchCards_->count() >= 200) break;
-        const auto manifest = root.filePath(name + "/batch.json"); if (!QFileInfo::exists(manifest)) continue;
         const auto metadata = readManifest(manifest); const auto created = QDateTime::fromString(metadata["createdAtUtc"].toString(), Qt::ISODateWithMs);
         const auto profileName = metadata["extensions"].toObject()["profileSnapshot"].toObject()["name"].toString(uiText("历史批次"));
         auto* item = new QListWidgetItem((created.isValid() ? created.toLocalTime().toString("yyyy-MM-dd HH:mm:ss") : uiText("时间未知")) + "\n" + profileName, batchCards_);
-        item->setData(Qt::UserRole, manifest); item->setSizeHint({200, 78}); item->setToolTip(name);
+        item->setData(Qt::UserRole, manifest); item->setSizeHint({200, 78}); item->setToolTip(QFileInfo(manifest).absolutePath());
         if (manifest == previous) chosen = batchCards_->count() - 1;
     }
     batchCards_->setCurrentRow(batchCards_->count() ? chosen : -1); selectBatch();

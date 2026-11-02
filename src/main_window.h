@@ -57,7 +57,7 @@ private:
     QSystemTrayIcon* tray_{};
     QMenu* profileMenu_{};
     QMenu* sceneMenu_{};
-    QComboBox *profiles_{}, *format_{}, *clipboard_{};
+    QComboBox *profiles_{}, *format_{}, *clipboard_{}, *imagePathMode_{};
     QComboBox *language_{}, *colorMode_{};
     QCheckBox* compatibleDisplay_{};
     QLineEdit *profileName_{}, *directory_{}, *filename_{}, *saveKey_{}, *copyKey_{}, *bothKey_{};

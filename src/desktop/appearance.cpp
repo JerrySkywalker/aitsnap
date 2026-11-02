@@ -46,27 +46,28 @@ public:
     }
     void apply()
     {
-        const bool dark = preference == "dark" || (preference == "system" &&
+        const bool oled=preference=="oled",nasa=preference=="nasa-punk";
+        const bool dark = oled || preference == "dark" || (preference == "system" &&
             QSettings("HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize", QSettings::NativeFormat)
                 .value("AppsUseLightTheme", 1).toInt() == 0);
-        const QString next = dark ? "dark" : "light";
+        const QString next = oled?"oled":nasa?"nasa-punk":dark?"dark":"light";
         if (effective == next) return;
         effective = next;
         QPalette p;
-        const QColor window(dark ? "#151d29" : "#edf2f7"), base(dark ? "#1e2938" : "#ffffff"),
-            text(dark ? "#e6edf6" : "#17283d"), muted(dark ? "#a5b4c7" : "#52677e"),
-            border(dark ? "#3b4b61" : "#ced9e5"), accent(dark ? "#82b4ff" : "#2364d2");
+        const QColor window(oled?"#000000":nasa?"#d9d1c1":dark?"#151d29":"#edf2f7"),base(oled?"#000000":nasa?"#f2ecdf":dark?"#1e2938":"#ffffff"),
+            text(oled?"#f0f0f0":nasa?"#292b2d":dark?"#e6edf6":"#17283d"),muted(oled?"#a8b0b5":nasa?"#5c584e":dark?"#a5b4c7":"#52677e"),
+            border(oled?"#454b50":nasa?"#91846e":dark?"#3b4b61":"#ced9e5"),accent(oled?"#80ded9":nasa?"#a23c16":dark?"#82b4ff":"#2364d2");
         p.setColor(QPalette::Window, window); p.setColor(QPalette::WindowText, text);
-        p.setColor(QPalette::Base, base); p.setColor(QPalette::AlternateBase, window);
+        p.setColor(QPalette::Base, base); p.setColor(QPalette::AlternateBase, oled?QColor("#0a0a0a"):window);
         p.setColor(QPalette::Text, text); p.setColor(QPalette::Button, base); p.setColor(QPalette::ButtonText, text);
         p.setColor(QPalette::ToolTipBase, base); p.setColor(QPalette::ToolTipText, text);
-        p.setColor(QPalette::Highlight, dark ? QColor("#304e78") : QColor("#dbe9ff"));
+        p.setColor(QPalette::Highlight,oled?QColor("#163c3b"):nasa?QColor("#e8b998"):dark?QColor("#304e78"):QColor("#dbe9ff"));
         p.setColor(QPalette::HighlightedText, text); p.setColor(QPalette::Link, accent);
         p.setColor(QPalette::PlaceholderText, muted); p.setColor(QPalette::Mid, border);
         for (auto role : {QPalette::Text, QPalette::WindowText, QPalette::ButtonText}) p.setColor(QPalette::Disabled, role, muted);
         qApp->setPalette(p);
         qApp->setStyleSheet(QStringLiteral(
-            "QPushButton{padding:7px 12px;border:1px solid %1;border-radius:6px;background:%2;}"
+            "QPushButton{padding:7px 12px;border:1px solid %1;border-radius:RADIUSpx;background:%2;}"
             "QPushButton:hover{border-color:%3;} QPushButton:focus{border:2px solid %3;}"
             "QPushButton:disabled{color:%4;} QLineEdit,QComboBox,QSpinBox,QDoubleSpinBox{padding:5px;border:1px solid %1;border-radius:4px;}"
             "QListWidget,QTreeWidget,QTableWidget,QScrollArea{border:1px solid %1;border-radius:6px;}"
@@ -74,9 +75,9 @@ public:
             "QTabBar::tab:selected{background:%2;color:%3;} QMenu{padding:4px;border:1px solid %1;}"
             "QMenu::item{padding:7px 24px;} QMenu::item:selected{background:%5;}"
             "QLabel[muted=\"true\"]{color:%4;} QWidget[card=\"true\"]{background:%2;border:1px solid %1;border-radius:8px;}"
-            "QPushButton[primary=\"true\"]{background:#2364d2;color:white;border:1px solid #2364d2;}"
+            "QPushButton[primary=\"true\"]{background:%8;color:white;border:1px solid %8;}"
             "QLabel#captureStatus[statusError=\"true\"]{color:%6;} QLabel#captureStatus[statusError=\"false\"]{color:%7;}"
-        ).arg(border.name(), base.name(), accent.name(), muted.name(), p.color(QPalette::Highlight).name(), dark ? "#ff9a91" : "#b42318", dark ? "#96dfb5" : "#275b43"));
+        ).arg(border.name(), base.name(), accent.name(), muted.name(), p.color(QPalette::Highlight).name(), dark ? "#ff9a91" : "#b42318", dark ? "#96dfb5" : "#275b43",oled?"#006d77":nasa?"#bc4820":"#2364d2").replace("RADIUS",nasa?"2":"6"));
     }
 };
 ColorController* colors{};

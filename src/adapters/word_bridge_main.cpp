@@ -126,15 +126,21 @@ QJsonObject execute(const QJsonObject& job, bool recovery)
         const auto page = endRange(session.document).get(L"Sections").object().invoke(L"Item", DISPATCH_METHOD | DISPATCH_PROPERTYGET, {Value(1)}).object().get(L"PageSetup").object();
         const double availableWidth = std::max(36.0, page.get(L"PageWidth").number() - page.get(L"LeftMargin").number() - page.get(L"RightMargin").number());
         const double availableHeight = std::max(36.0, page.get(L"PageHeight").number() - page.get(L"TopMargin").number() - page.get(L"BottomMargin").number() - 48);
-        Object table;
+        Object table;int tableRowOffset=0;
         stage = "create-table";
-        if (ext["layout"] == "table") table = session.document.get(L"Tables").object().call(L"Add", {Value(endRange(session.document).raw()), Value(int((items.size() + 1) / 2)), Value(2)}).object();
+        if (ext["layout"] == "table") {
+            const int newRows=int((items.size()+1)/2);
+            table = session.document.get(L"Tables").object().call(L"Add", {Value(endRange(session.document).raw()), Value(newRows), Value(2)}).object();
+            // Word can merge adjacent tables and return the combined table.
+            // Address only the newly appended rows, preserving prior batches.
+            tableRowOffset=std::max(0,table.get(L"Rows").object().get(L"Count").integer()-newRows);
+        }
         for (int i = 0; i < items.size(); ++i) {
             stage = "insert-picture-" + QString::number(i);
             const auto caption = items[i].toObject()["caption"].toString() + "\r";
             const bool writeCaption=!configurableText || (ext["textPolicy"].toObject()["captions"].toBool() && !items[i].toObject()["caption"].toString().isEmpty());
             if (table) {
-                auto cell = table.call(L"Cell", {Value(i / 2 + 1), Value(i % 2 + 1)}).object();
+                auto cell = table.call(L"Cell", {Value(tableRowOffset + i / 2 + 1), Value(i % 2 + 1)}).object();
                 const int start = cell.get(L"Range").object().get(L"Start").integer();
                 insertPicture(session.document, session.document.call(L"Range", {Value(start), Value(start)}).object(), sources[i].toObject()["path"].toString(), availableWidth / 2 - 12, availableHeight);
                 const int end = cell.get(L"Range").object().get(L"End").integer() - 2;

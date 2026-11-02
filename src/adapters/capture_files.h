@@ -7,6 +7,7 @@ namespace aitsnap {
 struct CaptureOutcome {
     core::CaptureBatch batch;
     QString directory;
+    QString imageDirectory; // Flat mode only; directory retains the batch record location.
     double elapsedMs{};
     double renderMs{};
     double captureSaveMs{};

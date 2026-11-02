@@ -122,7 +122,7 @@ int main(int argc, char** argv)
                 check(app.platformName() == "offscreen", "component evidence must not operate the desktop");
                 const auto folder = app.arguments()[evidence + 1]; check(QDir().mkpath(folder), "evidence folder");
                 QFontDatabase::addApplicationFont("C:/Windows/Fonts/segoeui.ttf"); window.resize(1500, 960); window.show();
-                for (const auto& theme : {"light", "dark"}) {
+                for (const auto& theme : {"light", "dark", "oled", "nasa-punk"}) {
                     mode->setCurrentIndex(mode->findData(theme));
                     for (int page = 0; page < 5; ++page) { nav->setCurrentRow(page); settle(); check(window.grab().save(folder + QString("/component-%1-%2.png").arg(theme).arg(page)), "offscreen component image"); }
                 }

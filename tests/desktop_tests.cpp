@@ -130,6 +130,10 @@ int main(int argc, char** argv)
                 QEventLoop initial;QTimer::singleShot(1200,&initial,&QEventLoop::quit);initial.exec();DWORD affinity{};
                 check(GetWindowDisplayAffinity(reinterpret_cast<HWND>(host.winId()),&affinity) && affinity==0,"default main window has no content exclusion");
                 auto* live=dynamic_cast<LivePreviewService*>(host.findChild<QObject*>("livePreviewService"));
+                if(!live || live->snapshot().sources.count("r0") || !live->snapshot().issues.count("r0")){
+                    RECT rect{};GetWindowRect(reinterpret_cast<HWND>(host.winId()),&rect);
+                    std::cerr<<"COMPAT_PREVIEW_DIAGNOSTIC active="<<(live && live->active())<<" state="<<(live?live->snapshot().state.toStdString():"missing")<<" sources="<<(live?live->snapshot().sources.size():0)<<" issues="<<(live?live->snapshot().issues.size():0)<<" window="<<rect.left<<','<<rect.top<<','<<rect.right<<','<<rect.bottom<<" source="<<area.x<<','<<area.y<<','<<area.width<<','<<area.height<<'\n';
+                }
                 check(live && live->snapshot().sources.count("r0")==0 && live->snapshot().issues.count("r0"),"compatibility preview explicitly reports own-window overlap instead of false pixels");
             }
             if(app.arguments().contains("--live")){

@@ -18,6 +18,7 @@ struct Settings {
     std::vector<core::CaptureProfile> profiles;
     int activeProfile{};
     QString outputDirectory, format{"PNG"}, filenameTemplate{"{datetime}_{sequence}_{region}"};
+    QString imagePathMode{"batch"};
     QString saveHotkey{"Ctrl+Alt+S"}, copyHotkey{"Ctrl+Alt+C"}, bothHotkey{"Ctrl+Alt+A"};
     QString saveHotkeyAlternate, copyHotkeyAlternate, bothHotkeyAlternate;
     std::array<bool, 3> hotkeysEnabled{true, true, true};
