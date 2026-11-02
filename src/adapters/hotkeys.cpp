@@ -113,6 +113,7 @@ bool Hotkeys::nativeEventFilter(const QByteArray&, void* message, long*)
     }
     static const UINT taskbarMessage = RegisterWindowMessageW(L"TaskbarCreated");
     if (m->message == taskbarMessage && taskbarCreated) taskbarCreated();
+    if(m->message==WM_DISPLAYCHANGE && displayChanged)displayChanged();
     return false;
 }
 } // namespace aitsnap

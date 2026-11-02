@@ -68,7 +68,8 @@ void MainWindow::refreshWorkspace()
         if (region != profile.regions.end()) filenamePreview_->setText(expandFilename(next, sample, *region, error) + "." + candidate.format.toLower());
         else filenamePreview_->setText(uiText("添加并启用区域后显示文件名"));
     } else filenamePreview_->setText(error);
-    std::vector<core::Display> displays; try { WinCaptureBackend backend; displays = backend.displays(); } catch (...) { /* Unknown layout is rendered explicitly. */ }
+    std::vector<core::Display> displays; try { displays = displayInventory_(); } catch (...) { /* Unknown layout is rendered explicitly. */ }
+    refreshDisplayProfileStatus(displays);
     int selected = regions_->currentRow(); if (selected < 0 && !profile.regions.empty()) selected = 0;
     if (!profile.regions.empty()) selected = std::min(selected, int(profile.regions.size()) - 1);
     std::vector<std::string> outputSources;

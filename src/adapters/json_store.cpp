@@ -144,7 +144,7 @@ bool loadSettings(const QString& path, Settings& s, QString& error)
         (candidate.report.layout != "inline" && candidate.report.layout != "table")) { error = "Invalid Word report policy"; return false; }
     s = candidate; return true;
 }
-bool saveSettings(const QString& path, const Settings& s, QString& error)
+QJsonObject settingsJson(const Settings& s)
 {
     QJsonArray profiles;
     for (std::size_t i = 0; i < s.profiles.size(); ++i) {
@@ -166,6 +166,11 @@ bool saveSettings(const QString& path, const Settings& s, QString& error)
         {"livePreview",QJsonObject{{"enabled",s.livePreviewEnabled},{"fps",s.livePreviewFps}}},
         {"scenes", scenes}, {"selectedSceneIds", selected}, {"outputMode", s.outputMode},
         {"wordReport", QJsonObject{{"enabled", s.report.enabled}, {"documentPath", s.report.documentPath}, {"targetMode", s.report.targetMode}, {"itemMode", s.report.itemMode}, {"layout", s.report.layout},{"text",reportTextJson(s.report.text)}}}};
+    return o;
+}
+bool saveSettings(const QString& path, const Settings& s, QString& error)
+{
+    const auto o=settingsJson(s);
     if (!QDir().mkpath(QFileInfo(path).absolutePath())) { error = "Cannot create settings directory"; return false; }
     QFile previous(path); int previousVersion = 0;
     if (previous.open(QIODevice::ReadOnly)) { previousVersion = QJsonDocument::fromJson(previous.readAll()).object()["schemaVersion"].toInt(); previous.close(); }

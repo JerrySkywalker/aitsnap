@@ -12,6 +12,7 @@ class Hotkeys final : public QAbstractNativeEventFilter {
 public:
     std::function<void(int)> triggered;
     std::function<void()> taskbarCreated;
+    std::function<void()> displayChanged;
     ~Hotkeys() override;
     bool configure(const QStringList& shortcuts, QString& error);
     bool configureBindings(const std::vector<HotkeyBinding>&, QString& error);
