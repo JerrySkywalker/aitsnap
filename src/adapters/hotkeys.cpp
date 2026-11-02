@@ -30,7 +30,10 @@ bool Hotkeys::registerKeys(const std::vector<Key>& keys, QString& error)
         if (!RegisterHotKey(nullptr, firstId + i, keys[std::size_t(i)].modifiers | MOD_NOREPEAT, keys[std::size_t(i)].vk)) {
             const auto code = GetLastError();
             for (int j = 0; j < i; ++j) UnregisterHotKey(nullptr, firstId + j);
-            error = uiText("动作 %1 的快捷键注册失败（冲突或系统限制，Win32 %2）").arg(keys[std::size_t(i)].action + 1).arg(code);
+            const auto& key=keys[std::size_t(i)];
+            const QString actions[]{uiText("截图并保存"),uiText("截图并复制"),uiText("截图、保存并复制")};
+            const auto action=key.action>=0 && key.action<3?actions[key.action]:QString::number(key.action+1);
+            error = uiText("%1 的快捷键“%2”注册失败（冲突或系统限制，Win32 %3）。请更换该键，或关闭此动作的全局热键。").arg(action,key.shortcut).arg(code);
             return false;
         }
     }
@@ -53,6 +56,7 @@ bool Hotkeys::configureBindings(const std::vector<HotkeyBinding>& bindings, QStr
         if (parts.isEmpty()) { error = "Empty hotkey"; return false; }
         Key key;
         key.action=binding.action;
+        key.shortcut=text.trimmed();
         for (int i = 0; i + 1 < parts.size(); ++i) {
             const auto p = parts[i].trimmed();
             if (p == "CTRL") key.modifiers |= MOD_CONTROL;
@@ -87,10 +91,14 @@ bool Hotkeys::configureBindings(const std::vector<HotkeyBinding>& bindings, QStr
 }
 bool Hotkeys::pause(bool paused, QString& error)
 {
+    error.clear();
     if (paused) { paused_=true; unregisterKeys(); return true; }
+    // Requested resume and successful OS registration are separate states.
+    // A failed resume must not keep future reconfiguration silently paused.
+    paused_=false;
     if (registered_) return true;
     if(!registerKeys(keys_, error))return false;
-    paused_=false; return true;
+    return true;
 }
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
 bool Hotkeys::nativeEventFilter(const QByteArray&, void* message, qintptr*)

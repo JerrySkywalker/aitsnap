@@ -23,7 +23,7 @@ public:
     bool nativeEventFilter(const QByteArray&, void*, long*) override;
 #endif
 private:
-    struct Key { unsigned int modifiers{}, vk{}; int action{}; };
+    struct Key { unsigned int modifiers{}, vk{}; int action{}; QString shortcut; };
     std::vector<Key> keys_;
     bool registered_{};
     bool paused_{};

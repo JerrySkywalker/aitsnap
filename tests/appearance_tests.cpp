@@ -172,6 +172,11 @@ int main(int argc, char** argv)
         }
         {
             MainWindow window(nullptr,emptyPath,"-");settle();auto* preset=window.findChild<QComboBox*>("reportTextPreset");check(preset,"Word text settings available");
+            auto* pause=window.findChild<QAction*>("pauseCapture");check(pause,"pause action exposed");pause->setChecked(true);
+            check(RegisterHotKey(nullptr,0x4702,MOD_CONTROL|MOD_ALT|MOD_SHIFT,VK_F20),"another application takes key while paused");pause->setChecked(false);
+            check(!pause->isChecked() && window.findChild<QPushButton*>("captureSave")->isEnabled() && window.findChild<QLabel*>("captureStatus")->text().contains("1409"),"resume conflict warns without forcing mouse capture to stay paused");
+            UnregisterHotKey(nullptr,0x4702);window.findChild<QPushButton*>("applySettings")->click();
+            check(!RegisterHotKey(nullptr,0x4702,MOD_CONTROL|MOD_ALT|MOD_SHIFT,VK_F20),"apply retries registration after external key is released");
             auto* key=window.findChild<QLineEdit*>("saveHotkey");QFocusEvent focusIn(QEvent::FocusIn);QApplication::sendEvent(key,&focusIn);check(RegisterHotKey(nullptr,0x4700,MOD_CONTROL|MOD_ALT|MOD_SHIFT,VK_F20),"editing releases global binding");UnregisterHotKey(nullptr,0x4700);QFocusEvent focusOut(QEvent::FocusOut);QApplication::sendEvent(key,&focusOut);settle();check(!RegisterHotKey(nullptr,0x4700,MOD_CONTROL|MOD_ALT|MOD_SHIFT,VK_F20),"leaving hidden/inactive editor restores global binding");
             QFile original(emptyPath);check(original.open(QIODevice::ReadOnly),"read pre-edit settings");const auto oldBytes=original.readAll();original.close();const auto oldKey=key->text();QApplication::sendEvent(key,&focusIn);check(RegisterHotKey(nullptr,0x4701,MOD_ALT|MOD_SHIFT,VK_F19),"external hotkey during editing");key->setText("Alt+Shift+F19");window.findChild<QPushButton*>("applySettings")->click();check(original.open(QIODevice::ReadOnly) && original.readAll()==oldBytes,"editing conflict rejected before settings commit");original.close();UnregisterHotKey(nullptr,0x4701);key->setText(oldKey);QApplication::sendEvent(key,&focusOut);settle();
             preset->setCurrentIndex(preset->findData("images"));check(window.findChild<QLabel*>("reportTextPreview")->text().contains("images",Qt::CaseInsensitive),"image-only preview localized");
