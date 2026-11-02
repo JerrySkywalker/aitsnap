@@ -102,7 +102,10 @@ MainWindow::MainWindow(QWidget* parent, QString path, QString pipeName, std::fun
     hotkeys_.triggered = [this](int mode) { if(mode>=0 && mode<3)captureActions_[mode]->trigger(); };
     hotkeys_.taskbarCreated = [this] { QTimer::singleShot(250, this, [this] { tray_->hide(); tray_->show(); }); };
     QString e;
-    if (!hotkeys_.configureBindings(hotkeyBindings(settings_), e)) setStatus(e, true);
+    // Retain the requested bindings even when their first OS registration fails,
+    // so pause/resume can retry them rather than reporting success for zero keys.
+    hotkeys_.pause(true,e);
+    if (!hotkeys_.configureBindings(hotkeyBindings(settings_), e) || !hotkeys_.pause(false,e)) setStatus(uiText("全局热键暂不可用；仍可编辑和使用鼠标截图。%1").arg(e), true);
     else setStatus(aitsnap::uiText("就绪 · %1 保存，%2 复制，%3 保存并复制").arg(settings_.saveHotkey, settings_.copyHotkey, settings_.bothHotkey));
     if (!loadError.isEmpty()) setStatus(aitsnap::uiText("配置未载入，原文件保留：") + loadError + aitsnap::uiText("。核对后应用配置。"), true);
     stage("main-context-hotkeys-loaded");
@@ -127,10 +130,12 @@ void MainWindow::setupTray()
     profileMenu_ = menu->addMenu(aitsnap::uiText("切换截图配置")); rebuildProfileMenu();
     sceneMenu_ = menu->addMenu(aitsnap::uiText("拼图场景 / 启用切换")); rebuildSceneMenu();
     auto* sceneEdit = menu->addAction(aitsnap::uiText("打开自由拼图")); connect(sceneEdit, &QAction::triggered, this, [this] { QTimer::singleShot(180, this, [this] { editScene(false); }); });
-    auto* pause = menu->addAction(aitsnap::uiText("暂停截图热键")); pause->setCheckable(true);pauseCaptureAction_=pause;
-    connect(pause, &QAction::toggled, this, [this, pause](bool checked) {
-        QString e; if (hotkeys_.pause(checked || editingHotkey_, e)) { paused_ = checked; setStatus(checked ? aitsnap::uiText("截图已暂停") : aitsnap::uiText("截图已恢复")); }
-        else { pause->blockSignals(true); pause->setChecked(true); pause->blockSignals(false); paused_ = true; setStatus(e, true); }
+    auto* pause = menu->addAction(aitsnap::uiText("暂停截图热键")); pause->setObjectName("pauseCapture");pause->setCheckable(true);pauseCaptureAction_=pause;
+    connect(pause, &QAction::toggled, this, [this](bool checked) {
+        // An OS hotkey conflict is not an explicit request to pause mouse capture.
+        paused_ = checked;
+        QString e; if (hotkeys_.pause(checked || editingHotkey_, e)) setStatus(checked ? aitsnap::uiText("截图已暂停") : aitsnap::uiText("截图已恢复"));
+        else setStatus(uiText("全局热键暂不可用；仍可编辑和使用鼠标截图。%1").arg(e), true);
         refreshWorkspace();
     });
     auto* folder = menu->addAction(aitsnap::uiText("打开输出目录")); connect(folder, &QAction::triggered, this, [this] { QDesktopServices::openUrl(QUrl::fromLocalFile(settings_.outputDirectory)); });
@@ -220,13 +225,21 @@ bool MainWindow::applySettings()
         if (!QFile::copy(configurationPath_, backup)) { setStatus(aitsnap::uiText("无法保留旧配置，配置未改写。"), true); return false; }
     }
     if(!collectSettings(c,e)){setStatus(e,true);return false;}
-    // Field editing temporarily releases keys. Still test OS conflicts before
-    // committing an enabled configuration; explicit user pause remains deferred.
-    if(editingHotkey_ && !paused_){Hotkeys validation;if(!validation.configureBindings(hotkeyBindings(c),e)){setStatus(e,true);return false;}}
-    if (!hotkeys_.configureBindings(hotkeyBindings(c), e)) { setStatus(e, true); return false; }
-    if (paused_ || editingHotkey_) hotkeys_.pause(true, e);
+    const bool changedKeys=c.saveHotkey!=settings_.saveHotkey || c.copyHotkey!=settings_.copyHotkey || c.bothHotkey!=settings_.bothHotkey ||
+        c.saveHotkeyAlternate!=settings_.saveHotkeyAlternate || c.copyHotkeyAlternate!=settings_.copyHotkeyAlternate || c.bothHotkeyAlternate!=settings_.bothHotkeyAlternate || c.hotkeysEnabled!=settings_.hotkeysEnabled;
+    // New shortcut edits remain transactional. An unchanged saved shortcut can
+    // become unavailable in another process; that must not gate every editor,
+    // mini window, or mouse capture through this shared settings entry point.
+    if(changedKeys && editingHotkey_ && !paused_){Hotkeys validation;if(!validation.configureBindings(hotkeyBindings(c),e)){setStatus(e,true);return false;}}
+    QString hotkeyWarning;
+    bool registered=hotkeys_.configureBindings(hotkeyBindings(c), e);
+    if(registered)registered=hotkeys_.pause(paused_ || editingHotkey_,e);
+    if(!registered){if(changedKeys){setStatus(e,true);return false;}hotkeyWarning=e;e.clear();}
     if (!saveSettings(configurationPath_, c, e)) { QString restore; if(!hotkeys_.configureBindings(hotkeyBindings(settings_), restore))e+="; "+restore; if (paused_ || editingHotkey_) hotkeys_.pause(true, restore); setStatus(e, true); return false; }
-    settings_ = c; configurationBlocked_ = false; profiles_->setItemText(settings_.activeProfile, qs(c.profiles[std::size_t(c.activeProfile)].name)); rebuildProfileMenu(); loadProfile(); setStatus(paused_?uiText("配置已保存 · 截图已暂停，恢复时注册热键"):aitsnap::uiText("配置已保存 · 热键已应用")); return true;
+    settings_ = c; configurationBlocked_ = false; profiles_->setItemText(settings_.activeProfile, qs(c.profiles[std::size_t(c.activeProfile)].name)); rebuildProfileMenu(); loadProfile();
+    if(!hotkeyWarning.isEmpty())setStatus(uiText("配置已保存 · 全局热键暂不可用，仍可编辑和使用鼠标截图。%1").arg(hotkeyWarning),true);
+    else setStatus(paused_?uiText("配置已保存 · 截图已暂停，恢复时注册热键"):(editingHotkey_?uiText("配置已保存 · 离开热键输入框后恢复注册"):uiText("配置已保存 · 热键已应用")));
+    return true;
 }
 void MainWindow::setStatus(const QString& text, bool error)
 {

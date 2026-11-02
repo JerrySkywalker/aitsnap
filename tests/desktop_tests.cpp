@@ -121,7 +121,9 @@ int main(int argc, char** argv)
                 settings.saveHotkey="Ctrl+Alt+Shift+F9";settings.copyHotkey="Ctrl+Alt+Shift+F10";settings.bothHotkey="Ctrl+Alt+Shift+F11";settings.saveHotkeyAlternate="F9";settings.copyHotkeyAlternate="F10";settings.bothHotkeyAlternate="F11";settings.language="zh-CN";settings.colorMode="dark";
                 check(saveSettings(data+"/settings-v1.json",settings,error),"review fixture settings");std::cout<<"REVIEW_FIXTURE_READY "<<data.toStdString()<<std::endl;QTimer::singleShot(900000,&app,&QCoreApplication::quit);const auto code=app.exec();for(auto window:windows)DestroyWindow(window);return code;
             }
-            MainWindow host(nullptr, path);int extraCaptures=0;
+            const bool hotkeyConflict=app.arguments().contains("--hotkey-conflict");
+            if(hotkeyConflict)check(RegisterHotKey(nullptr,0x4800,MOD_CONTROL|MOD_ALT|MOD_SHIFT,VK_F20),"reserve saved shortcut before native main window");
+            MainWindow host(nullptr, path,"-");int extraCaptures=0;
             if(app.arguments().contains("--live")){
                 auto settle=[](int ms){QEventLoop loop;QTimer::singleShot(ms,&loop,&QEventLoop::quit);loop.exec();};
                 host.show();settle(1700);auto* live=dynamic_cast<LivePreviewService*>(host.findChild<QObject*>("livePreviewService"));check(live && live->active() && live->snapshot().sources.size()==5,"workspace samples before first evidence capture");
@@ -142,7 +144,7 @@ int main(int argc, char** argv)
             std::shared_ptr<CaptureOutcome> outcome;
             host.captureFinished = [&](auto result) { outcome = result; wait.quit(); };
             const auto foreground = GetForegroundWindow();
-            QTimer::singleShot(0, &host, [&] { PostThreadMessageW(GetCurrentThreadId(), WM_HOTKEY, 0x4152, 0); });
+            QTimer::singleShot(0, &host, [&] { if(hotkeyConflict)host.findChild<QPushButton*>("captureBoth")->click();else PostThreadMessageW(GetCurrentThreadId(), WM_HOTKEY, 0x4152, 0); });
             QTimer::singleShot(10000, &wait, &QEventLoop::quit); wait.exec();
             check(bool(outcome), "capture completion timeout");
             check(GetForegroundWindow() == foreground && !host.isVisible(), "background focus preserved");
@@ -209,11 +211,15 @@ int main(int argc, char** argv)
                 overlays.clear(); for (auto* widget : QApplication::topLevelWidgets()) if (widget->isVisible() && widget->windowTitle().startsWith(QStringLiteral("AITSnap · 屏幕区域编辑"))) overlays.push_back(widget);
                 check(!overlays.empty(), "second editor session");
                 host.findChild<QComboBox*>("profiles")->setCurrentIndex(1);
+                check(host.findChild<QComboBox*>("profiles")->currentIndex()==0,"profile switch rejected while region editor owns the draft");
                 QKeyEvent accept(QEvent::KeyPress, Qt::Key_Return, Qt::NoModifier); QApplication::sendEvent(overlays.front(), &accept);
                 QEventLoop accepted; QTimer::singleShot(450, &accepted, &QEventLoop::quit); accepted.exec();
-                Settings switched; check(loadSettings(path, switched, error) && switched.activeProfile == 1 && switched.profiles[0].id == profile.id && switched.profiles[0].regions.size() == 5 && switched.profiles[1].id == "secondary" && switched.profiles[1].regions.size() == 1, "editor commits to stable profile id despite active switch");
-                std::cout << "REGION_EDITOR_NATIVE_PASS windows=" << overlays.size() << " capture_guard=PASS cancel_roundtrip=PASS stable_profile_accept=PASS\n";
+                Settings switched; check(loadSettings(path, switched, error) && switched.activeProfile == 0 && switched.profiles[0].id == profile.id && switched.profiles[0].regions.size() == 5 && switched.profiles[1].id == "secondary" && switched.profiles[1].regions.size() == 1, "editor commits only to its original profile after rejected switch");
+                host.findChild<QComboBox*>("profiles")->setCurrentIndex(1);
+                check(loadSettings(path,switched,error) && switched.activeProfile==1 && switched.profiles[0].regions.size()==5 && switched.profiles[1].regions.size()==1,"profile switch works after region editor closes without overwriting either profile");
+                std::cout << "REGION_EDITOR_NATIVE_PASS windows=" << overlays.size() << " capture_guard=PASS cancel_roundtrip=PASS editing_switch_rejected=PASS stable_profile_accept=PASS post_editor_switch=PASS\n";
             }
+            if(hotkeyConflict){UnregisterHotKey(nullptr,0x4800);std::cout<<"HOTKEY_CONFLICT_NATIVE_PASS occupied saved shortcut did not block requested mouse workflows\n";}
             if (app.arguments().contains("--benchmark")) {
                 std::vector<double> elapsed, skews;
                 core::CaptureRequest bench = outcome->batch.request;

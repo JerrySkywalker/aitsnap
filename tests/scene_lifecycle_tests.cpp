@@ -6,6 +6,9 @@
 #include "desktop/appearance.h"
 #include <QApplication>
 #include <QListWidget>
+#include <QLabel>
+#include <QLineEdit>
+#include <QAction>
 #include <QPushButton>
 #include <QTemporaryDir>
 #include <QTimer>
@@ -28,6 +31,34 @@ int main(int argc, char** argv)
         profile.regions={{"r1","One",{0,0,64,32},true,1},{"r2","Two",{64,0,64,32},true,2}};
         settings.profiles.push_back(profile); QString error; const auto path=root.filePath("settings.json");
         check(saveSettings(path,settings,error), "fixture persistence");
+        // Reproduce the real editor entry path with an already occupied saved
+        // shortcut. Keyboard availability must not gate mouse-based editing.
+        check(RegisterHotKey(nullptr,0x4800,MOD_CONTROL|MOD_ALT|MOD_SHIFT,VK_F20),"reserve saved shortcut for another owner");
+        {
+            MainWindow conflict(nullptr,path,"-");
+            check(conflict.findChild<QLabel*>("captureStatus")->text().contains("1409"),"reproduce real Win32 registration failure");
+            const auto changedDirectory=root.filePath("changed-output");
+            conflict.findChild<QLineEdit*>("outputDirectory")->setText(changedDirectory);
+            conflict.findChild<QPushButton*>("applySettings")->click();
+            Settings applied;check(loadSettings(path,applied,error) && applied.outputDirectory==changedDirectory,"unrelated settings persist despite unchanged shortcut conflict");
+            auto* pause=conflict.findChild<QAction*>("pauseCapture");
+            check(pause,"pause action available");pause->setChecked(true);pause->setChecked(false);
+            check(!pause->isChecked(),"failed hotkey resume does not restore explicit user pause");
+            check(conflict.findChild<QPushButton*>("captureSave")->isEnabled(),"failed hotkey resume keeps mouse capture enabled");
+            check(conflict.findChild<QLabel*>("captureStatus")->text().contains("1409"),"failed hotkey resume retains desired bindings and reports their conflict");
+            bool entered=false;
+            QTimer::singleShot(0,&conflict,[&]{
+                auto* editor=dynamic_cast<SceneEditor*>(app.activeModalWidget());
+                if(editor){entered=true;editor->reject();}
+            });
+            conflict.findChild<QPushButton*>("newScene")->click();
+            check(entered,"occupied saved shortcut must not block scene editor entry");
+            conflict.findChild<QLineEdit*>("saveHotkey")->setText("Ctrl+Alt+Shift+F23");
+            conflict.findChild<QPushButton*>("applySettings")->click();
+            check(loadSettings(path,applied,error) && applied.saveHotkey=="Ctrl+Alt+Shift+F23","user can replace occupied saved key while external owner keeps it");
+            check(!RegisterHotKey(nullptr,0x4801,MOD_CONTROL|MOD_ALT|MOD_SHIFT,VK_F23),"replacement key really registered");
+        }
+        UnregisterHotKey(nullptr,0x4800);
         MainWindow window(nullptr,path,"-");
         for (int i=0; i<12; ++i) {
             bool handled=false; const bool cancel=i%3==2;
