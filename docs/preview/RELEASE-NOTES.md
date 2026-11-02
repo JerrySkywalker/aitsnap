@@ -1,6 +1,6 @@
 # Preview release notes
 
-Current candidate line: [0.8.1 hotkey-conflict recovery](RELEASE-0.8.1.md), retaining [0.8.0 dual hotkeys, report text, mini capture and live preview](RELEASE-0.8.0.md). Exact built artifacts and qualification are recorded in the corresponding delivery receipt.
+Current candidate line: [0.8.2 compatible window display](RELEASE-0.8.2.md), retaining [0.8.1 hotkey-conflict recovery](RELEASE-0.8.1.md) and [0.8.0 dual hotkeys, report text, mini capture and live preview](RELEASE-0.8.0.md). Exact built artifacts and qualification are recorded in the corresponding delivery receipt.
 Previous candidate: [0.7.2 startup and capture command repair](RELEASE-0.7.2.md).
 Previous candidate: [0.7.1 repair and daily reporting](RELEASE-0.7.1.md).
 Previous candidate: [0.7.0 visual workspace and appearance](RELEASE-0.7.0.md).

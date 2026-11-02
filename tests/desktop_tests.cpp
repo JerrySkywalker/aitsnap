@@ -114,7 +114,7 @@ int main(int argc, char** argv)
             check(saveSettings(path, settings, error), "synthetic main settings");
             const auto evidence = app.arguments().indexOf("--evidence");
             if (evidence >= 0 && evidence + 1 < app.arguments().size()) { settings.outputDirectory = app.arguments()[evidence + 1]; check(saveSettings(path, settings, error), "evidence config"); }
-            if(app.arguments().contains("--live")){settings.scenes={core::presetScene(profile,"live-scene","实时拼图",160,100,core::LayoutPreset::Grid)};check(saveSettings(path,settings,error),"live scene fixture");}
+            if(app.arguments().contains("--live")){settings.compatibleDisplay=false;settings.scenes={core::presetScene(profile,"live-scene","实时拼图",160,100,core::LayoutPreset::Grid)};check(saveSettings(path,settings,error),"explicit exclusion live scene fixture");}
             if(app.arguments().contains("--review-fixture")){
                 for(auto window:windows){ShowWindow(window,SW_SHOWNOACTIVATE);UpdateWindow(window);}DwmFlush();
                 const auto data=QDir(settings.outputDirectory).absolutePath();settings.outputDirectory=data+"/captures";settings.profiles={profile};settings.scenes={core::presetScene(profile,"review-scene","拼图体验",1600,900,core::LayoutPreset::Grid)};settings.selectedSceneIds=QStringList{"review-scene"};settings.outputMode="both";
@@ -124,6 +124,14 @@ int main(int argc, char** argv)
             const bool hotkeyConflict=app.arguments().contains("--hotkey-conflict");
             if(hotkeyConflict)check(RegisterHotKey(nullptr,0x4800,MOD_CONTROL|MOD_ALT|MOD_SHIFT,VK_F20),"reserve saved shortcut before native main window");
             MainWindow host(nullptr, path,"-");int extraCaptures=0;
+            const bool compatibleMain=app.arguments().contains("--compatible-main");
+            if(compatibleMain){
+                const auto area=profile.regions.front().rect;host.setAttribute(Qt::WA_ShowWithoutActivating);host.setWindowFlag(Qt::WindowStaysOnTopHint);host.setGeometry(area.x-40,area.y-40,600,400);host.show();
+                QEventLoop initial;QTimer::singleShot(1200,&initial,&QEventLoop::quit);initial.exec();DWORD affinity{};
+                check(GetWindowDisplayAffinity(reinterpret_cast<HWND>(host.winId()),&affinity) && affinity==0,"default main window has no content exclusion");
+                auto* live=dynamic_cast<LivePreviewService*>(host.findChild<QObject*>("livePreviewService"));
+                check(live && live->snapshot().sources.count("r0")==0 && live->snapshot().issues.count("r0"),"compatibility preview explicitly reports own-window overlap instead of false pixels");
+            }
             if(app.arguments().contains("--live")){
                 auto settle=[](int ms){QEventLoop loop;QTimer::singleShot(ms,&loop,&QEventLoop::quit);loop.exec();};
                 host.show();settle(1700);auto* live=dynamic_cast<LivePreviewService*>(host.findChild<QObject*>("livePreviewService"));check(live && live->active() && live->snapshot().sources.size()==5,"workspace samples before first evidence capture");
@@ -144,10 +152,12 @@ int main(int argc, char** argv)
             std::shared_ptr<CaptureOutcome> outcome;
             host.captureFinished = [&](auto result) { outcome = result; wait.quit(); };
             const auto foreground = GetForegroundWindow();
-            QTimer::singleShot(0, &host, [&] { if(hotkeyConflict)host.findChild<QPushButton*>("captureBoth")->click();else PostThreadMessageW(GetCurrentThreadId(), WM_HOTKEY, 0x4152, 0); });
+            bool mainHiddenBeforeCapture=false;
+            QTimer::singleShot(0, &host, [&] { if(hotkeyConflict)host.findChild<QPushButton*>("captureBoth")->click();else PostThreadMessageW(GetCurrentThreadId(), WM_HOTKEY, 0x4152, 0);mainHiddenBeforeCapture=!host.isVisible(); });
             QTimer::singleShot(10000, &wait, &QEventLoop::quit); wait.exec();
             check(bool(outcome), "capture completion timeout");
-            check(GetForegroundWindow() == foreground && !host.isVisible(), "background focus preserved");
+            check(GetForegroundWindow() == foreground && (compatibleMain?host.isVisible():!host.isVisible()), "capture restores prior main visibility without taking foreground focus");
+            if(compatibleMain)check(mainHiddenBeforeCapture,"visible main hides before acquisition in compatibility mode");
             check(outcome->batch.captures.size() == 5, "five region batch");
             int saved = 0, copied = 0;
             for (const auto& capture : outcome->batch.captures) {

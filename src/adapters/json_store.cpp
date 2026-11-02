@@ -85,6 +85,8 @@ bool loadSettings(const QString& path, Settings& s, QString& error)
     const auto appearance = o["appearance"].toObject();
     candidate.language = appearance["language"].toString("system");
     candidate.colorMode = appearance["colorMode"].toString("system");
+    if(appearance.contains("compatibleDisplay") && !appearance["compatibleDisplay"].isBool()){error="Invalid display compatibility preference";return false;}
+    candidate.compatibleDisplay=appearance["compatibleDisplay"].toBool(true);
     if (!QStringList{"system", "zh-CN", "en-US"}.contains(candidate.language) ||
         !QStringList{"system", "light", "dark"}.contains(candidate.colorMode)) { error = "Unsupported appearance preference; file preserved"; return false; }
     for (const auto& value : o["profiles"].toArray()) {
@@ -160,7 +162,7 @@ bool saveSettings(const QString& path, const Settings& s, QString& error)
         {"hotkeysEnabled",QJsonArray{s.hotkeysEnabled[0],s.hotkeysEnabled[1],s.hotkeysEnabled[2]}},
         {"clipboardRegion", s.clipboardRegion}, {"testId", s.testId}, {"device", s.device},
         {"station", s.station}, {"operator", s.operatorName}, {"sequence", double(s.sequence)}, {"startInTray", s.startInTray},
-        {"appearance", QJsonObject{{"language", s.language}, {"colorMode", s.colorMode}}},
+        {"appearance", QJsonObject{{"language", s.language}, {"colorMode", s.colorMode},{"compatibleDisplay",s.compatibleDisplay}}},
         {"livePreview",QJsonObject{{"enabled",s.livePreviewEnabled},{"fps",s.livePreviewFps}}},
         {"scenes", scenes}, {"selectedSceneIds", selected}, {"outputMode", s.outputMode},
         {"wordReport", QJsonObject{{"enabled", s.report.enabled}, {"documentPath", s.report.documentPath}, {"targetMode", s.report.targetMode}, {"itemMode", s.report.itemMode}, {"layout", s.report.layout},{"text",reportTextJson(s.report.text)}}}};

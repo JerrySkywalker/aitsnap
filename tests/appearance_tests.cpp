@@ -53,7 +53,7 @@ int main(int argc, char** argv)
         auto regions = p["regions"].toArray(); for (int i = 0; i < regions.size(); ++i) { auto r = regions[i].toObject(); r.remove("displayNumber"); regions[i] = r; } p["regions"] = regions; profiles[0] = p; old["profiles"] = profiles;
         const auto originalBytes = QJsonDocument(old).toJson(); check(f.open(QIODevice::WriteOnly | QIODevice::Truncate), "legacy write"); f.write(originalBytes); f.close();
         Settings loaded; check(loadSettings(path, loaded, error), "legacy load");
-        check(loaded.language == "system" && loaded.colorMode == "system", "legacy appearance defaults");
+        check(loaded.language == "system" && loaded.colorMode == "system" && loaded.compatibleDisplay, "legacy appearance defaults to compatible display");
         check(loaded.profiles[0].regions[0].id == "unchanged-id-1" && loaded.profiles[0].regions[1].displayNumber == 2, "stable migration identities");
         loaded.profiles[0].regions.erase(loaded.profiles[0].regions.begin() + 1);
         loaded.profiles[0].regions.push_back({"new-region", "Third", {0, 16, 32, 16}, true}); core::numberRegions(loaded.profiles[0]);
@@ -182,6 +182,12 @@ int main(int argc, char** argv)
             preset->setCurrentIndex(preset->findData("images"));check(window.findChild<QLabel*>("reportTextPreview")->text().contains("images",Qt::CaseInsensitive),"image-only preview localized");
             window.findChild<QPushButton*>("applySettings")->click();Settings saved;check(loadSettings(emptyPath,saved,error) && !saved.report.text.titleEnabled && !saved.report.text.captionEnabled && !saved.report.text.contextEnabled,"image-only toggles persist");
             window.findChild<QCheckBox*>("reportTextEnabled0")->setChecked(true);window.findChild<QPlainTextEdit*>("reportTextTemplate0")->setPlainText("Custom {profile}");check(preset->currentData()=="custom" && window.findChild<QLabel*>("reportTextPreview")->text().startsWith("Custom "),"editing switches to custom and previews resolved fields");
+        }
+        {
+            auto preference=loaded;preference.compatibleDisplay=false;const auto displayPath=temp.filePath("display-preference.json");check(saveSettings(displayPath,preference,error),"save opt-in display exclusion preference");
+            Settings disk;check(loadSettings(displayPath,disk,error) && !disk.compatibleDisplay,"display preference roundtrip");
+            MainWindow rescue(nullptr,displayPath,"-",{},true);check(rescue.findChild<QCheckBox*>("compatibleDisplay")->isChecked(),"compatible-display launch overrides an opt-in preference without resetting other settings");
+            check(loadSettings(displayPath,disk,error) && !disk.compatibleDisplay,"compatibility rescue launch does not rewrite persisted settings");
         }
         std::cout << "APPEARANCE_IDENTITY_MIGRATION_PASS\n"; return 0;
     } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
