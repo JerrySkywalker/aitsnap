@@ -5,6 +5,8 @@
 
 #include <QMainWindow>
 #include <QJsonArray>
+#include <QThreadPool>
+#include <deque>
 #include "adapters/capture_files.h"
 #include "adapters/hotkeys.h"
 #include <functional>
@@ -28,7 +30,11 @@ class MainWindow final : public QMainWindow
 {
 public:
     using DisplayInventory=std::function<std::vector<core::Display>()>;
-    explicit MainWindow(QWidget* parent = nullptr, QString configurationPath = {}, QString pipeName = {}, std::function<void(const QString&)> startupStage = {}, bool forceCompatibleDisplay = false, DisplayInventory inventory = {});
+    struct CaptureOperations {
+        std::function<AcquiredCapture(const Settings&, const core::CaptureRequest&, bool, bool)> acquire;
+        std::function<CaptureOutcome(AcquiredCapture, const Settings&, bool)> output;
+    };
+    explicit MainWindow(QWidget* parent = nullptr, QString configurationPath = {}, QString pipeName = {}, std::function<void(const QString&)> startupStage = {}, bool forceCompatibleDisplay = false, DisplayInventory inventory = {}, CaptureOperations operations = {});
     ~MainWindow() override;
     void triggerCapture(int mode);
     bool startInTray() const { return settings_.startInTray; }
@@ -112,6 +118,24 @@ private:
     void syncLivePreview(const core::CaptureProfile&);void openLiveOutput(const QString& key={});void updateLiveOutputs();
     void updateCaptureActions(bool canCapture);
     bool busy_{}, paused_{}, configurationBlocked_{}, editingRegions_{}, editingScene_{}, refreshingWorkspace_{};
+    struct CaptureWork {
+        Settings settings;
+        int mode{};
+        qint64 reservedBytes{};
+        AcquiredCapture acquired;
+        CaptureOutcome outcome;
+        bool manifestCommitted{};
+    };
+    CaptureOperations captureOperations_;
+    QThreadPool acquisitionPool_, outputPool_;
+    std::deque<std::shared_ptr<CaptureWork>> captured_;
+    int captureOutstanding_{};
+    qint64 captureReservedBytes_{};
+    bool outputRunning_{}, shuttingDown_{};
+    bool captureQueueFull(qint64 requestedBytes = 0) const;
+    void frameLocked(const std::shared_ptr<CaptureWork>&);
+    void startNextOutput();
+    void finishClipboard(const std::shared_ptr<CaptureWork>&);
     void buildUi(); void setupTray(); void loadProfile();
     bool collectSettings(Settings&, QString& error);
     bool applySettings(); void addRegion(); void rebuildProfileMenu();
@@ -119,7 +143,7 @@ private:
     void editRegions();
     void editScene(bool createNew, bool historical = false, const QString& manifestOverride = {});
     void rebuildScenes(); void rebuildSceneMenu(); void importScene(); void exportScene();
-    void completeCapture(const std::shared_ptr<CaptureOutcome>&, const Settings&, int mode);
+    void completeCapture(const std::shared_ptr<CaptureWork>&);
     void showReportQueue(); void refreshReportStatus();
     ReportOptions selectedReportOptions() const;
     QString reportTarget(const QString& batchDirectory = {}, const QString& issuedAtUtc = {}, QString* error = nullptr) const;

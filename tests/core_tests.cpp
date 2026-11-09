@@ -28,7 +28,13 @@ int main()
         auto image = batch.captures[0].image;
         check(image.valid() && image.width == 40 && image.height == 10, "spanning image dimensions");
         check((*image.bgra)[0] == 10 && (*image.bgra)[20 * 4] == 20, "exact spanning pixels");
+        auto acquired = service.acquireFrames(req);
+        check(acquired.batch.displayFrames.size() == 2 && acquired.batch.captures.empty(), "frames captured before any crop");
+        const auto acquiredCalls = backend.acquired;
         backend.topology[1].rect.x = 10;
+        const auto cropped = CaptureService::cropFrames(std::move(acquired));
+        check(backend.acquired == acquiredCalls && cropped.captures[0].image.valid() &&
+              *cropped.captures[0].image.bgra == *image.bgra, "deferred crop uses only the already acquired frames");
         check(service.capture(req).captures[0].error.code == "TOPOLOGY_CHANGED", "recalibration required");
         req.profile.calibratedDisplays.clear();
         check(service.capture(req).captures[0].error.code == "UNCOVERED_REGION", "gap rejected");

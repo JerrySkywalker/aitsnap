@@ -5,18 +5,20 @@
 #include <exception>
 
 namespace aitsnap::core {
-CaptureBatch CaptureService::capture(const CaptureRequest& request)
+AcquiredDesktop CaptureService::acquireFrames(const CaptureRequest& request)
 {
-    CaptureBatch batch; batch.batchId = request.requestId; batch.request = request;
+    AcquiredDesktop acquisition;
+    auto& batch = acquisition.batch;
+    batch.batchId = request.requestId; batch.request = request;
     const auto profileError = validateProfile(request.profile);
     if (profileError) {
         batch.outputs.push_back({"capture", "", "FAILED", profileError});
-        return batch;
+        return acquisition;
     }
     const auto monitors = backend_.displays();
-    const bool topologyChanged = !request.profile.calibratedDisplays.empty() &&
+    acquisition.topologyChanged = !request.profile.calibratedDisplays.empty() &&
         !sameTopology(monitors, request.profile.calibratedDisplays);
-    if (!topologyChanged) {
+    if (!acquisition.topologyChanged) {
         for (const auto& monitor : monitors) {
             if (std::none_of(request.profile.regions.begin(), request.profile.regions.end(),
                 [&](const auto& r) { return r.enabled && intersect(r.rect, monitor.rect).has_value(); })) continue;
@@ -24,10 +26,17 @@ CaptureBatch CaptureService::capture(const CaptureRequest& request)
             catch (const std::exception& e) { batch.displayFrames.push_back({monitor, {}, "", 0, 0, {"ACQUIRE", e.what()}}); }
         }
     }
-    for (const auto& region : request.profile.regions) {
+    return acquisition;
+}
+
+CaptureBatch CaptureService::cropFrames(AcquiredDesktop acquisition)
+{
+    auto& batch = acquisition.batch;
+    if (!batch.outputs.empty()) return std::move(batch);
+    for (const auto& region : batch.request.profile.regions) {
         if (!region.enabled) continue;
         SourceCapture source; source.region = region;
-        if (topologyChanged) {
+        if (acquisition.topologyChanged) {
             source.error = {"TOPOLOGY_CHANGED", "Display arrangement changed; recalibrate the profile"};
             batch.captures.push_back(std::move(source)); continue;
         }
@@ -60,6 +69,11 @@ CaptureBatch CaptureService::capture(const CaptureRequest& request)
         if (!source.error) source.image = {region.rect.width, region.rect.height, pixels};
         batch.captures.push_back(std::move(source));
     }
-    return batch;
+    return std::move(batch);
+}
+
+CaptureBatch CaptureService::capture(const CaptureRequest& request)
+{
+    return cropFrames(acquireFrames(request));
 }
 } // namespace aitsnap::core

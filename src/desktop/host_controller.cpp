@@ -78,9 +78,15 @@ QJsonObject MainWindow::hostRequest(const QString& action, const QJsonObject& pa
 {
     auto ready = [] { return QJsonObject{{"status", "READY"}}; };
     auto available = [&]() -> QJsonObject { if (busy_ || editingRegions_ || editingScene_ || managingObjects_ || paused_) return hostError("CAPTURE_BUSY", "Capture paused, editing or busy; retry the same key later", "BUSY"); if (configurationBlocked_) return hostError("CONFIGURATION_HOLD", "Review and apply the preserved configuration"); return ready(); };
+    auto captureAvailable = [&]() -> QJsonObject {
+        const auto state = available();
+        if (state["status"] != "READY") return state;
+        if (captureQueueFull()) return hostError("CAPTURE_QUEUE_FULL", "Capture output queue is full; retry the same key later", "BUSY");
+        return state;
+    };
     if (action == "query-status") {
         if (!payload.isEmpty()) return hostError("PAYLOAD", "Status payload must be empty");
-        QJsonObject result{{"busy", busy_}, {"requestId", currentRequestId_}, {"profileId", qs(settings_.profiles[std::size_t(settings_.activeProfile)].id)}, {"events", contextStore_->events().size()}, {"catalogs", contextStore_->catalogs().size()}, {"eventRules", eventRules_.size()}};
+        QJsonObject result{{"busy", busy_ || captureQueueFull()}, {"pendingCaptureOutputs", captureOutstanding_ - int(busy_)}, {"requestId", currentRequestId_}, {"profileId", qs(settings_.profiles[std::size_t(settings_.activeProfile)].id)}, {"events", contextStore_->events().size()}, {"catalogs", contextStore_->catalogs().size()}, {"eventRules", eventRules_.size()}};
         if (lastOutcome_) { result["lastBatchId"] = qs(lastOutcome_->batch.batchId); result["lastBatchDirectory"] = lastOutcome_->directory; result["lastBatchStatus"] = batchJson(lastOutcome_->batch)["status"]; }
         int committed = 0, uncertain = 0; for (const auto& job : reportQueue_->jobs()) { if (job["state"] == "COMMITTED") ++committed; if (job["state"] == "UNCERTAIN") ++uncertain; } result["reportCommitted"] = committed; result["reportUncertain"] = uncertain; return {{"status", "OK"}, {"result", result}};
     }
@@ -96,7 +102,7 @@ QJsonObject MainWindow::hostRequest(const QString& action, const QJsonObject& pa
     if (action == "capture") {
         QString error; if (!allowed(payload, {"mode", "profileId", "sceneIds", "sourceSystem", "eventId"}) || !validateHostOptions(payload, error)) return hostError("PAYLOAD", error.isEmpty() ? "Unsupported capture field" : error);
         QJsonObject snapshot; if (payload.contains("sourceSystem") || payload.contains("eventId")) { snapshot = contextStore_->snapshot(payload["sourceSystem"].toString(), payload["eventId"].toString()); if (snapshot.isEmpty()) return hostError("CONTEXT", "Explicit source event was not received"); }
-        const auto availability = available(); if (availability["status"] != "READY") return availability; if (preflight) return ready(); const auto mode = payload["mode"].toString("save"); const auto id = startCapture(mode == "copy" ? 1 : mode == "both" ? 2 : 0, payload, snapshot);
+        const auto availability = captureAvailable(); if (availability["status"] != "READY") return availability; if (preflight) return ready(); const auto mode = payload["mode"].toString("save"); const auto id = startCapture(mode == "copy" ? 1 : mode == "both" ? 2 : 0, payload, snapshot);
         return id.isEmpty() ? hostError("CAPTURE_NOT_STARTED", "Capture was not accepted; saved event metadata remains separate") : QJsonObject{{"status", "ACCEPTED"}, {"result", QJsonObject{{"requestId", id}}}};
     }
     if (action == "submit-event") {
@@ -110,7 +116,7 @@ QJsonObject MainWindow::hostRequest(const QString& action, const QJsonObject& pa
         for (const auto& key : {"mode", "profileId", "sceneIds"}) if (payload.contains(key)) options[key] = payload[key];
         if (!validateHostOptions(options, error)) return hostError("RULE_TARGET", error);
         const auto preview = contextStore_->preview(event); if (preview.error) return hostError(qs(preview.error.code), qs(preview.error.message));
-        const bool capture = matched || payload["capture"].toBool(); if (capture && preview.disposition != core::EventDisposition::Duplicate) { const auto availability = available(); if (availability["status"] != "READY") return availability; }
+        const bool capture = matched || payload["capture"].toBool(); if (capture && preview.disposition != core::EventDisposition::Duplicate) { const auto availability = captureAvailable(); if (availability["status"] != "READY") return availability; }
         if (preflight) return ready(); const auto result = contextStore_->ingest(event); if (result.error) return hostError(qs(result.error.code), qs(result.error.message));
         if (result.disposition == core::EventDisposition::Duplicate) return {{"status", "DUPLICATE"}, {"result", QJsonObject{{"eventId", event["eventId"]}, {"newCapture", false}}}};
         QString id; if (capture) { const auto mode = options["mode"].toString("save"); id = startCapture(mode == "copy" ? 1 : mode == "both" ? 2 : 0, options, contextStore_->snapshot(event["sourceSystem"].toString(), event["eventId"].toString())); if (id.isEmpty()) return hostError("EVENT_DURABLE_CAPTURE_UNCONFIRMED", "Event saved; inspect status before a separate explicit capture", "UNCERTAIN"); }

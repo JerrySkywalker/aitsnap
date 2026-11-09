@@ -20,29 +20,57 @@ static void digest(core::OutputResult& result)
     if (!file.open(QIODevice::ReadOnly) || !hash.addData(&file)) { result.error = {"DIGEST_READ", "Saved file could not be hashed"}; return; }
     result.sha256 = hash.result().toHex().toStdString();
 }
-CaptureOutcome captureToFiles(core::ICaptureBackend& backend, const Settings& settings, const core::CaptureRequest& input, bool save, bool copy)
+AcquiredCapture acquireCapture(core::ICaptureBackend& backend, const Settings& settings, const core::CaptureRequest& input, bool save, bool copy)
 {
     QElapsedTimer timer; timer.start();
-    CaptureOutcome out; auto request = input;
+    AcquiredCapture acquired;
+    auto request = input;
     request.captureSequence=settings.sequence;
     core::numberRegions(request.profile);
     request.profile.outputMode = settings.outputMode.toStdString(); request.profile.sceneIds.clear();
     for (const auto& id : settings.selectedSceneIds) request.profile.sceneIds.push_back(id.toStdString()); request.profile.clipboardSelection = settings.clipboardRegion.toStdString();
-    QStringList renderIds;
+    auto& renderIds = acquired.renderIds;
     if (save && settings.outputMode != "originals") renderIds = settings.selectedSceneIds;
     if (copy && settings.clipboardRegion.startsWith("scene:")) renderIds.append(settings.clipboardRegion.mid(6));
     renderIds.removeDuplicates();
     for (const auto& scene : settings.scenes) if (renderIds.contains(QString::fromStdString(scene.id))) {
-        out.sceneSnapshots.push_back(scene);
+        acquired.sceneSnapshots.push_back(scene);
         const auto revision = std::pair<std::string, int>{scene.id, scene.revision};
         if (std::find(request.sceneRevisions.begin(), request.sceneRevisions.end(), revision) == request.sceneRevisions.end()) request.sceneRevisions.push_back(revision);
     }
-    try { const std::lock_guard<std::mutex> lock(desktopCaptureMutex());core::CaptureService service(backend); out.batch = service.capture(request); }
+    try {
+        const std::lock_guard<std::mutex> lock(desktopCaptureMutex());
+        core::CaptureService service(backend);
+        acquired.desktop = service.acquireFrames(request);
+    }
     catch (const std::exception& e) {
-        out.batch.batchId = request.requestId; out.batch.request = request;
+        auto& batch = acquired.desktop.batch;
+        batch.batchId = request.requestId;
+        batch.request = request;
+        batch.outputs.push_back({"capture", "", "FAILED", {"CAPTURE", e.what()}});
+    }
+    acquired.frameAcquireMs = double(timer.nsecsElapsed()) / 1000000.0;
+    return acquired;
+}
+
+CaptureOutcome outputCapture(AcquiredCapture acquired, const Settings& settings, bool save)
+{
+    QElapsedTimer timer; timer.start();
+    CaptureOutcome out;
+    out.frameAcquireMs = acquired.frameAcquireMs;
+    out.sceneSnapshots = std::move(acquired.sceneSnapshots);
+    const auto& renderIds = acquired.renderIds;
+    const auto originalRequest = acquired.desktop.batch.request;
+    try {
+        out.batch = core::CaptureService::cropFrames(std::move(acquired.desktop));
+    } catch (const std::exception& e) {
+        out.batch.batchId = originalRequest.requestId;
+        out.batch.request = originalRequest;
         out.batch.outputs.push_back({"capture", "", "FAILED", {"CAPTURE", e.what()}});
     }
     for (auto& frame : out.batch.displayFrames) frame.image = {}; // retain times/topology, release uncropped desktop buffers
+    const auto& request = out.batch.request;
+    out.cropMs = double(timer.nsecsElapsed()) / 1000000.0;
     if (save) {
         const QString batchName = QString("%1_%2_%3").arg(
             QDateTime::fromString(QString::fromStdString(request.issuedAtUtc), Qt::ISODateWithMs).toUTC().toString("yyyyMMdd-HHmmss-zzz"),
@@ -94,7 +122,8 @@ CaptureOutcome captureToFiles(core::ICaptureBackend& backend, const Settings& se
         }
         if (!ready && out.batch.captures.empty()) out.batch.outputs.push_back({"files", "", "FAILED", {"OUTPUT_DIRECTORY", "Cannot create unique batch directory"}});
     }
-    out.captureSaveMs = double(timer.nsecsElapsed()) / 1000000.0;
+    out.originalSaveMs = double(timer.nsecsElapsed()) / 1000000.0 - out.cropMs;
+    out.captureSaveMs = out.frameAcquireMs + out.cropMs + out.originalSaveMs;
     if (save && settings.outputMode != "originals" && settings.selectedSceneIds.empty())
         out.batch.outputs.push_back({"scene-render", "", "FAILED", {"NO_SCENES", "Select at least one composition scene"}});
     const auto sources = batchSources(out.batch);
@@ -130,14 +159,23 @@ CaptureOutcome captureToFiles(core::ICaptureBackend& backend, const Settings& se
         }
         out.batch.outputs.push_back(output);
     }
-    out.elapsedMs = double(timer.nsecsElapsed()) / 1000000.0;
+    out.elapsedMs = out.frameAcquireMs + double(timer.nsecsElapsed()) / 1000000.0;
     return out;
 }
+
+CaptureOutcome captureToFiles(core::ICaptureBackend& backend, const Settings& settings, const core::CaptureRequest& request, bool save, bool copy)
+{
+    return outputCapture(acquireCapture(backend, settings, request, save, copy), settings, save);
+}
+
 bool writeBatchManifest(const CaptureOutcome& out, QString& error)
 {
     if (out.directory.isEmpty()) { error = "No saved batch directory"; return false; }
     auto object = batchJson(out.batch);
     auto ext = object["extensions"].toObject(); ext["captureAndSaveMs"] = out.captureSaveMs; ext["sceneRenderMs"] = out.renderMs; ext["totalCaptureOutputMs"] = out.elapsedMs;
+    ext["frameAcquireMs"] = out.frameAcquireMs;
+    ext["cropMs"] = out.cropMs;
+    ext["originalSaveMs"] = out.originalSaveMs;
     if(!out.imageDirectory.isEmpty())ext["storageLayout"]="flat";
     QJsonArray scenes; for (const auto& scene : out.sceneSnapshots) scenes.append(sceneJson(scene)); ext["sceneSnapshots"] = scenes; object["extensions"] = ext;
     return saveBytesNew(QJsonDocument(object).toJson(), QDir(out.directory).filePath("batch.json"), error);
