@@ -119,8 +119,9 @@ bool loadSettings(const QString& path, Settings& s, QString& error)
     candidate.testId = o["testId"].toString(); candidate.device = o["device"].toString();
     candidate.station = o["station"].toString(); candidate.operatorName = o["operator"].toString();
     candidate.sequence = qint64(o["sequence"].toDouble()); candidate.startInTray = o["startInTray"].toBool();
-    const auto live=o["livePreview"].toObject();candidate.livePreviewEnabled=live["enabled"].toBool(true);candidate.livePreviewFps=live["fps"].toInt(2);
-    if(candidate.livePreviewFps!=1 && candidate.livePreviewFps!=2 && candidate.livePreviewFps!=5){error="Unsupported live preview rate";return false;}
+    const auto live=o["livePreview"].toObject();candidate.livePreviewEnabled=live["enabled"].toBool(true);
+    candidate.livePreviewFps=live["followScreen"].toBool()?0:live["fps"].toInt(2);
+    if(candidate.livePreviewFps!=0 && candidate.livePreviewFps!=1 && candidate.livePreviewFps!=2 && candidate.livePreviewFps!=5){error="Unsupported live preview rate";return false;}
     for (const auto& value : o["scenes"].toArray()) {
         core::SceneTemplate scene;
         if (!sceneFromJson(value.toObject(), scene, error)) return false;
@@ -167,7 +168,7 @@ QJsonObject settingsJson(const Settings& s)
         {"clipboardRegion", s.clipboardRegion}, {"testId", s.testId}, {"device", s.device},
         {"station", s.station}, {"operator", s.operatorName}, {"sequence", double(s.sequence)}, {"startInTray", s.startInTray},
         {"appearance", QJsonObject{{"language", s.language}, {"colorMode", s.colorMode},{"compatibleDisplay",s.compatibleDisplay}}},
-        {"livePreview",QJsonObject{{"enabled",s.livePreviewEnabled},{"fps",s.livePreviewFps}}},
+        {"livePreview",QJsonObject{{"enabled",s.livePreviewEnabled},{"fps",s.livePreviewFps?s.livePreviewFps:2},{"followScreen",s.livePreviewFps==0}}},
         {"scenes", scenes}, {"selectedSceneIds", selected}, {"outputMode", s.outputMode},
         {"wordReport", QJsonObject{{"enabled", s.report.enabled}, {"documentPath", s.report.documentPath}, {"targetMode", s.report.targetMode}, {"itemMode", s.report.itemMode}, {"layout", s.report.layout},{"text",reportTextJson(s.report.text)}}}};
     return o;

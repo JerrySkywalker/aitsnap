@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 cmake_minimum_required(VERSION 3.24)
 
-project(AITSnap VERSION 0.9.0 LANGUAGES CXX)
+project(AITSnap VERSION 0.10.0 LANGUAGES CXX)
 
 if(NOT WIN32)
     message(FATAL_ERROR "The current AITSnap build baseline requires Windows.")
@@ -67,6 +67,7 @@ endif()
 
 add_library(aitsnap-adapters STATIC
     src/adapters/win_capture.cpp
+    src/adapters/dxgi_preview.cpp
     src/adapters/json_store.cpp
     src/adapters/display_profiles.cpp
     src/adapters/settings_commands.cpp

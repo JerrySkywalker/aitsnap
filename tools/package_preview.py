@@ -54,12 +54,13 @@ def main():
     p.add_argument('--qt', type=Path, required=True)
     p.add_argument('--crt', type=Path, required=True)
     p.add_argument('--destination', type=Path, required=True)
+    p.add_argument('--build-dir', type=Path, default=ROOT / 'out/build/windows-msvc-qt-sdk/Release')
     a = p.parse_args()
     target = a.destination.resolve()
     if target.exists():
         p.error('Destination must be new; no existing files are replaced')
     target.mkdir(parents=True)
-    build = ROOT / 'out/build/windows-msvc-qt-sdk/Release'
+    build = a.build_dir.resolve()
     for name in sorted(APP_FILES):
         shutil.copy2(build / name, target / name)
     subprocess.run([str(a.qt / 'bin/windeployqt.exe'), '--release', '--no-translations',

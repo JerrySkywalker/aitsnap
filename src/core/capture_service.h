@@ -7,6 +7,7 @@ struct ICaptureBackend {
     virtual ~ICaptureBackend() = default;
     virtual std::vector<Display> displays() = 0;
     virtual DisplayFrame acquire(const Display&) = 0;
+    virtual DisplayFrame acquireRegion(const Display& display, const Rect&) { return acquire(display); }
 };
 struct AcquiredDesktop {
     CaptureBatch batch;

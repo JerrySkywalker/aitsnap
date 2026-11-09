@@ -30,7 +30,6 @@ SceneTemplate presetScene(const CaptureProfile& profile, std::string id, std::st
 
 namespace {
 constexpr double canvasMargin = 16;
-constexpr double layerGap = 12;
 
 struct Bounds {
     double left{}, top{}, right{}, bottom{};
@@ -64,9 +63,29 @@ double snapIntegralEdge(double edge)
 }
 } // namespace
 
-void arrangeLayers(SceneTemplate& scene, LayoutPreset preset)
+Destination fittedLayerBox(const Layer& layer, int sourceWidth, int sourceHeight)
 {
-    struct Unit { Bounds bounds; std::vector<std::size_t> members; bool locked{}; };
+    auto box = layer.destination;
+    const auto width = layer.crop.valid() ? layer.crop.width : sourceWidth;
+    const auto height = layer.crop.valid() ? layer.crop.height : sourceHeight;
+    if (!layer.preserveAspect || width <= 0 || height <= 0) return box;
+    const auto scale = std::min(box.width / width, box.height / height);
+    box.x += (box.width - width * scale) / 2;
+    box.y += (box.height - height * scale) / 2;
+    box.width = width * scale;
+    box.height = height * scale;
+    return box;
+}
+
+Destination visibleLayerBounds(const Layer& layer, int sourceWidth, int sourceHeight)
+{
+    const auto bounds = rotatedBounds(fittedLayerBox(layer, sourceWidth, sourceHeight));
+    return {bounds.left, bounds.top, bounds.width(), bounds.height(), 0};
+}
+
+void arrangeLayers(SceneTemplate& scene, LayoutPreset preset, const std::vector<std::size_t>& selected, double gap, bool centered)
+{
+    struct Unit { Bounds bounds; std::vector<std::size_t> members; bool locked{}, selected{}; };
     std::vector<Unit> units;
     std::map<std::string, std::size_t> groups;
     for (std::size_t i = 0; i < scene.layers.size(); ++i) {
@@ -77,20 +96,21 @@ void arrangeLayers(SceneTemplate& scene, LayoutPreset preset)
         auto& unit = units[index];
         unit.members.push_back(i);
         unit.locked = unit.locked || layer.locked;
+        unit.selected = unit.selected || selected.empty() || std::find(selected.begin(), selected.end(), i) != selected.end();
         if (layer.visible) unit.bounds.include(rotatedBounds(layer.destination));
     }
 
     Bounds locked;
     std::vector<const Unit*> movable;
     for (const auto& unit : units) {
-        if (unit.bounds.empty()) continue;
+        if (unit.bounds.empty() || !unit.selected) continue;
         if (unit.locked) locked.include(unit.bounds);
         else movable.push_back(&unit);
     }
     if (movable.empty()) return;
     const bool column = preset == LayoutPreset::Column;
-    const double startX = locked.empty() || column ? canvasMargin : locked.right + layerGap;
-    const double startY = locked.empty() || !column ? canvasMargin : locked.bottom + layerGap;
+    const double startX = locked.empty() || column ? canvasMargin : locked.right + gap;
+    const double startY = locked.empty() || !column ? canvasMargin : locked.bottom + gap;
     const auto place = [&scene](const Unit& unit, double left, double top) {
         for (auto member : unit.members) {
             auto& d = scene.layers[member].destination;
@@ -101,10 +121,10 @@ void arrangeLayers(SceneTemplate& scene, LayoutPreset preset)
     if (preset == LayoutPreset::Hero) {
         place(*movable.front(), startX, startY);
         double top = startY;
-        const double left = startX + movable.front()->bounds.width() + layerGap;
+        const double left = startX + movable.front()->bounds.width() + gap;
         for (std::size_t i = 1; i < movable.size(); ++i) {
             place(*movable[i], left, top);
-            top += movable[i]->bounds.height() + layerGap;
+            top += movable[i]->bounds.height() + gap;
         }
         return;
     }
@@ -121,10 +141,12 @@ void arrangeLayers(SceneTemplate& scene, LayoutPreset preset)
     for (std::size_t row = 0; row < rows; ++row) {
         double left = startX;
         for (std::size_t col = 0; col < columns && row * columns + col < movable.size(); ++col) {
-            place(*movable[row * columns + col], left, top);
-            left += widths[col] + layerGap;
+            const auto& unit = *movable[row * columns + col];
+            place(unit, left + (centered ? (widths[col] - unit.bounds.width()) / 2 : 0),
+                        top + (centered ? (heights[row] - unit.bounds.height()) / 2 : 0));
+            left += widths[col] + gap;
         }
-        top += heights[row] + layerGap;
+        top += heights[row] + gap;
     }
 }
 

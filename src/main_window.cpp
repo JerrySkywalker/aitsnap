@@ -99,7 +99,14 @@ MainWindow::MainWindow(QWidget* parent, QString path, QString pipeName, std::fun
     }
     if (QFile::exists(configurationPath_ + ".before-management.json")) loadError = "Previous management operation needs recovery: " + configurationPath_ + ".before-management.json";
     configurationBlocked_ = !loadError.isEmpty();
-    livePreview_=new LivePreviewService(this);livePreview_->changed=[this]{refreshWorkspace();updateLiveOutputs();};
+    livePreview_=new LivePreviewService(this);
+    livePreview_->changed=[this]{
+        updateLiveOutputs();
+        if(!livePreview_->snapshot().serial || !liveWorkspaceRefresh_.isValid() || liveWorkspaceRefresh_.elapsed()>=200){
+            liveWorkspaceRefresh_.start();
+            refreshWorkspace();
+        }
+    };
     stage("main-settings-loaded");
     buildUi(); stage("main-ui-built");
     mini_=new MiniCaptureWindow(QFileInfo(configurationPath_).absolutePath()+"/mini-window.json",this);
@@ -257,7 +264,7 @@ bool MainWindow::validateRegionChanges(const Settings& candidate, QString& error
     }
     return true;
 }
-bool MainWindow::applySettings()
+bool MainWindow::applySettings(bool skipUnchanged)
 {
     Settings c = settings_; QString e;
     if (QFile::exists(configurationPath_ + ".before-management.json")) { setStatus("Previous management operation needs recovery: " + configurationPath_ + ".before-management.json", true); return false; }
@@ -266,6 +273,12 @@ bool MainWindow::applySettings()
         if (!QFile::copy(configurationPath_, backup)) { setStatus(aitsnap::uiText("无法保留旧配置，配置未改写。"), true); return false; }
     }
     if (!collectSettings(c, e) || !validateRegionChanges(c, e)) { setStatus(e, true); return false; }
+    if(skipUnchanged && !configurationBlocked_){
+        auto& revision=c.profiles[std::size_t(c.activeProfile)].revision;
+        --revision;
+        if(settingsJson(c)==settingsJson(settings_))return true;
+        ++revision;
+    }
     const bool changedKeys=c.saveHotkey!=settings_.saveHotkey || c.copyHotkey!=settings_.copyHotkey || c.bothHotkey!=settings_.bothHotkey ||
         c.saveHotkeyAlternate!=settings_.saveHotkeyAlternate || c.copyHotkeyAlternate!=settings_.copyHotkeyAlternate || c.bothHotkeyAlternate!=settings_.bothHotkeyAlternate || c.hotkeysEnabled!=settings_.hotkeysEnabled;
     // New shortcut edits remain transactional. An unchanged saved shortcut can
@@ -312,7 +325,7 @@ void MainWindow::triggerCapture(int mode)
     if(mode<0 || mode>2){setStatus(uiText("无效的截图动作。"),true);return;}
     // Every UI entry commits the same draft before taking its immutable snapshot.
     if(busy_ || captureQueueFull() || paused_ || configurationBlocked_ || editingRegions_ || editingScene_ || managingObjects_ || shuttingDown_){startCapture(mode);return;}
-    if(applySettings())startCapture(mode, {}, {}, triggerClock);
+    if(applySettings(true))startCapture(mode, {}, {}, triggerClock);
 }
 bool MainWindow::eventFilter(QObject* object,QEvent* event)
 {
@@ -623,6 +636,10 @@ static QString reportFailureReason(const QJsonObject& job)
         return uiText("写入进程中断，未收到完成确认。");
     if (reason == "TARGET_READ_ONLY" || message.contains("read-only or protected"))
         return uiText("报告是只读或受保护的。检查文件属性、打开方式和编辑权限。");
+    if(reason=="WORD_BUSY")
+        return uiText("Word 正忙或正在显示对话框。完成当前操作并关闭对话框。");
+    if(reason=="TARGET_IN_USE")
+        return uiText("报告文件被占用。请完成并保存其他窗口中的编辑，再释放该文件。");
     if (reason == "TARGET_UNSAVED" || message.contains("unsaved user changes"))
         return uiText("报告有未保存的修改。请在 Word 中先保存这些修改。");
     if (reason == "SOURCE_VERIFY" || stage == "verify-sources")

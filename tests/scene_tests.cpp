@@ -215,7 +215,37 @@ int main(int argc, char** argv)
         check(saveImageNew(renderScene(column, historical).image, QDir(outcome.directory).filePath("rerender-new.png"), "PNG", error), "historical unique derivation");
         SceneEditor editor(row, profile, historical);
         auto* layerList = editor.findChild<QListWidget*>("sceneLayers"); auto* view = editor.findChild<QGraphicsView*>("sceneCanvas");
-        check(layerList && view, "scene editor widgets"); layerList->item(0)->setSelected(true); layerList->item(1)->setSelected(true);
+        check(layerList && view, "scene editor widgets");
+        {
+            auto fixture=row;
+            fixture.layers[0].destination={11,27,120,60,90};
+            fixture.layers[0].crop={0,0,32,16};
+            fixture.layers[1].destination={160,28,80,120,0};
+            SceneEditor matching(fixture,profile,historical);
+            auto* list=matching.findChild<QListWidget*>("sceneLayers");
+            list->item(0)->setSelected(true);list->item(1)->setSelected(true);
+            const auto bounds=[&](const Layer& layer){
+                const auto& image=historical.at(layer.sourceRegionId).image;
+                return visibleLayerBounds(layer,image.width(),image.height());
+            };
+            matching.findChild<QPushButton*>("matchLayerWidth")->click();
+            const auto after=matching.sceneTemplate();
+            const auto initial=bounds(fixture.layers[0]), scaled=bounds(after.layers[0]), reference=bounds(after.layers[1]);
+            check(std::abs(scaled.width-reference.width)<1e-8 && std::abs(scaled.x-initial.x)<1e-8 &&
+                  std::abs(scaled.y-initial.y)<1e-8 && after.width==fixture.width && after.height==fixture.height,
+                  "match width uses rendered size and keeps the visible anchor and export canvas");
+            matching.findChild<QPushButton*>("undoScene")->click();
+            check(sceneJson(matching.sceneTemplate())==sceneJson(fixture),"one undo restores the whole match-width operation");
+            matching.findChild<QPushButton*>("matchLayerHeight")->click();
+            const auto resized=matching.sceneTemplate();
+            check(std::abs(bounds(resized.layers[0]).height-bounds(resized.layers[1]).height)<1e-8,"match height uses rendered size");
+            matching.findChild<QPushButton*>("applyPreset")->click();
+            const auto arranged=matching.sceneTemplate();
+            check(arranged.layers[0].destination.width==resized.layers[0].destination.width &&
+                  arranged.layers[0].destination.height==resized.layers[0].destination.height && arranged.width==resized.width,
+                  "row placement preserves matched dimensions and fixed canvas");
+        }
+        layerList->item(0)->setSelected(true); layerList->item(1)->setSelected(true);
         editor.findChild<QPushButton*>("groupLayers")->click(); auto grouped = editor.sceneTemplate();
         check(!grouped.layers[0].groupId.empty() && grouped.layers[0].groupId == grouped.layers[1].groupId, "group assignment");
         layerList->clearSelection(); layerList->item(0)->setSelected(true);
@@ -236,7 +266,17 @@ int main(int argc, char** argv)
         const auto layerCount = editor.sceneTemplate().layers.size();layerList->selectAll();editor.findChild<QAction*>("layer.delete")->trigger();
         check(editor.sceneTemplate().layers.empty(), "context action deletes all selected layers");
         editor.findChild<QPushButton*>("undoScene")->click();check(editor.sceneTemplate().layers.size()==layerCount && renderScene(editor.sceneTemplate(),historical).image==beforeDelete,"undo batch deletion restores rendered scene");
-        check(editor.exportDerived(QDir(outcome.directory).filePath("widget-derived.png"), error) && QFile::exists(QDir(outcome.directory).filePath("widget-derived.png.derivation.json")), "editor export with derivation provenance");
+        editor.findChild<QSpinBox*>("sceneCanvasWidth")->setValue(143);
+        const auto derived=QDir(outcome.directory).filePath("widget-derived.png");
+        check(editor.exportDerived(derived,error) && QImage(derived).width()==143,"direct export uses the valid canvas draft");
+        QFile derivedReceipt(derived+".derivation.json");
+        check(derivedReceipt.open(QIODevice::ReadOnly),"derivation receipt");
+        const auto publication=QJsonDocument::fromJson(derivedReceipt.readAll()).object();
+        derivedReceipt.close();
+        const auto pending=QDir(outcome.directory).filePath(".aitsnap-"+publication["publicationId"].toString()+".pending.png");
+        check(QFile::rename(derived,pending),"simulate interruption after receipt publication");
+        check(editor.exportDerived(derived,error) && !QFile::exists(pending) &&
+              hash(derived)==publication["imageSha256"].toString().toLatin1(),"restart completes the exact staged export");
         for (const auto& output : outcome.batch.outputs) if (output.kind == "ORIGINAL") check(hash(QString::fromStdString(output.path)).toStdString() == output.sha256, "original SHA unchanged after two scenes and rerender");
         const auto settingsFile = QDir(directory).filePath("scene-settings.json"); check(saveSettings(settingsFile, settings, error), "settings v2 save"); Settings loaded;
         check(loadSettings(settingsFile, loaded, error) && loaded.scenes.size() == 2 && loaded.outputMode == "both", "settings v2 scene roundtrip");

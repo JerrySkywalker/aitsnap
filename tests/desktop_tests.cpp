@@ -10,6 +10,8 @@
 #include "adapters/live_preview.h"
 #include "core/scene_geometry.h"
 #include <QApplication>
+#include <QLabel>
+#include <QScreen>
 #include <QAction>
 #include <QCheckBox>
 #include <QLineEdit>
@@ -184,7 +186,7 @@ int main(int argc, char** argv)
             check(saveSettings(path, settings, error), "synthetic main settings");
             const auto evidence = app.arguments().indexOf("--evidence");
             if (evidence >= 0 && evidence + 1 < app.arguments().size()) { settings.outputDirectory = app.arguments()[evidence + 1]; check(saveSettings(path, settings, error), "evidence config"); }
-            if(app.arguments().contains("--live")){settings.compatibleDisplay=false;settings.scenes={core::presetScene(profile,"live-scene","实时拼图",160,100,core::LayoutPreset::Grid)};check(saveSettings(path,settings,error),"explicit exclusion live scene fixture");}
+            if(app.arguments().contains("--live")){settings.compatibleDisplay=false;settings.scenes={core::presetScene(profile,"live-scene","实时拼图",160,100,core::LayoutPreset::Grid)};if(app.arguments().contains("--follow-screen"))settings.livePreviewFps=0;check(saveSettings(path,settings,error),"explicit exclusion live scene fixture");}
             if(app.arguments().contains("--review-fixture")){
                 for(auto window:windows){ShowWindow(window,SW_SHOWNOACTIVATE);UpdateWindow(window);}DwmFlush();
                 const auto data=QDir(settings.outputDirectory).absolutePath();settings.outputDirectory=data+"/captures";settings.profiles={profile};settings.scenes={core::presetScene(profile,"review-scene","拼图体验",1600,900,core::LayoutPreset::Grid)};settings.selectedSceneIds=QStringList{"review-scene"};settings.outputMode="both";
@@ -226,7 +228,20 @@ int main(int argc, char** argv)
                 host.showMinimized();settle(120);check(!live->active(),"minimized workspace unsubscribes");host.showNormal();settle(1300);check(live->active() && live->snapshot().sources.size()==5,"restored workspace resumes live frames");
                 host.findChild<QPushButton*>("openLiveOutput")->click();settle(1500);auto* output=dynamic_cast<LiveOutputWindow*>(host.findChild<QWidget*>("liveOutputWindow"));check(output && output->isVisible(),"selected source opens independent live window");
                 output->findChild<QAction*>("copyPreview")->trigger();check(QApplication::clipboard()->image().pixelColor(4,4)==QColor(Qt::red),"independent live window displays actual source pixels");
+                if(app.arguments().contains("--follow-screen")){
+                    auto* rate=output->findChild<QLabel*>("liveOutputRate");
+                    check(rate && rate->text().contains(QString::number(output->screenRate())+" Hz"),"independent window displays its live target");
+                    for(auto* screen:QGuiApplication::screens()){
+                        const auto hz=qRound(screen->refreshRate());
+                        if(hz==output->screenRate() || hz<=1)continue;
+                        output->move(screen->availableGeometry().topLeft()+QPoint(280,220));settle(1600);
+                        check(output->screenRate()==hz && rate->text().contains(QString::number(hz)+" Hz"),"moving independent output changes the displayed target");
+                        std::cout<<"LIVE_SCREEN_MOVE_PASS target_hz="<<hz<<'\n';
+                        break;
+                    }
+                }
                 std::shared_ptr<CaptureOutcome> fresh;QEventLoop freshWait;host.captureFinished=[&](auto result){fresh=result;freshWait.quit();};host.triggerCapture(1);check(!output->isVisible(),"formal capture hides live output windows");QTimer::singleShot(10000,&freshWait,&QEventLoop::quit);freshWait.exec();check(fresh && fresh->directory.isEmpty() && output->isVisible() && toQImage(fresh->batch.captures.front().image).pixelColor(4,4)==QColor(Qt::red),"formal capture uses fresh correct pixels and restores output");extraCaptures=1;
+                std::cout<<"LIVE_FORMAL_CAPTURE_PASS trigger_to_frames_ms="<<fresh->triggerToFramesMs.value_or(-1)<<'\n';
                 output->findChild<QPushButton*>("liveOutputPause")->click();check(output->paused(),"output can pause");output->close();
                 host.findChild<QListWidget*>("workspaceNavigation")->setCurrentRow(2);host.findChild<QPushButton*>("openLiveOutput")->click();settle(1500);output=dynamic_cast<LiveOutputWindow*>(host.findChild<QWidget*>("liveOutputWindow"));check(output && output->key()=="scene:live-scene","scene page opens the selected scene rather than stale workbench selection");output->findChild<QAction*>("copyPreview")->trigger();const auto expected=renderScenePreview(settings.scenes.front(),live->snapshot().sources,{1600,1000});check(expected.complete && QApplication::clipboard()->image()==expected.image,"independent scene uses exact shared live composition algorithm");output->close();
                 host.findChild<QCheckBox*>("livePreviewEnabled")->setChecked(false);host.hide();settle(150);check(!live->active() && live->snapshot().sources.empty(),"last subscription stops live capture and releases cache");

@@ -38,6 +38,7 @@ class ImagePreview final : public QWidget {
 public:
     explicit ImagePreview(QWidget* parent = nullptr);
     void setImage(QImage image, QString caption = {}, QSize placeholder = {640, 400});
+    std::function<void(qint64)> imagePainted;
 protected:
     void paintEvent(QPaintEvent*) override;
 private:

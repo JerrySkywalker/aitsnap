@@ -104,7 +104,10 @@ void ImagePreview::paintEvent(QPaintEvent*)
     const QRect area = rect().adjusted(16, 16, -16, -58); auto size = image_.isNull() ? placeholder_ : image_.size();
     if (size.isEmpty() || area.isEmpty()) return;
     size.scale(area.size(), Qt::KeepAspectRatio); const QRect target(area.center() - QPoint(size.width() / 2, size.height() / 2), size);
-    if (!image_.isNull()) p.drawImage(target, image_);
+    if (!image_.isNull()) {
+        p.drawImage(target, image_);
+        if (imagePainted) imagePainted(image_.cacheKey());
+    }
     else { p.setPen(QPen(palette().color(QPalette::Mid), 2, Qt::DashLine)); p.setBrush(palette().color(QPalette::AlternateBase)); p.drawRect(target); p.setPen(palette().color(QPalette::Text)); p.drawText(target.adjusted(5, 5, -5, -5), Qt::AlignCenter | Qt::TextWordWrap, uiText("未采集 · 等比布局占位")); }
     p.setPen(palette().color(QPalette::Text)); p.drawText(QRect(16, height() - 48, width() - 32, 42), Qt::AlignCenter | Qt::TextWordWrap, caption_);
 }

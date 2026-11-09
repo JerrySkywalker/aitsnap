@@ -189,7 +189,13 @@ QJsonObject execute(const QJsonObject& job, bool recovery)
             const auto code = message.mid(codeStart + 8, 8);
             bool valid = false;
             const auto hresult = code.toUInt(&valid, 16);
-            if (valid) result["hresult"] = QString("0x%1").arg(hresult, 8, 16, QChar('0'));
+            if (valid) {
+                result["hresult"] = QString("0x%1").arg(hresult, 8, 16, QChar('0'));
+                if (hresult==quint32(RPC_E_CALL_REJECTED) || hresult==quint32(RPC_E_SERVERCALL_RETRYLATER))
+                    result["reason"]="WORD_BUSY";
+                if(hresult==quint32(HRESULT_FROM_WIN32(ERROR_SHARING_VIOLATION)) ||
+                   hresult==quint32(HRESULT_FROM_WIN32(ERROR_LOCK_VIOLATION)))result["reason"]="TARGET_IN_USE";
+            }
         }
         return result;
     }

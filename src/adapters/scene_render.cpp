@@ -3,6 +3,7 @@
 #include "batch_paths.h"
 #include "json_store.h"
 #include "desktop/appearance.h"
+#include "core/scene_geometry.h"
 #include <QCryptographicHash>
 #include <QDir>
 #include <QFile>
@@ -28,11 +29,8 @@ QColor sceneColour(const std::string& value)
 void paintLayerLocal(QPainter& painter, const core::Layer& layer, const QImage& image)
 {
     QRectF crop = layer.crop.valid() ? QRectF(layer.crop.x, layer.crop.y, layer.crop.width, layer.crop.height) : QRectF(image.rect());
-    QRectF destination(0, 0, layer.destination.width, layer.destination.height);
-    if (layer.preserveAspect && crop.width() > 0 && crop.height() > 0) {
-        const auto fitted = crop.size().scaled(destination.size(), Qt::KeepAspectRatio);
-        destination = QRectF(QPointF((destination.width() - fitted.width()) / 2, (destination.height() - fitted.height()) / 2), fitted);
-    }
+    const auto fitted = core::fittedLayerBox(layer, image.width(), image.height());
+    const QRectF destination(fitted.x-layer.destination.x, fitted.y-layer.destination.y, fitted.width, fitted.height);
     painter.drawImage(destination, image, crop);
 }
 RenderResult renderScenePreview(core::SceneTemplate scene,const SceneSources& sources,QSize bounds)

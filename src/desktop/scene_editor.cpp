@@ -194,23 +194,37 @@ void SceneEditor::buildUi()
     };
     auto* presets = new QComboBox; presets->setObjectName("sceneLayoutPreset"); presets->addItems({aitsnap::uiText("行排列"), aitsnap::uiText("列排列"), aitsnap::uiText("网格"), aitsnap::uiText("主图 + 辅图")}); toolbar->addWidget(presets);
     button(aitsnap::uiText("应用预设"), [this, presets] { preset(presets->currentIndex()); }, "applyPreset");
+    arrangeSelected_=new QCheckBox(uiText("仅排选中"));toolbar->addWidget(arrangeSelected_);
+    arrangeCentered_=new QCheckBox(uiText("居中"));toolbar->addWidget(arrangeCentered_);
+    arrangeGap_=new QSpinBox;arrangeGap_->setRange(0,10000);arrangeGap_->setValue(12);
+    arrangeGap_->setPrefix(uiText("间距")+" ");arrangeGap_->setSuffix(" px");toolbar->addWidget(arrangeGap_);
     const auto restore = [this](auto& from, auto& to) {
         if (from.empty()) return;
         to.push_back({model_, pendingCanvasError_});
         model_ = std::move(from.back().model);
         pendingCanvasError_ = std::move(from.back().pendingCanvasError);
         from.pop_back();
+        name_->setText(qs(model_.name));
+        background_->setText(qs(model_.background));
         rebuild();
     };
     button(aitsnap::uiText("撤销"), [this, restore] { restore(undo_, redo_); }, "undoScene");
     button(aitsnap::uiText("重做"), [this, restore] { restore(redo_, undo_); });
     snap_ = new QCheckBox(aitsnap::uiText("10 px 吸附")); toolbar->addWidget(snap_);
-    button(aitsnap::uiText("适合窗口"), [this] { view_->fitCanvas(); }, "fitSceneView");
-    button("−", [this] { view_->zoomBy(0.8); }); button("+", [this] { view_->zoomBy(1.25); });
-    button("100%", [this] { view_->actualSize(); }, "sceneViewActualSize");
-    zoomLevel_ = new QLabel; zoomLevel_->setObjectName("sceneZoomLevel"); toolbar->addWidget(zoomLevel_);
     toolbar->addStretch();
-    canvasSize_ = new QLabel; canvasSize_->setObjectName("sceneCanvasSize"); toolbar->addWidget(canvasSize_);
+    auto* placement = new QHBoxLayout; outer->addLayout(placement);
+    placement->addWidget(new QLabel(uiText("对齐与等距")));
+    const QStringList alignmentNames{uiText("左"),uiText("右"),uiText("顶"),uiText("底"),uiText("中X"),uiText("中Y"),uiText("水平分布"),uiText("垂直分布"),uiText("等宽"),uiText("等高")};
+    for(int i=0;i<alignmentNames.size();++i){
+        auto* action=new QPushButton(alignmentNames[i]);
+        if(i==8)action->setObjectName("matchLayerWidth");
+        if(i==9)action->setObjectName("matchLayerHeight");
+        placement->addWidget(action);connect(action,&QPushButton::clicked,this,[this,i]{geometryAction(i);});
+    }
+    referenceLabel_=new QLabel;placement->addWidget(referenceLabel_,1);
+    zoomLevel_ = new QLabel; zoomLevel_->setObjectName("sceneZoomLevel");
+    toolbar->addStretch();
+    canvasSize_ = new QLabel; canvasSize_->setObjectName("sceneCanvasSize");
     outer->addLayout(toolbar);
     auto* split = new QSplitter(Qt::Horizontal); outer->addWidget(split, 1);
     auto* left = new QWidget; auto* leftLayout = new QVBoxLayout(left); leftLayout->setContentsMargins(0, 0, 8, 0);
@@ -234,22 +248,24 @@ void SceneEditor::buildUi()
     view_->setRenderHints(QPainter::Antialiasing | QPainter::SmoothPixmapTransform); split->addWidget(view_);
     view_->zoomChanged = [this](double scale) { zoomLevel_->setText(QString::number(scale * 100, 'g', 3) + "%"); };
     view_->zoomChanged(1);
-    auto* scroll = new QScrollArea; scroll->setWidgetResizable(true); scroll->setMinimumWidth(245); auto* properties = new QWidget; auto* form = new QFormLayout(properties); form->setContentsMargins(12, 0, 4, 0);
+    auto* scroll = new QScrollArea; scroll->setWidgetResizable(true); scroll->setMinimumWidth(245);
+    auto* properties=new QWidget;auto* sections=new QVBoxLayout(properties);
+    auto* canvasSettings=new QGroupBox(uiText("画布设置"));sections->addWidget(canvasSettings);
+    auto* form=new QFormLayout(canvasSettings);
     name_ = new QLineEdit(qs(model_.name)); form->addRow(aitsnap::uiText("场景名称"), name_);
-    auto integerSpin = [form](const QString& label, int min, int max) { auto* s = new QSpinBox; s->setRange(min, max); form->addRow(label, s); return s; };
+    auto integerSpin = [&form](const QString& label, int min, int max) { auto* s = new QSpinBox; s->setRange(min, max); form->addRow(label, s); return s; };
     canvasWidth_ = integerSpin(aitsnap::uiText("画布宽 px"), 1, 1000000); canvasHeight_ = integerSpin(aitsnap::uiText("画布高 px"), 1, 1000000);
     canvasWidth_->setObjectName("sceneCanvasWidth"); canvasHeight_->setObjectName("sceneCanvasHeight");
     canvasWidth_->setValue(model_.width); canvasHeight_->setValue(model_.height); background_ = new QLineEdit(qs(model_.background)); form->addRow(aitsnap::uiText("背景 #RRGGBB[AA]"), background_);
     auto* applyCanvas = new QPushButton(aitsnap::uiText("设置固定画布")); applyCanvas->setObjectName("applySceneCanvas"); form->addRow(applyCanvas);
     auto* fitContent = new QPushButton(aitsnap::uiText("画布适合内容")); fitContent->setObjectName("fitSceneContent"); form->addRow(fitContent);
     connect(fitContent, &QPushButton::clicked, this, [this] { fitCanvas(); });
-    connect(applyCanvas, &QPushButton::clicked, this, [this] {
-        auto candidate = model_; candidate.name = name_->text().trimmed().toStdString(); candidate.width = canvasWidth_->value(); candidate.height = canvasHeight_->value(); candidate.background = background_->text().toStdString();
-        if (const auto e = core::validateScene(candidate); e) { status_->setText(qs(e.message)); return; }
-        pushUndo(); model_ = candidate; pendingCanvasError_.clear(); rebuild();
-        status_->setText(uiText("已应用固定画布尺寸。"));
-    });
-    form->addRow(new QLabel(aitsnap::uiText("选中图层属性（目标框像素）")));
+    connect(applyCanvas,&QPushButton::clicked,this,[this]{applyCanvasDraft();});
+    for(auto* spin:{canvasWidth_,canvasHeight_})connect(spin,&QSpinBox::editingFinished,this,[this]{applyCanvasDraft();});
+    connect(background_,&QLineEdit::editingFinished,this,[this]{applyCanvasDraft();});
+    connect(name_,&QLineEdit::editingFinished,this,[this]{applyCanvasDraft();});
+    auto* layerSettings=new QGroupBox(uiText("选中图层属性（目标框像素）"));sections->addWidget(layerSettings);
+    form=new QFormLayout(layerSettings);
     source_ = new QComboBox; form->addRow(aitsnap::uiText("源区域"), source_);
     auto numeric = [form](const QString& label, double min, double max, const char* objectName) { auto* s = new QDoubleSpinBox; s->setObjectName(objectName); s->setDecimals(3); s->setRange(min, max); form->addRow(label, s); return s; };
     x_ = numeric("X", -1000000, 1000000, "layerX"); y_ = numeric("Y", -1000000, 1000000, "layerY");
@@ -262,28 +278,31 @@ void SceneEditor::buildUi()
     pinned_ = new QLineEdit; pinned_->setReadOnly(true); form->addRow(aitsnap::uiText("固定源图"), pinned_);
     auto* relink = new QPushButton(aitsnap::uiText("改用当前批次源")); form->addRow(relink);
     connect(relink, &QPushButton::clicked, this, [this] { pushUndo(); for (auto& layer : model_.layers) if (selected_.count(layer.id)) layer.sourceArtifactId.clear(); rebuild(); });
-    auto* alignRow = new QWidget; auto* alignment = new QHBoxLayout(alignRow); alignment->setContentsMargins(0, 0, 0, 0);
-    const QStringList alignmentNames{aitsnap::uiText("左"), aitsnap::uiText("右"), aitsnap::uiText("顶"), aitsnap::uiText("底"), aitsnap::uiText("中X"), aitsnap::uiText("中Y")};
-    for (int i = 0; i < alignmentNames.size(); ++i) { auto* b = new QPushButton(alignmentNames[i]); alignment->addWidget(b); connect(b, &QPushButton::clicked, this, [this, i] { geometryAction(i); }); }
-    form->addRow(aitsnap::uiText("目标框对齐"), alignRow);
-    auto* distribution = new QWidget; auto* spacing = new QHBoxLayout(distribution); spacing->setContentsMargins(0, 0, 0, 0);
-    auto* horizontal = new QPushButton(aitsnap::uiText("水平分布")); auto* vertical = new QPushButton(aitsnap::uiText("垂直分布")); spacing->addWidget(horizontal); spacing->addWidget(vertical); form->addRow(distribution);
-    connect(horizontal, &QPushButton::clicked, this, [this] { geometryAction(6); }); connect(vertical, &QPushButton::clicked, this, [this] { geometryAction(7); });
     scroll->setWidget(properties); split->addWidget(scroll); split->setSizes({235, 820, 270});
+    auto* viewControls=new QHBoxLayout;outer->addLayout(viewControls);viewControls->addStretch();
+    const auto viewButton=[&](const QString& title,const char* id,const auto& click){
+        auto* action=new QPushButton(title);action->setObjectName(id);viewControls->addWidget(action);
+        connect(action,&QPushButton::clicked,this,click);
+    };
+    viewButton(uiText("适合窗口"),"fitSceneView",[this]{view_->fitCanvas();});
+    viewButton("−","sceneZoomOut",[this]{view_->zoomBy(0.8);});
+    viewButton("+","sceneZoomIn",[this]{view_->zoomBy(1.25);});
+    viewButton("100%","sceneViewActualSize",[this]{view_->actualSize();});
+    viewControls->addWidget(zoomLevel_);viewControls->addWidget(canvasSize_);
     status_ = new QLabel(sources_.empty() ? aitsnap::uiText("当前为布局占位预览，未伪造截图。先截图或打开历史批次即可看到真实源图。") : aitsnap::uiText("源图只读；拖动图层，右下角缩放，右侧精确裁剪/旋转。导出会生成新文件。")); status_->setObjectName("sceneEditorStatus"); status_->setWordWrap(true); outer->addWidget(status_);
     auto* bottom = new QHBoxLayout; auto* exportImage = new QPushButton(aitsnap::uiText("导出当前派生 PNG")); bottom->addWidget(exportImage); bottom->addStretch(); auto* buttons = new QDialogButtonBox(QDialogButtonBox::Save | QDialogButtonBox::Cancel); buttons->button(QDialogButtonBox::Save)->setText(aitsnap::uiText("保存场景")); buttons->button(QDialogButtonBox::Save)->setObjectName("saveScene"); bottom->addWidget(buttons); outer->addLayout(bottom);
     connect(exportImage, &QPushButton::clicked, this, [this] { const auto path = QFileDialog::getSaveFileName(this, aitsnap::uiText("保存新的派生拼图"), {}, "PNG (*.png)"); if (path.isEmpty()) return; QString e; status_->setText(exportDerived(path, e) ? aitsnap::uiText("派生 PNG 已保存，源图未改动。") : e); });
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
     connect(buttons, &QDialogButtonBox::accepted, this, [this] {
         if (!pendingCanvasError_.isEmpty()) { status_->setText(pendingCanvasError_); return; }
-        auto candidate = model_; candidate.name = name_->text().trimmed().toStdString(); candidate.width = canvasWidth_->value(); candidate.height = canvasHeight_->value(); candidate.background = background_->text().toStdString();
+        auto candidate = canvasDraft();
         if (const auto e = core::validateScene(candidate); e) { status_->setText(qs(e.message)); return; }
         candidate.revisionCreatedAtUtc = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs).toStdString(); ++candidate.revision; model_ = candidate; accept();
     });
     connect(graphics_, &QGraphicsScene::selectionChanged, this, [this] { selectionFromCanvas(); });
     connect(layers_, &QListWidget::itemSelectionChanged, this, [this] { selectionFromList(); });
     connect(layers_, &QListWidget::itemChanged, this, [this](QListWidgetItem* item) {
-        if (syncing_) return; const auto id = item->data(Qt::UserRole).toString().toStdString();
+        if (syncing_ || loadingProperties_) return; const auto id = item->data(Qt::UserRole).toString().toStdString();
         for (auto& layer : model_.layers) if (layer.id == id) { pushUndo(); layer.visible = item->checkState() == Qt::Checked; rebuild(); break; }
     });
     for (auto* value : {x_, y_, width_, height_, rotation_}) connect(value, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this] { applyProperties(); });
@@ -380,12 +399,26 @@ void SceneEditor::rebuild()
 void SceneEditor::selectionFromCanvas()
 {
     if (syncing_) return;
-    selected_.clear(); for (auto* item : graphics_->selectedItems()) selected_.insert(item->data(0).toString().toStdString()); syncSelection();
+    std::set<std::string> selected;
+    for (auto* item : graphics_->selectedItems()) selected.insert(item->data(0).toString().toStdString());
+    setSelection(std::move(selected));
 }
 void SceneEditor::selectionFromList()
 {
     if (syncing_) return;
-    selected_.clear(); for (auto* item : layers_->selectedItems()) selected_.insert(item->data(Qt::UserRole).toString().toStdString()); syncSelection();
+    std::set<std::string> selected;
+    for (auto* item : layers_->selectedItems()) selected.insert(item->data(Qt::UserRole).toString().toStdString());
+    setSelection(std::move(selected));
+}
+void SceneEditor::setSelection(std::set<std::string> selection)
+{
+    for(int row=0;row<layers_->count();++row){
+        const auto id=layers_->item(row)->data(Qt::UserRole).toString().toStdString();
+        if(selection.count(id) && !selected_.count(id))referenceId_=id;
+    }
+    if(!selection.count(referenceId_))referenceId_=selection.empty()?std::string{}:*selection.begin();
+    selected_=std::move(selection);
+    syncSelection();
 }
 void SceneEditor::syncSelection()
 {
@@ -399,6 +432,14 @@ void SceneEditor::refreshProperties()
     loadingProperties_ = true;
     for(auto* action:layers_->actions()) action->setEnabled(!selected_.empty());
     const auto indices = selectedIndices(); const bool one = indices.size() == 1;
+    referenceLabel_->clear();
+    for(int row=0;row<layers_->count();++row){
+        auto* entry=layers_->item(row);
+        const bool reference=indices.size()>1 && selected_.count(referenceId_) &&
+            entry->data(Qt::UserRole).toString().toStdString()==referenceId_;
+        auto font=entry->font();font.setBold(reference);entry->setFont(font);
+        if(reference)referenceLabel_->setText(uiText("参考图层 %1").arg(entry->text()));
+    }
     const std::vector<QWidget*> widgets{source_, x_, y_, width_, height_, rotation_, zIndex_, visible_, locked_, aspect_, cropX_, cropY_, cropWidth_, cropHeight_, missing_, group_, pinned_};
     for (auto* widget : widgets) widget->setEnabled(one);
     if (one) {
@@ -493,19 +534,63 @@ void SceneEditor::groupSelection(bool group)
 }
 void SceneEditor::preset(int kind)
 {
+    const auto selected=arrangeSelected_->isChecked()?selectedIndices():std::vector<std::size_t>{};
+    if(arrangeSelected_->isChecked() && selected.empty()){status_->setText(uiText("请先选择图层。"));return;}
     auto replacement = model_;
-    core::arrangeLayers(replacement, core::LayoutPreset(kind));
+    auto proxy=model_;
+    for(auto& layer:proxy.layers)layer.destination=layerBounds(layer);
+    const auto before=proxy.layers;
+    core::arrangeLayers(proxy,core::LayoutPreset(kind),selected,arrangeGap_->value(),arrangeCentered_->isChecked());
+    for(std::size_t i=0;i<replacement.layers.size();++i){
+        replacement.layers[i].destination.x+=proxy.layers[i].destination.x-before[i].destination.x;
+        replacement.layers[i].destination.y+=proxy.layers[i].destination.y-before[i].destination.y;
+    }
     if (const auto error = core::validateScene(replacement); error) { status_->setText(qs(error.message)); return; }
     pushUndo(); model_ = std::move(replacement); rebuild();
 }
 
+core::SceneTemplate SceneEditor::canvasDraft() const
+{
+    auto candidate=model_;
+    candidate.name=name_->text().trimmed().toStdString();
+    candidate.width=canvasWidth_->value();
+    candidate.height=canvasHeight_->value();
+    candidate.background=background_->text().toStdString();
+    return candidate;
+}
+void SceneEditor::applyCanvasDraft()
+{
+    auto candidate=canvasDraft();
+    if(const auto error=core::validateScene(candidate);error){status_->setText(qs(error.message));return;}
+    if(candidate.name==model_.name && candidate.width==model_.width &&
+       candidate.height==model_.height && candidate.background==model_.background)return;
+    pushUndo();
+    model_=std::move(candidate);pendingCanvasError_.clear();rebuild();
+    status_->setText(uiText("已应用固定画布尺寸。"));
+}
+core::Destination SceneEditor::layerBounds(const core::Layer& layer) const
+{
+    const auto region=std::find_if(profile_.regions.begin(),profile_.regions.end(),[&](const auto& r){return r.id==layer.sourceRegionId;});
+    const auto size=region==profile_.regions.end()?QSize{}:sourcePixelSize(*region);
+    return core::visibleLayerBounds(layer,size.width(),size.height());
+}
+
 void SceneEditor::fitCanvas()
 {
-    auto candidate = model_;
-    if (const auto error = core::fitCanvasToContent(candidate)) {
+    auto candidate=canvasDraft();
+    auto geometry=candidate;
+    for(auto& layer:geometry.layers)layer.destination=layerBounds(layer);
+    const auto before=geometry.layers;
+    if (const auto error = core::fitCanvasToContent(geometry)) {
         status_->setText(geometryMessage(error));
         return;
     }
+    candidate.width=geometry.width;candidate.height=geometry.height;
+    for(std::size_t i=0;i<candidate.layers.size();++i){
+        candidate.layers[i].destination.x+=geometry.layers[i].destination.x-before[i].destination.x;
+        candidate.layers[i].destination.y+=geometry.layers[i].destination.y-before[i].destination.y;
+    }
+    if(const auto error=core::validateScene(candidate);error){status_->setText(qs(error.message));return;}
     pushUndo();
     model_ = std::move(candidate);
     pendingCanvasError_.clear();
@@ -514,29 +599,88 @@ void SceneEditor::fitCanvas()
 }
 void SceneEditor::geometryAction(int action)
 {
-    auto indices = selectedIndices(); if (indices.empty()) return; pushUndo();
+    const auto indices=selectedIndices();if(indices.empty())return;
     std::map<std::string, std::vector<std::size_t>> units;
-    for (auto i : indices) { const auto& layer = model_.layers[i]; const auto key = layer.groupId.empty() ? "layer:" + layer.id : "group:" + layer.groupId;
+    std::string reference;
+    for (auto i : indices) { const auto& layer = model_.layers[i]; if(!layer.visible)continue;
+        const auto key = layer.groupId.empty() ? "layer:" + layer.id : "group:" + layer.groupId;
+        if(layer.id==referenceId_)reference=key;
         if (units.count(key)) continue;
         for (std::size_t j = 0; j < model_.layers.size(); ++j) if (j == i || (!layer.groupId.empty() && model_.layers[j].groupId == layer.groupId)) units[key].push_back(j); }
     core::SceneTemplate proxy = model_; proxy.layers.clear(); std::vector<std::vector<std::size_t>> members;
     for (const auto& unit : units) {
         core::Layer box; box.id = unit.first; double left = 1e9, top = 1e9, right = -1e9, bottom = -1e9;
-        for (auto i : unit.second) { const auto& layer = model_.layers[i]; const auto& d = layer.destination; left = std::min(left, d.x); top = std::min(top, d.y); right = std::max(right, d.x + d.width); bottom = std::max(bottom, d.y + d.height); box.locked = box.locked || layer.locked; }
+        for(auto i:unit.second){
+            const auto& layer=model_.layers[i];box.locked=box.locked || layer.locked;if(!layer.visible)continue;
+            const auto d=layerBounds(layer);
+            left=std::min(left,d.x);top=std::min(top,d.y);right=std::max(right,d.x+d.width);bottom=std::max(bottom,d.y+d.height);
+        }
         box.destination = {left, top, right - left, bottom - top, 0}; proxy.layers.push_back(box); members.push_back(unit.second);
     }
-    const auto before = proxy; std::vector<std::size_t> selected;
-    for (std::size_t i = 0; i < proxy.layers.size(); ++i) selected.push_back(i);
-    if (action < 6) core::alignLayers(proxy, selected, core::Align(action)); else core::distributeLayers(proxy, selected, action == 6);
-    for (std::size_t i = 0; i < members.size(); ++i) { const double dx = proxy.layers[i].destination.x - before.layers[i].destination.x, dy = proxy.layers[i].destination.y - before.layers[i].destination.y;
-        for (auto member : members[i]) { model_.layers[member].destination.x += dx; model_.layers[member].destination.y += dy; } }
-    rebuild();
+    auto candidate=model_;
+    bool changed=false;
+    if(action>=8){
+        const auto anchor=std::find_if(proxy.layers.begin(),proxy.layers.end(),[&](const auto& l){return l.id==reference;});
+        if(anchor==proxy.layers.end() || proxy.layers.size()<2){status_->setText(uiText("请选择至少两个可见对象及参考图层。"));return;}
+        const auto dimension=[&](const auto& box){return action==8?box.width:box.height;};
+        for(std::size_t i=0;i<members.size();++i){
+            const auto& unit=proxy.layers[i];
+            if(unit.locked || unit.id==reference)continue;
+            const auto& bounds=unit.destination;
+            const auto scale=dimension(anchor->destination)/dimension(bounds);
+            if(std::abs(scale-1)<1e-9)continue;
+            changed=true;
+            for(auto member:members[i]){
+                auto& d=candidate.layers[member].destination;
+                d.x=bounds.x+(d.x-bounds.x)*scale;d.y=bounds.y+(d.y-bounds.y)*scale;
+                d.width*=scale;d.height*=scale;
+            }
+        }
+    }else{
+        const auto before=proxy;std::vector<std::size_t> selected;
+        for(std::size_t i=0;i<proxy.layers.size();++i)selected.push_back(i);
+        if(action<6)core::alignLayers(proxy,selected,core::Align(action));
+        else core::distributeLayers(proxy,selected,action==6);
+        for(std::size_t i=0;i<members.size();++i){
+            const auto dx=proxy.layers[i].destination.x-before.layers[i].destination.x;
+            const auto dy=proxy.layers[i].destination.y-before.layers[i].destination.y;
+            changed=changed || dx!=0 || dy!=0;
+            for(auto member:members[i]){candidate.layers[member].destination.x+=dx;candidate.layers[member].destination.y+=dy;}
+        }
+    }
+    if(!changed)return;
+    if(const auto error=core::validateScene(candidate);error){status_->setText(qs(error.message));return;}
+    pushUndo();model_=std::move(candidate);rebuild();
 }
 bool SceneEditor::exportDerived(const QString& path, QString& error) const
 {
     if (!pendingCanvasError_.isEmpty()) { error = pendingCanvasError_; return false; }
-    if (QFile::exists(path + ".derivation.json")) { error = aitsnap::uiText("派生清单已存在，请选择新文件名。 "); return false; }
-    const auto rendered = renderScene(model_, sources_);
+    const auto receiptPath=path+".derivation.json";
+    const auto target=QFileInfo(path);
+    const auto stagedPath=[&](const QString& publication){return target.dir().filePath(".aitsnap-"+publication+".pending.png");};
+    const auto imageDigest=[](const QString& image) {
+        QFile file(image);QCryptographicHash digest(QCryptographicHash::Sha256);
+        return file.open(QIODevice::ReadOnly) && digest.addData(&file)?QString::fromLatin1(digest.result().toHex()):QString{};
+    };
+    if(QFile::exists(path)){error=uiText("目标 PNG 已存在，请选择新文件名。");return false;}
+    if(QFile::exists(receiptPath)){
+        QFile file(receiptPath);
+        if(file.open(QIODevice::ReadOnly)){
+            const auto receipt=QJsonDocument::fromJson(file.readAll()).object();
+            file.close();
+            const auto token=receipt["publicationId"].toString();
+            const auto digest=receipt["imageSha256"].toString();
+            if(receipt["kind"]=="DERIVED_COMPOSITE" && receipt["file"]==target.fileName() &&
+               !QUuid(token).isNull() && QUuid(token).toString(QUuid::WithoutBraces)==token && digest.size()==64 &&
+               imageDigest(stagedPath(token))==digest){
+                if(QFile::rename(stagedPath(token),path))return true;
+                error=uiText("派生图像已暂存，请释放目标路径后用相同文件名重试。");return false;
+            }
+        }
+        error=uiText("派生清单已存在，请选择新文件名。 ");return false;
+    }
+    auto snapshot = canvasDraft();
+    const auto rendered = renderScene(snapshot, sources_);
     if (rendered.error) { error = qs(rendered.error.message); return false; }
     if (!rendered.complete) { error = aitsnap::uiText("源图不完整：") + rendered.warnings.join("; "); return false; }
     QJsonArray originals; std::set<std::string> used;
@@ -549,11 +693,22 @@ bool SceneEditor::exportDerived(const QString& path, QString& error) const
         if (!found->second.sha256.empty() && sha.toStdString() != found->second.sha256) { error = aitsnap::uiText("原图已变化，未导出拼图。 "); return false; }
         originals.append(QJsonObject{{"artifactId", qs(found->second.artifactId)}, {"relativePath", QFileInfo(path).absoluteDir().relativeFilePath(found->second.path)}, {"sha256", QString::fromLatin1(sha)}});
     }
-    auto snapshot = model_; snapshot.id = "derived-" + uuid(); snapshot.revision = 1; snapshot.revisionCreatedAtUtc = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs).toStdString();
+    const auto publication=qs(uuid());
+    const auto staging=stagedPath(publication);
+    if(!saveImageNew(rendered.image,staging,"PNG",error)){
+        error=uiText("无法写入派生 PNG，请检查磁盘空间和输出目录权限。")+" "+error;return false;
+    }
+    const auto digest=imageDigest(staging);
+    if(digest.isEmpty()){QFile::remove(staging);error=uiText("无法校验暂存的派生 PNG。");return false;}
+    snapshot.id = "derived-" + publication.toStdString(); snapshot.revision = 1; snapshot.revisionCreatedAtUtc = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs).toStdString();
     QJsonObject receipt{{"schemaVersion", 1}, {"kind", "DERIVED_COMPOSITE"}, {"parentSceneId", qs(model_.id)}, {"parentSceneRevision", model_.revision},
-        {"sceneSnapshot", sceneJson(snapshot)}, {"createdAtUtc", QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)}, {"file", QFileInfo(path).fileName()}, {"originals", originals}};
-    if (!saveImageNew(rendered.image, path, "PNG", error)) return false;
-    if (!saveBytesNew(QJsonDocument(receipt).toJson(), path + ".derivation.json", error)) { error = aitsnap::uiText("PNG 已写出，但派生清单保存失败：") + error; return false; }
+        {"sceneSnapshot", sceneJson(snapshot)}, {"createdAtUtc", QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)}, {"file", target.fileName()}, {"originals", originals},
+        {"publicationId",publication},{"imageSha256",digest}};
+    if(!saveBytesNew(QJsonDocument(receipt).toJson(),receiptPath,error)){
+        QFile::remove(staging);
+        error=uiText("派生清单保存失败，请检查磁盘空间和输出目录权限。")+" "+error;return false;
+    }
+    if(!QFile::rename(staging,path)){error=uiText("派生图像已暂存，请释放目标路径后用相同文件名重试。");return false;}
     return true;
 }
 } // namespace aitsnap

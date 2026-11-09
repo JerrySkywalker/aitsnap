@@ -25,8 +25,28 @@ void MainWindow::syncLivePreview(const core::CaptureProfile& profile)
 {
     if(!livePreview_)return;
     const bool workspace=livePreviewEnabled_->isChecked() && ((isVisible() && !isMinimized() && pages_->currentIndex()<=2) || liveEditor_);
-    const bool output=std::any_of(liveOutputs_.begin(),liveOutputs_.end(),[](const auto* window){return window->isVisible() && !window->isMinimized() && !window->paused();});
-    livePreview_->setFps(livePreviewRate_->currentData().toInt());livePreview_->configure(profile,unexcludedOwnWindowRects());
+    const int preference=livePreviewRate_->currentData().toInt();
+    int targetRate=0;
+    std::vector<core::SceneTemplate> scenes;
+    std::set<std::string> needed;
+    for (const auto* window : liveOutputs_) {
+        if (!window->isVisible() || window->isMinimized() || window->paused()) continue;
+        targetRate=std::max(targetRate,window->screenRate());
+        const auto key=window->key();
+        if (!key.startsWith("scene:")) { needed.insert(key.toStdString()); continue; }
+        const auto id=key.mid(6).toStdString();
+        const auto scene=std::find_if(settings_.scenes.begin(),settings_.scenes.end(),[&](const auto& s){return s.id==id;});
+        if (scene==settings_.scenes.end()) continue;
+        scenes.push_back(*scene);
+        for (const auto& layer : scene->layers) if (layer.visible) needed.insert(layer.sourceRegionId);
+    }
+    const bool output=targetRate>0;
+    const bool follow=preference==0 && output;
+    auto requested=profile;
+    if (follow) for (auto& region : requested.regions)
+        if (!needed.count(region.id)) region.enabled=false;
+    livePreview_->setFps(follow ? targetRate : preference ? preference : 5, follow);
+    livePreview_->configure(std::move(requested),unexcludedOwnWindowRects(),std::move(scenes));
     livePreview_->setActive((workspace || output) && QGuiApplication::platformName()=="windows" && !busy_ && !paused_ && !editingRegions_ && !managingObjects_ && !configurationBlocked_);
     const auto& snapshot=livePreview_->snapshot();
     const auto time=QDateTime::fromString(snapshot.acquiredAtUtc,Qt::ISODateWithMs).toLocalTime().toString("HH:mm:ss.zzz");
@@ -57,17 +77,34 @@ void MainWindow::updateLiveOutputs()
 {
     if(!livePreview_)return;const auto& snapshot=livePreview_->snapshot();
     const auto time=QDateTime::fromString(snapshot.acquiredAtUtc,Qt::ISODateWithMs).toLocalTime().toString("HH:mm:ss.zzz");
-    for(auto* window:liveOutputs_){window->setCaptureEnabled(captureActions_[0]->isEnabled());if(!window->isVisible() || window->paused())continue;
+    const bool follow=livePreviewRate_->currentData().toInt()==0;
+    for(auto* window:liveOutputs_){window->setCaptureEnabled(captureActions_[0]->isEnabled());if(!window->isVisible() || window->isMinimized() || window->paused())continue;
         QImage image;QString caption=snapshot.state+(time.isEmpty()?QString{}:" · "+time);const auto key=window->key();
+        qint64 frameTime=0;
+        const auto newest=[&](const std::string& id) {
+            const auto stamp=snapshot.sourceTimes.find(id);
+            if(stamp!=snapshot.sourceTimes.end())frameTime=std::max(frameTime,qint64(stamp->second));
+        };
         if(key.startsWith("scene:")){
             const auto id=key.mid(6).toStdString();const auto scene=std::find_if(settings_.scenes.begin(),settings_.scenes.end(),[&](const auto& s){return s.id==id;});
-            if(scene!=settings_.scenes.end()){const auto rendered=renderScenePreview(*scene,snapshot.sources,{1600,1000});image=rendered.image;caption=QString::fromStdString(scene->name)+" · "+caption;if(!rendered.complete)caption+=" · "+uiText("部分来源不可用");}
+            if(scene!=settings_.scenes.end()){
+                const auto rendered=snapshot.composites.find(id);
+                if(rendered!=snapshot.composites.end()){
+                    image=rendered->second.image;
+                    if(!rendered->second.complete)caption+=" · "+uiText("部分来源不可用");
+                }
+                caption=QString::fromStdString(scene->name)+" · "+caption;
+                for(const auto& layer:scene->layers)if(layer.visible)newest(layer.sourceRegionId);
+            }
             else caption=uiText("当前配置中没有这个来源。");
         }else{
-            const auto source=snapshot.sources.find(key.toStdString());if(source!=snapshot.sources.end())image=source->second.image.scaled({1600,1000},Qt::KeepAspectRatio,Qt::SmoothTransformation);
+            const auto source=snapshot.sources.find(key.toStdString());
+            if(source!=snapshot.sources.end())image=follow?source->second.image:source->second.image.scaled({1600,1000},Qt::KeepAspectRatio,Qt::SmoothTransformation);
+            newest(key.toStdString());
             const auto issue=snapshot.issues.find(key.toStdString());if(issue!=snapshot.issues.end())caption=issue->second;
         }
-        window->displayFrame(image,caption);
+        window->displayFrame(std::move(image),caption,frameTime,follow?window->screenRate():0,
+                             QString::fromStdString(snapshot.compatibilityReason));
     }
 }
 }

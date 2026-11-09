@@ -1,6 +1,7 @@
 # Preview release notes
 
-Current candidate: [0.9.0 capture, composition and Word queue](RELEASE-0.9.0.md). Exact artifacts and qualification are recorded in the corresponding delivery receipt.
+Candidate in development: [0.10.0 live viewing and composition](RELEASE-0.10.0.md). Exact artifacts and qualification are recorded in the corresponding delivery receipt.
+Previous candidate: [0.9.0 capture, composition and Word queue](RELEASE-0.9.0.md).
 Previous candidate: [0.8.3 image folder modes, report help and OLED/NASA Punk themes](RELEASE-0.8.3.md), retaining [0.8.2 compatible display and layout memory](RELEASE-0.8.2.md), [0.8.1 hotkey-conflict recovery](RELEASE-0.8.1.md) and [0.8.0 dual hotkeys, report text, mini capture and live preview](RELEASE-0.8.0.md).
 Previous candidate: [0.7.2 startup and capture command repair](RELEASE-0.7.2.md).
 Previous candidate: [0.7.1 repair and daily reporting](RELEASE-0.7.1.md).

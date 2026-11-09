@@ -115,6 +115,7 @@ private:
     bool restoreMainAfterCapture_{};
     void showMiniWindow();
     LivePreviewService* livePreview_{};QCheckBox* livePreviewEnabled_{};QComboBox* livePreviewRate_{};QLabel* livePreviewStatus_{};
+    QElapsedTimer liveWorkspaceRefresh_;
     std::vector<LiveOutputWindow*> liveOutputs_;std::vector<QWidget*> restoreLiveWindows_;
     SceneEditor* liveEditor_{};
     void syncLivePreview(const core::CaptureProfile&);void openLiveOutput(const QString& key={});void updateLiveOutputs();
@@ -142,7 +143,7 @@ private:
     void finishClipboard(const std::shared_ptr<CaptureWork>&);
     void buildUi(); void setupTray(); void loadProfile();
     bool collectSettings(Settings&, QString& error);
-    bool applySettings();
+    bool applySettings(bool skipUnchanged = false);
     bool validateRegionChanges(const Settings&, QString& error) const;
     void rebuildProfileMenu();
     void setStatus(const QString&, bool error = false);

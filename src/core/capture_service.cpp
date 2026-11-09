@@ -25,11 +25,19 @@ AcquiredDesktop CaptureService::acquireFrames(const CaptureRequest& request)
         for (const auto& region : request.profile.regions)
             if (region.enabled && !coveredByDisplays(region.rect, monitors)) acquisition.uncoveredRegions.insert(region.id);
         for (const auto& monitor : monitors) {
-            if (std::none_of(request.profile.regions.begin(), request.profile.regions.end(),
-                [&](const auto& r) {
-                    return r.enabled && !acquisition.uncoveredRegions.count(r.id) && intersect(r.rect, monitor.rect).has_value();
-                })) continue;
-            try { batch.displayFrames.push_back(backend_.acquire(monitor)); }
+            Rect area;
+            for (const auto& region : request.profile.regions) {
+                if (!region.enabled || acquisition.uncoveredRegions.count(region.id)) continue;
+                const auto overlap = intersect(region.rect, monitor.rect);
+                if (!overlap) continue;
+                if (!area.valid()) { area = *overlap; continue; }
+                const int left = std::min(area.x, overlap->x), top = std::min(area.y, overlap->y);
+                const auto right = std::max(std::int64_t(area.x) + area.width, std::int64_t(overlap->x) + overlap->width);
+                const auto bottom = std::max(std::int64_t(area.y) + area.height, std::int64_t(overlap->y) + overlap->height);
+                area = {left, top, int(right - left), int(bottom - top)};
+            }
+            if (!area.valid()) continue;
+            try { batch.displayFrames.push_back(backend_.acquireRegion(monitor, area)); }
             catch (const std::exception& e) { batch.displayFrames.push_back({monitor, {}, "", 0, 0, {"ACQUIRE", e.what()}}); }
         }
     }
@@ -57,6 +65,16 @@ CaptureBatch CaptureService::cropFrames(AcquiredDesktop acquisition)
                 if (intersect(region.rect, display.rect)) source.displayIds.push_back(display.id);
             batch.captures.push_back(std::move(source));
             continue;
+        }
+        const DisplayFrame* single=nullptr;
+        for(const auto& frame:batch.displayFrames)if(intersect(region.rect,frame.display.rect)){
+            if(single){single=nullptr;break;}
+            single=&frame;
+        }
+        if(single && single->display.rect==region.rect && !single->error && single->image.valid() &&
+           single->image.width==region.rect.width && single->image.height==region.rect.height){
+            source.image=single->image;source.displayIds.push_back(single->display.id);
+            batch.captures.push_back(std::move(source));continue;
         }
         const auto size = std::size_t(region.rect.width) * std::size_t(region.rect.height) * 4;
         auto pixels = std::make_shared<std::vector<std::uint8_t>>(size, 0);
