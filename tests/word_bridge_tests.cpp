@@ -57,7 +57,9 @@ int main(int argc, char** argv)
                 check(storeReportJob(root + "/queue/" + failed["jobId"].toString() + ".json", failed, error), "advance native test retry clock"); if (attempt < 3) unavailable.pump();
             }
             check(unavailable.jobs()[0]["state"] == "FAILED", "native exhausted before any Word mutation"); retryId = unavailable.jobs()[0]["jobId"].toString();
-            options.layout = "table"; check(unavailable.enqueue(outcome, options, error), "native successor waits behind failed creation"); unavailable.pump();
+            auto successor = outcome;
+            successor.batch.batchId = "native-synthetic-word-successor";
+            options.layout = "table"; check(unavailable.enqueue(successor, options, error), "native successor waits behind failed creation"); unavailable.pump();
             check(unavailable.jobs()[1]["attemptCount"] == 0, "native failed create blocks append");
         }
         ReportQueue queue(root + "/queue", helper);
@@ -88,8 +90,18 @@ int main(int argc, char** argv)
         }
         CoUninitialize();
         const auto uncertain = invoke(helper, root, prepared, true); check(uncertain["state"] == "UNCERTAIN", "PREPARED marker cannot authorize blind reinsertion");
+        const auto docHash = hash(options.documentPath);
+        auto mismatch = outcome;
+        mismatch.batch.outputs.front().sha256 = std::string(64, '0');
+        auto invalidSource = makeReportJob(mismatch, options, "append", error);
+        check(!invalidSource.isEmpty(), "native source failure fixture");
+        invalidSource["state"] = "RUNNING";
+        const auto rejected = invoke(helper, root, invalidSource, false);
+        check(rejected["state"] == "RETRYABLE" && rejected["reason"] == "SOURCE_VERIFY" &&
+              rejected["stage"] == "verify-sources" && hash(options.documentPath) == docHash,
+              "native source failure has a stage and leaves the Word document intact");
         for (const auto& output : outcome.batch.outputs) check(hash(QString::fromStdString(output.path)).toStdString() == output.sha256, "source immutable after Word insertion");
-        const QJsonObject receipt{{"status", "PASS"}, {"document", options.documentPath}, {"pictures", 4}, {"tables", 1}, {"replayNoDuplicate", true}, {"preparedRecovery", "UNCERTAIN"}, {"sourcesUnchanged", true}};
+        const QJsonObject receipt{{"status", "PASS"}, {"document", options.documentPath}, {"pictures", 4}, {"tables", 1}, {"replayNoDuplicate", true}, {"preparedRecovery", "UNCERTAIN"}, {"sourceFailure", rejected}, {"sourcesUnchanged", true}};
         check(saveBytesNew(QJsonDocument(receipt).toJson(), root + "/receipt.json", error), "native receipt");
         std::cout << "WORD_BRIDGE_NATIVE_PASS " << QJsonDocument(receipt).toJson(QJsonDocument::Compact).toStdString() << '\n';
     } catch (const std::exception& error) { std::cerr << "FAIL " << error.what() << " evidence=" << root.toStdString() << '\n'; return 1; }
