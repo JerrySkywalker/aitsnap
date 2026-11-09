@@ -107,8 +107,24 @@ int main(int argc, char** argv)
         check(rejected["state"] == "RETRYABLE" && rejected["reason"] == "SOURCE_VERIFY" &&
               rejected["stage"] == "verify-sources" && hash(options.documentPath) == docHash,
               "native source failure has a stage and leaves the Word document intact");
+        auto occupiedOptions=options;
+        occupiedOptions.documentPath=root+"/occupied-fixture.docx";
+        check(QFile::copy(options.documentPath,occupiedOptions.documentPath),"copy isolated report for an occupation test");
+        auto occupied=makeReportJob(outcome,occupiedOptions,"append",error);
+        check(!occupied.isEmpty(),"make isolated occupied report task");
+        occupied["state"]="RUNNING";
+        QJsonObject busy;
+        {
+            const auto path=QDir::toNativeSeparators(occupiedOptions.documentPath).toStdWString();
+            const auto handle=CreateFileW(path.c_str(),GENERIC_READ,FILE_SHARE_READ,nullptr,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,nullptr);
+            check(handle!=INVALID_HANDLE_VALUE,"hold isolated report with a read share only");
+            struct Lock { HANDLE handle; ~Lock(){CloseHandle(handle);} } held{handle};
+            busy=invoke(helper,root,occupied,false);
+        }
+        check(busy["state"]=="RETRYABLE" && (busy["reason"]=="TARGET_IN_USE" || busy["reason"]=="TARGET_READ_ONLY") &&
+              hash(occupiedOptions.documentPath)==docHash,"occupied Word report is explained and its bytes are preserved");
         for (const auto& output : outcome.batch.outputs) check(hash(QString::fromStdString(output.path)).toStdString() == output.sha256, "source immutable after Word insertion");
-        const QJsonObject receipt{{"status", "PASS"}, {"document", options.documentPath}, {"pictures", 4}, {"tables", 1}, {"replayNoDuplicate", true}, {"preparedRecovery", "UNCERTAIN"}, {"sourceFailure", rejected}, {"sourcesUnchanged", true}};
+        const QJsonObject receipt{{"status", "PASS"}, {"document", options.documentPath}, {"pictures", 4}, {"tables", 1}, {"replayNoDuplicate", true}, {"preparedRecovery", "UNCERTAIN"}, {"sourceFailure", rejected}, {"occupiedReport",busy},{"sourcesUnchanged", true}};
         check(saveBytesNew(QJsonDocument(receipt).toJson(), root + "/receipt.json", error), "native receipt");
         std::cout << "WORD_BRIDGE_NATIVE_PASS " << QJsonDocument(receipt).toJson(QJsonDocument::Compact).toStdString() << '\n';
     } catch (const std::exception& error) { std::cerr << "FAIL " << error.what() << " evidence=" << root.toStdString() << '\n'; return 1; }
