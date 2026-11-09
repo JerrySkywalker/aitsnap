@@ -38,10 +38,10 @@ Qt 5 与 Qt 6 的 scene 用例通过。验证了 3840×2160 源图和 1080×1920
 
 Word 辅助进程记录阶段、已知前置失败原因及可提取的 HRESULT。队列区分启动失败、等待超时和进程中断，未知写入结果维持待核对。Word 列表展示原因和操作提示，按任务状态启用核对与重试。复制详情包含任务、目标、状态及诊断字段。
 
-Qt 6 的 practical 和 report-queue 通过，覆盖双语超时文案、旧错误码回退、核对/重试状态及复制详情。证据为 `out/v090-evidence/R05/tests-qt6.log`。Qt 5 和实际 Word 组合留到后续回归。
+Qt 6 的 practical 和 report-queue 通过，覆盖双语超时文案、旧错误码回退、核对/重试状态及复制详情。证据为 `out/v090-evidence/R05/tests-qt6.log`。后续 R07 构建的 Qt 5 定向回归也通过。原生 IPC 测试宿主使用新版 Word 助手回读两次真实提交，事件重放无重复，见 `out/v090-evidence/R05/native-word.log`。真实 Word 的故障分支和取消语义纳入后续验证。
 
 ## R07 零源首启与生产载荷
 
 新数据目录创建空方案，工作台提供「框选第一个区域」，添加合法首个源后才启用截图。Qt 6 practical 回读了首个批次并验证 0.8.3 配置原字节。生产打包只复制受控程序、文档、许可与运行依赖，打包和 MSI 生成共用载荷检查。
 
-`tests/package_payload_tests.py` 通过。以 0.8.3 的包清单做对照，拒绝 10 个合成样例文件，其余 120 项通过载荷白名单。Setup、MSI 与 ZIP 仍由 R08 在最终截图门槛通过后生成并逐一回读。Qt 5 定向构建继续进行。
+`tests/package_payload_tests.py` 通过。以 0.8.3 的包清单做对照，拒绝 10 个合成样例文件，其余 120 项通过载荷白名单。Qt 5 与 Qt 6 的 practical 和 report-queue 均通过，测试记录位于 `out/v090-evidence/R07`。Setup、MSI 与 ZIP 由 R08 在最终截图门槛通过后生成并逐一回读。下一工作包为 R06。
