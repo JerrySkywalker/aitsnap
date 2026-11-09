@@ -7,6 +7,7 @@
 #include "main_window.h"
 #include <QApplication>
 #include <QComboBox>
+#include <QClipboard>
 #include <QCryptographicHash>
 #include <QDialog>
 #include <QDir>
@@ -16,9 +17,11 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QListWidget>
+#include <QLabel>
 #include <QPushButton>
 #include <QSemaphore>
 #include <QTemporaryDir>
+#include <QTableWidget>
 #include <QTextBrowser>
 #include <QTimer>
 #include <QThread>
@@ -117,6 +120,77 @@ static void captureWhileSaving(const QString& root, Settings settings)
     }
     std::cout << "PIPELINE_PASS 2s blocked output, exact next frames, bounded admission, FIFO receipts\n";
 }
+
+static void reportDiagnosticPresentation(const QString& root, Settings settings, const CaptureOutcome& batch)
+{
+    const auto jobDirectory = root + "/report-jobs";
+    check(QDir().mkpath(jobDirectory), "diagnostic fixture directory");
+    ReportOptions options;
+    options.documentPath = root + "/diagnostics.docx";
+    QString error;
+    auto uncertain = makeReportJob(batch, options, "create", error);
+    check(!uncertain.isEmpty(), "diagnostic fixture job");
+    uncertain["state"] = "UNCERTAIN";
+    uncertain["errorCode"] = "HELPER_TIMEOUT";
+    auto details = uncertain["extensions"].toObject();
+    details["lastResult"] = QJsonObject{{"state", "UNCERTAIN"}, {"stage", "wait-for-helper"}, {"hresult", "0x80020009"}};
+    uncertain["extensions"] = details;
+    const auto uncertainId = uncertain["jobId"].toString();
+    check(storeReportJob(jobDirectory + "/" + uncertainId + ".json", uncertain, error), "persist uncertain diagnostic");
+    auto legacy = makeReportJob(batch, options, "create", error);
+    check(!legacy.isEmpty(), "legacy diagnostic fixture job");
+    legacy["state"] = "FAILED";
+    legacy["errorCode"] = "RETRY_LIMIT_UNKNOWN_PREVIOUS_CODE";
+    details = legacy["extensions"].toObject();
+    details["lastResult"] = QJsonObject{{"state", "RETRYABLE"}};
+    legacy["extensions"] = details;
+    const auto legacyId = legacy["jobId"].toString();
+    check(storeReportJob(jobDirectory + "/" + legacyId + ".json", legacy, error), "persist legacy diagnostic");
+
+    for (const auto& language : {QString("en-US"), QString("zh-CN")}) {
+        installLanguage(language);
+        settings.language = language;
+        const auto path = root + "/settings-v1.json";
+        check(saveSettings(path, settings, error), "diagnostic UI settings");
+        MainWindow window(nullptr, path, "-");
+        auto* button = window.findChild<QPushButton*>("inspectReportQueue");
+        check(button, "report queue dialog entry");
+        bool observed = false;
+        QTimer::singleShot(0, &window, [&] {
+            auto* dialog = qobject_cast<QDialog*>(QApplication::activeModalWidget());
+            if (!dialog) return;
+            auto* table = dialog->findChild<QTableWidget*>("reportJobs");
+            auto* label = dialog->findChild<QLabel*>("reportJobDetails");
+            auto* inspect = dialog->findChild<QPushButton*>("inspectReportMarker");
+            auto* retry = dialog->findChild<QPushButton*>("retryFailedReport");
+            auto* copy = dialog->findChild<QPushButton*>("copyReportDiagnostics");
+            if (table && label && inspect && retry && copy) {
+                bool timedOut = false, fallback = false;
+                for (int row = 0; row < table->rowCount(); ++row) {
+                    const auto id = table->item(row, 0)->text();
+                    table->setCurrentCell(row, 0);
+                    table->selectRow(row);
+                    if (id == uncertainId) {
+                        copy->click();
+                        const auto raw = QApplication::clipboard()->text();
+                        timedOut = label->text().contains(language == "en-US" ? QString("did not respond in time") : QString::fromUtf8("超时")) &&
+                            inspect->isEnabled() && !retry->isEnabled() && raw.contains(uncertainId) &&
+                            raw.contains("HELPER_TIMEOUT") && raw.contains("wait-for-helper") && raw.contains("0x80020009");
+                    } else if (id == legacyId) {
+                        fallback = label->text().contains(language == "en-US" ? QString("Copy the diagnostics") : QString::fromUtf8("复制诊断详情")) &&
+                            !inspect->isEnabled() && retry->isEnabled();
+                    }
+                }
+                observed = timedOut && fallback;
+            }
+            dialog->reject();
+        });
+        button->click();
+        check(observed, "readable timeout and legacy fallback, safe action gates, copyable diagnostics in both languages");
+    }
+    installLanguage("en-US");
+    std::cout << "WORD_DIAGNOSTIC_UI_PASS bilingual timeout, legacy code, marker/retry gates and copied diagnostics\n";
+}
 int main(int argc,char** argv){QApplication app(argc,argv);try{
     QTemporaryDir temp;check(temp.isValid(),"temporary root");QString error;Backend backend;auto settings=defaultSettings();settings.hotkeysEnabled={false,false,false};settings.imagePathMode="flat";settings.filenameTemplate="same name";
     core::CaptureProfile profile;profile.id="p";profile.name="Profile";profile.regions={{"r","Voltage",{0,0,16,16},true,1}};profile.calibratedDisplays=backend.displays();settings.profiles={profile};settings.scenes={core::presetScene(profile,"s","Scene",160,90,core::LayoutPreset::Grid)};settings.selectedSceneIds=QStringList{"s"};settings.outputMode="both";
@@ -146,5 +220,6 @@ int main(int argc,char** argv){QApplication app(argc,argv);try{
         bool helpVerified=false;QTimer::singleShot(50,&window,[&]{auto* dialog=window.findChild<QDialog*>("reportTextHelpDialog");if(dialog){auto* text=dialog->findChild<QTextBrowser*>("reportTextHelpContent");helpVerified=text && text->toPlainText().contains("{scene_revision}") && text->toPlainText().contains("UTC");dialog->reject();}});window.findChild<QPushButton*>("reportTextHelp")->click();check(helpVerified,"offline help bundled and readable through app");
     }
     captureWhileSaving(temp.filePath("pipeline"), settings);
+    reportDiagnosticPresentation(temp.filePath("word-diagnostics"), settings, batch);
     std::cout<<"PRACTICAL_PASS flat/batch formats collision preservation history queue routing migration OLED NASA offline-help; real Word NOT_RUN\n";return 0;
 }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}

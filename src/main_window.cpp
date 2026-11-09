@@ -594,6 +594,71 @@ void MainWindow::showContextStore()
     connect(clear, &QPushButton::clicked, &dialog, [this] { selectedContext_ = {}; selectedContextSnapshot_ = {}; contextStatus_->setText(aitsnap::uiText("截图上下文：未关联。")); });
     auto* close = new QDialogButtonBox(QDialogButtonBox::Close); connect(close, &QDialogButtonBox::rejected, &dialog, &QDialog::reject); layout->addWidget(close); dialog.exec();
 }
+static QString reportFailureReason(const QJsonObject& job)
+{
+    auto code = job["errorCode"].toString();
+    if (code.isEmpty()) return {};
+    if (code.startsWith("RETRY_LIMIT_")) code.remove(0, 12);
+    const auto last = job["extensions"].toObject()["lastResult"].toObject();
+    const auto reason = last["reason"].toString();
+    const auto stage = last["stage"].toString();
+    const auto message = last["message"].toString();
+    if (code == "HELPER_UNAVAILABLE" || reason == "WORD_COM_INIT" ||
+        last["hresult"].toString().compare("0x80040154", Qt::CaseInsensitive) == 0 ||
+        message.contains("HRESULT=80040154", Qt::CaseInsensitive))
+        return uiText("无法启动 Word 或报告助手。检查 Word 安装和 AITSnap 安装完整性。");
+    if (code == "HELPER_TIMEOUT") return uiText("等待 Word 响应超时。检查 Word 是否有未关闭的对话框。");
+    if (code == "HELPER_INTERRUPTED" || code == "RESTART_DURING_RUNNING" || code == "DESKTOP_EXIT_DURING_RUNNING")
+        return uiText("写入进程中断，未收到完成确认。");
+    if (reason == "TARGET_READ_ONLY" || message.contains("read-only or protected"))
+        return uiText("报告是只读或受保护的。检查文件属性、打开方式和编辑权限。");
+    if (reason == "TARGET_UNSAVED" || message.contains("unsaved user changes"))
+        return uiText("报告有未保存的修改。请在 Word 中先保存这些修改。");
+    if (reason == "SOURCE_VERIFY" || stage == "verify-sources")
+        return uiText("源图缺失、无法读取或校验不符。检查原批次和原图。");
+    if (code == "RECOVERY_TARGET_MISSING" || reason == "TARGET_MISSING" || message.contains("Append target is missing"))
+        return uiText("找不到目标报告。检查报告路径，并恢复移走的文件。");
+    if (reason == "TARGET_EXISTS" || reason == "TARGET_MISMATCH")
+        return uiText("目标报告与任务预期不符。检查任务路径和实际打开的文件。");
+    if (code == "MARKER_ABSENT_PREPARED_OR_CONFLICTING")
+        return uiText("报告标记缺失、尚未提交或与本任务冲突。");
+    if (code == "CREATE_STAGING_EXISTS" || stage == "publish-document")
+        return uiText("报告的临时文件仍需核对。查看报告目录中的 pending.docx。");
+    if (stage == "save-prepared" || stage == "save-committed")
+        return uiText("Word 保存报告时出错。检查保存对话框和目标目录。");
+    if (stage.startsWith("insert-picture") || stage == "create-table" || stage == "insert-heading")
+        return uiText("Word 写入报告内容时出错。检查报告和 Word 提示。");
+    if (stage == "open-exact-target" || stage == "create-staging-document")
+        return uiText("Word 无法打开或创建目标报告。检查报告路径及文件夹权限。");
+    return uiText("Word 任务未完成。请复制诊断详情以进一步核对。");
+}
+
+static QString reportNextStep(const QJsonObject& job)
+{
+    if (job["state"] == "UNCERTAIN")
+        return uiText("文档可能已有写入。请核对标记和报告内容，避免重复插入。");
+    if (job["state"] == "RETRYABLE") return uiText("本次尝试在修改报告前失败。排除原因后队列会自动重试。");
+    if (job["state"] == "FAILED") return uiText("排除原因后，可重试已确认未修改报告的任务。");
+    return {};
+}
+
+static QString reportDiagnostics(const QJsonObject& job)
+{
+    const auto last = job["extensions"].toObject()["lastResult"].toObject();
+    QStringList lines{
+        "Task: " + job["jobId"].toString(),
+        "Target: " + job["target"].toObject()["documentPath"].toString(),
+        "State: " + job["state"].toString(),
+        "Attempts: " + QString::number(job["attemptCount"].toInt())
+    };
+    for (const auto& field : {"errorCode", "reason", "stage", "hresult", "message"}) {
+        const auto name = QString::fromLatin1(field);
+        const auto value = name == "errorCode" ? job[name].toString() : last[name].toString();
+        if (!value.isEmpty()) lines << name + ": " + value;
+    }
+    return lines.join('\n');
+}
+
 void MainWindow::showReportQueue()
 {
     QDialog dialog(this); dialog.setWindowTitle(aitsnap::uiText("Word 报告任务")); dialog.resize(980, 500); auto* layout = new QVBoxLayout(&dialog);
@@ -601,18 +666,77 @@ void MainWindow::showReportQueue()
     auto* table = new QTableWidget(0, 5); table->setObjectName("reportJobs"); table->setHorizontalHeaderLabels({aitsnap::uiText("任务"), aitsnap::uiText("报告"), aitsnap::uiText("状态"), aitsnap::uiText("尝试"), aitsnap::uiText("错误 / 原因")}); table->setSelectionBehavior(QAbstractItemView::SelectRows); table->setEditTriggers(QAbstractItemView::NoEditTriggers);
     table->setTextElideMode(Qt::ElideMiddle); table->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
     table->setColumnWidth(0, 120); table->setColumnWidth(1, 270); table->setColumnWidth(2, 110); table->setColumnWidth(3, 50); table->horizontalHeader()->setStretchLastSection(true); layout->addWidget(table);
-    auto refresh = [this, table] { const auto selected = table->currentRow() >= 0 && table->item(table->currentRow(), 0) ? table->item(table->currentRow(), 0)->text() : QString{}; table->setRowCount(0);
-        for (const auto& job : reportQueue_->jobs()) { const int row = table->rowCount(); table->insertRow(row); const auto ext = job["extensions"].toObject();
-            static const QMap<QString, QString> labels{{"QUEUED", aitsnap::uiText("排队中")}, {"RUNNING", aitsnap::uiText("正在写入")}, {"COMMITTED", aitsnap::uiText("已保存提交")}, {"RETRYABLE", aitsnap::uiText("等待重试")}, {"FAILED", aitsnap::uiText("失败")}, {"UNCERTAIN", aitsnap::uiText("待核对")}};
+    const auto selectedJob = [table] {
+        const auto* item = table->item(table->currentRow(), 0);
+        return item ? item->data(Qt::UserRole).toJsonObject() : QJsonObject{};
+    };
+    auto refresh = [this, table, selectedJob] {
+        const auto selected = selectedJob()["jobId"].toString();
+        const QSignalBlocker block(table);
+        table->setRowCount(0);
+        const QMap<QString, QString> labels{{"QUEUED", uiText("排队中")}, {"RUNNING", uiText("正在写入")}, {"COMMITTED", uiText("已保存提交")}, {"RETRYABLE", uiText("等待重试")}, {"FAILED", uiText("失败")}, {"UNCERTAIN", uiText("待核对")}};
+        for (const auto& job : reportQueue_->jobs()) {
+            const int row = table->rowCount(); table->insertRow(row);
             const auto state = job["state"].toString();
-            const QStringList values{job["jobId"].toString(), job["target"].toObject()["documentPath"].toString(), labels.value(state, state), QString::number(job["attemptCount"].toInt()), job["errorCode"].toString() + " " + ext["lastResult"].toObject()["message"].toString()};
-            for (int col = 0; col < values.size(); ++col) { auto* cell = new QTableWidgetItem(values[col]); cell->setToolTip(col == 2 ? state : values[col]); table->setItem(row, col, cell); } if (values[0] == selected) table->selectRow(row); }
-    }; refresh();
-    auto* inspect = new QPushButton(aitsnap::uiText("核对所选待核对任务的文档标记")); layout->addWidget(inspect);
-    connect(inspect, &QPushButton::clicked, &dialog, [this, table, note, refresh] { if (table->currentRow() < 0) return; QString error; if (!reportQueue_->inspectMarker(table->item(table->currentRow(), 0)->text(), error)) note->setText(error); refresh(); });
-    auto* retry = new QPushButton(aitsnap::uiText("已排除原因：重试所选修改前失败任务")); retry->setObjectName("retryFailedReport"); layout->addWidget(retry);
-    connect(retry, &QPushButton::clicked, &dialog, [this, table, note, refresh] { if (table->currentRow() < 0) return; QString error; note->setText(reportQueue_->retryFailed(table->item(table->currentRow(), 0)->text(), error) ? aitsnap::uiText("原任务已重新排队，保留顺序与重试历史。") : error); refresh(); });
-    QTimer timer; connect(&timer, &QTimer::timeout, &dialog, refresh); timer.start(1000); auto* close = new QDialogButtonBox(QDialogButtonBox::Close); connect(close, &QDialogButtonBox::rejected, &dialog, &QDialog::reject); layout->addWidget(close); dialog.exec();
+            const QStringList values{job["jobId"].toString(), job["target"].toObject()["documentPath"].toString(),
+                                     labels.value(state, state), QString::number(job["attemptCount"].toInt()), reportFailureReason(job)};
+            for (int col = 0; col < values.size(); ++col) {
+                auto* cell = new QTableWidgetItem(values[col]);
+                cell->setToolTip(values[col]);
+                table->setItem(row, col, cell);
+            }
+            table->item(row, 0)->setData(Qt::UserRole, QVariant::fromValue(job));
+            if (values[0] == selected) {
+                table->setCurrentCell(row, 0);
+                table->selectRow(row);
+            }
+        }
+    };
+    auto* details = new QLabel;
+    details->setObjectName("reportJobDetails");
+    details->setWordWrap(true);
+    details->setTextFormat(Qt::PlainText);
+    layout->addWidget(details);
+    auto* actions = new QHBoxLayout;
+    layout->addLayout(actions);
+    auto* inspect = new QPushButton(uiText("核对所选待核对任务的文档标记"));
+    inspect->setObjectName("inspectReportMarker");
+    actions->addWidget(inspect);
+    auto* retry = new QPushButton(uiText("已排除原因：重试所选修改前失败任务"));
+    retry->setObjectName("retryFailedReport");
+    actions->addWidget(retry);
+    auto* copy = new QPushButton(uiText("复制诊断详情"));
+    copy->setObjectName("copyReportDiagnostics");
+    actions->addWidget(copy);
+    const auto updateSelection = [this, details, inspect, retry, copy, selectedJob] {
+        const auto job = selectedJob();
+        const auto reason = reportFailureReason(job), next = reportNextStep(job);
+        details->setText(QStringList{reason, next}.join(' ').trimmed());
+        details->setVisible(!reason.isEmpty() || !next.isEmpty());
+        inspect->setEnabled(reportQueue_->canInspect(job));
+        retry->setEnabled(reportQueue_->canRetry(job));
+        copy->setEnabled(!job.isEmpty());
+    };
+    const auto update = [refresh, updateSelection] { refresh(); updateSelection(); };
+    connect(table, &QTableWidget::itemSelectionChanged, &dialog, updateSelection);
+    connect(copy, &QPushButton::clicked, &dialog, [selectedJob] { QApplication::clipboard()->setText(reportDiagnostics(selectedJob())); });
+    connect(inspect, &QPushButton::clicked, &dialog, [this, note, selectedJob, update] {
+        QString error;
+        if (!reportQueue_->inspectMarker(selectedJob()["jobId"].toString(), error)) note->setText(error);
+        update();
+    });
+    connect(retry, &QPushButton::clicked, &dialog, [this, note, selectedJob, update] {
+        QString error;
+        note->setText(reportQueue_->retryFailed(selectedJob()["jobId"].toString(), error)
+            ? uiText("原任务已重新排队，保留顺序与重试历史。") : error);
+        update();
+    });
+    QTimer timer; connect(&timer, &QTimer::timeout, &dialog, update); timer.start(1000);
+    auto* close = new QDialogButtonBox(QDialogButtonBox::Close);
+    connect(close, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    layout->addWidget(close);
+    update();
+    dialog.exec();
 }
 void MainWindow::rebuildScenes()
 {

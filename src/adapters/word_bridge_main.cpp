@@ -82,37 +82,56 @@ QJsonObject execute(const QJsonObject& job, bool recovery)
     const auto marker = "AITSnap_" + QString::fromLatin1(QCryptographicHash::hash(id.toUtf8(), QCryptographicHash::Sha256).toHex().left(32));
     QJsonObject result{{"schemaVersion", 1}, {"jobId", id}, {"dispatchId", ext["dispatchId"]}, {"state", "FAILED"}, {"errorCode", "PRECHECK"}};
     bool mutation = false; Session session; QString stage = "precheck";
+    const auto preflightFailure = [&](const char* reason, const char* message) {
+        auto failure = result;
+        failure["state"] = recovery ? "UNCERTAIN" : "RETRYABLE";
+        failure["errorCode"] = "WORD_PREMUTATION";
+        failure["reason"] = reason;
+        failure["stage"] = stage;
+        failure["message"] = message;
+        return failure;
+    };
     try {
         const bool exists = QFile::exists(path), create = target["mode"] == "create" && !exists;
-        if (recovery && !exists) { result["state"] = "UNCERTAIN"; result["errorCode"] = "RECOVERY_TARGET_MISSING"; return result; }
-        if (!exists && !create) throw std::runtime_error("Append target is missing");
+        if (recovery && !exists) { result["state"] = "UNCERTAIN"; result["errorCode"] = "RECOVERY_TARGET_MISSING"; result["stage"] = "inspect-marker"; return result; }
+        if (!exists && !create) return preflightFailure("TARGET_MISSING", "Append target is missing");
         if (exists) {
             stage = "open-exact-target";
             session.document = runningDocument(path);
             if (session.document) session.app = session.document.get(L"Application").object();
             else { createOwnedApp(session); session.document = session.app.get(L"Documents").object().call(L"Open", {filePath(path), Value(false), Value(false), Value(false)}).object(); session.ownsDocument = true; }
-            if (QFileInfo(session.document.get(L"FullName").text()).canonicalFilePath().compare(QFileInfo(path).canonicalFilePath(), Qt::CaseInsensitive)) throw std::runtime_error("Word bound to a different document");
+            if (QFileInfo(session.document.get(L"FullName").text()).canonicalFilePath().compare(QFileInfo(path).canonicalFilePath(), Qt::CaseInsensitive))
+                return preflightFailure("TARGET_MISMATCH", "Word bound to a different document");
             const auto value = markerValue(session.document, marker);
             if (value == "COMMITTED:" + fingerprint && session.document.get(L"Saved").integer() != 0) {
                 result["state"] = "COMMITTED"; result["errorCode"] = ""; result["marker"] = marker; result["recovered"] = true; return result;
             }
-            if (recovery || !value.isEmpty()) { result["state"] = "UNCERTAIN"; result["errorCode"] = "MARKER_ABSENT_PREPARED_OR_CONFLICTING"; return result; }
-            if (target["mode"] == "create") throw std::runtime_error("Create target already exists without matching committed marker");
-            if (session.document.get(L"ReadOnly").integer() || session.document.get(L"ProtectionType").integer() != -1) throw std::runtime_error("Target is read-only or protected");
-            if (session.document.get(L"Saved").integer() == 0) throw std::runtime_error("Target has unsaved user changes; save it before retry");
+            if (recovery || !value.isEmpty()) {
+                result["state"] = "UNCERTAIN"; result["errorCode"] = "MARKER_ABSENT_PREPARED_OR_CONFLICTING";
+                result["stage"] = "inspect-marker";
+                return result;
+            }
+            if (target["mode"] == "create")
+                return preflightFailure("TARGET_EXISTS", "Create target already exists without matching committed marker");
+            if (session.document.get(L"ReadOnly").integer() || session.document.get(L"ProtectionType").integer() != -1)
+                return preflightFailure("TARGET_READ_ONLY", "Target is read-only or protected");
+            if (session.document.get(L"Saved").integer() == 0)
+                return preflightFailure("TARGET_UNSAVED", "Target has unsaved user changes; save it before retry");
         }
         // Verify every exact source before any document mutation. Sources stay read-only.
         stage = "verify-sources"; const auto sources = ext["sources"].toArray(), items = job["items"].toArray();
         for (const auto& value : sources) {
             const auto source = value.toObject(); QFile file(source["path"].toString()); QCryptographicHash hash(QCryptographicHash::Sha256);
-            if (!file.open(QIODevice::ReadOnly) || !hash.addData(&file) || QString::fromLatin1(hash.result().toHex()) != source["sha256"].toString()) throw std::runtime_error("Saved source SHA mismatch or source unavailable");
+            if (!file.open(QIODevice::ReadOnly) || !hash.addData(&file) || QString::fromLatin1(hash.result().toHex()) != source["sha256"].toString())
+                return preflightFailure("SOURCE_VERIFY", "Saved source SHA mismatch or source unavailable");
             QImageReader reader(source["path"].toString()); const auto size = reader.size();
-            if (size.width() <= 0 || size.height() <= 0 || qint64(size.width()) * size.height() > 100000000) throw std::runtime_error("Invalid source image dimensions");
+            if (size.width() <= 0 || size.height() <= 0 || qint64(size.width()) * size.height() > 100000000)
+                return preflightFailure("SOURCE_VERIFY", "Invalid source image dimensions");
         }
         const auto staging = QDir(QFileInfo(path).absolutePath()).filePath(".aitsnap-" + id + ".pending.docx");
         if (create) {
             stage = "create-staging-document";
-            if (QFile::exists(staging)) { result["state"] = "UNCERTAIN"; result["errorCode"] = "CREATE_STAGING_EXISTS"; return result; }
+            if (QFile::exists(staging)) { result["state"] = "UNCERTAIN"; result["errorCode"] = "CREATE_STAGING_EXISTS"; result["stage"] = stage; return result; }
             createOwnedApp(session); session.document = session.app.get(L"Documents").object().call(L"Add").object(); session.ownsDocument = true;
         }
         result["wordVersion"] = session.app.get(L"Version").text();
@@ -157,11 +176,22 @@ QJsonObject execute(const QJsonObject& job, bool recovery)
                 if (process) { PROCESS_MEMORY_COUNTERS memory{}; memory.cb = sizeof(memory); if (GetProcessMemoryInfo(process, &memory, sizeof(memory))) result["wordProcessPeakWorkingSetBytes"] = qint64(memory.PeakWorkingSetSize); CloseHandle(process); }
             } catch (...) { result["wordMemoryStatus"] = "NOT_MEASURED"; } // optional measurement never changes insertion outcome
         }
-        if (create) { session.closeDocument(); if (!QFile::rename(staging, path)) throw std::runtime_error("Cannot publish new document without overwriting target; staging retained"); }
+        if (create) { stage = "publish-document"; session.closeDocument(); if (!QFile::rename(staging, path)) throw std::runtime_error("Cannot publish new document without overwriting target; staging retained"); }
         result["state"] = "COMMITTED"; result["errorCode"] = ""; result["marker"] = marker; result["itemsInserted"] = items.size(); return result;
     } catch (const std::exception& error) {
         result["state"] = mutation || recovery ? "UNCERTAIN" : "RETRYABLE";
-        result["errorCode"] = mutation ? "WORD_MUTATION_UNCONFIRMED" : "WORD_PREMUTATION"; result["stage"] = stage; result["message"] = QString::fromUtf8(error.what()); return result;
+        result["errorCode"] = mutation ? "WORD_MUTATION_UNCONFIRMED" : "WORD_PREMUTATION";
+        result["stage"] = stage;
+        const auto message = QString::fromUtf8(error.what());
+        result["message"] = message;
+        const int codeStart = message.indexOf("HRESULT=");
+        if (codeStart >= 0) {
+            const auto code = message.mid(codeStart + 8, 8);
+            bool valid = false;
+            const auto hresult = code.toUInt(&valid, 16);
+            if (valid) result["hresult"] = QString("0x%1").arg(hresult, 8, 16, QChar('0'));
+        }
+        return result;
     }
 }
 } // namespace
@@ -173,9 +203,21 @@ int main(int argc, char** argv)
     QJsonObject job; QString error;
     if (!readReportJob(args[jobIndex + 1], job, error)) { std::cerr << error.toStdString() << '\n'; return 2; }
     if (!args.contains("--recover") && job["state"] != "RUNNING") { std::cerr << "Only a durably RUNNING job may insert\n"; return 2; }
-    const auto hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED); if (FAILED(hr)) return 3;
-    QElapsedTimer clock; clock.start(); auto result = execute(job, args.contains("--recover")); result["wordExecutionMonotonicMs"] = double(clock.nsecsElapsed()) / 1000000.0;
-    PROCESS_MEMORY_COUNTERS memory{}; memory.cb = sizeof(memory); if (GetProcessMemoryInfo(GetCurrentProcess(), &memory, sizeof(memory))) result["helperPeakWorkingSetBytes"] = qint64(memory.PeakWorkingSetSize); CoUninitialize();
+    const bool recovery = args.contains("--recover");
+    const auto hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    QElapsedTimer clock;
+    clock.start();
+    QJsonObject result;
+    if (FAILED(hr)) {
+        result = {{"schemaVersion", 1}, {"jobId", job["jobId"]}, {"dispatchId", job["extensions"].toObject()["dispatchId"]},
+                  {"state", recovery ? "UNCERTAIN" : "RETRYABLE"}, {"errorCode", "WORD_PREMUTATION"}, {"reason", "WORD_COM_INIT"},
+                  {"stage", "initialize-word"}, {"hresult", QString("0x%1").arg(quint32(hr), 8, 16, QChar('0'))}};
+    } else {
+        result = execute(job, recovery);
+        CoUninitialize();
+    }
+    result["wordExecutionMonotonicMs"] = double(clock.nsecsElapsed()) / 1000000.0;
+    PROCESS_MEMORY_COUNTERS memory{}; memory.cb = sizeof(memory); if (GetProcessMemoryInfo(GetCurrentProcess(), &memory, sizeof(memory))) result["helperPeakWorkingSetBytes"] = qint64(memory.PeakWorkingSetSize);
     if (!saveBytesNew(QJsonDocument(result).toJson(), args[resultIndex + 1], error)) { std::cerr << error.toStdString() << '\n'; return 4; }
     std::cout << QJsonDocument(result).toJson(QJsonDocument::Compact).toStdString() << '\n'; return 0;
 }

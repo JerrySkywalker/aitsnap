@@ -29,6 +29,8 @@ public:
     bool hasBatchForDocument(const QString& batchId, const QString& documentPath) const;
     bool inspectMarker(const QString& jobId, QString& error);
     bool retryFailed(const QString& jobId, QString& error);
+    bool canInspect(const QJsonObject&) const;
+    bool canRetry(const QJsonObject&) const;
     QList<QJsonObject> jobs() const;
     QString diagnostic() const { return diagnostic_; }
     std::function<void()> changed;
@@ -41,7 +43,7 @@ private:
     QTimer tick_, deadline_;
     QElapsedTimer workerClock_;
     std::unique_ptr<QLockFile> lock_;
-    bool ready_{}, inspecting_{};
+    bool ready_{}, inspecting_{}, timedOut_{};
     int timeoutMs_;
     void launch(const QString& path, QJsonObject job, bool inspect);
     void finish(bool failedToStart = false);

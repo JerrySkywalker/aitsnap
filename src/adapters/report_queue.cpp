@@ -125,7 +125,8 @@ ReportQueue::ReportQueue(QString directory, QString helper, QObject* parent, int
     for (auto job : jobs()) if (job["state"] == "RUNNING") { job["state"] = "UNCERTAIN"; job["errorCode"] = "RESTART_DURING_RUNNING"; persist(job, QDir(directory_).filePath(job["jobId"].toString() + ".json")); }
     connect(&process_, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this, [this](int, QProcess::ExitStatus) { finish(); });
     connect(&process_, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) { if (error == QProcess::FailedToStart) finish(true); });
-    deadline_.setSingleShot(true); connect(&deadline_, &QTimer::timeout, this, [this] { process_.kill(); });
+    deadline_.setSingleShot(true);
+    connect(&deadline_, &QTimer::timeout, this, [this] { timedOut_ = true; process_.kill(); });
     connect(&tick_, &QTimer::timeout, this, [this] { pump(); }); tick_.start(1000);
 }
 ReportQueue::~ReportQueue()
@@ -295,13 +296,25 @@ bool ReportQueue::inspectMarker(const QString& id, QString& error)
     for (auto job : jobs()) if (job["jobId"] == id && job["state"] == "UNCERTAIN") { launch(QDir(directory_).filePath(id + ".json"), job, true); return !currentPath_.isEmpty(); }
     error = "Select an UNCERTAIN job for marker-only inspection"; return false;
 }
+
+bool ReportQueue::canInspect(const QJsonObject& job) const
+{
+    return ready_ && currentPath_.isEmpty() && job["state"] == "UNCERTAIN";
+}
+
+bool ReportQueue::canRetry(const QJsonObject& job) const
+{
+    const auto result = job["extensions"].toObject()["lastResult"].toObject();
+    return ready_ && currentPath_.isEmpty() && job["state"] == "FAILED" &&
+        job["committedMarker"].toString().isEmpty() &&
+        (result["state"] == "RETRYABLE" || job["errorCode"] == "RETRY_LIMIT_HELPER_UNAVAILABLE");
+}
 bool ReportQueue::retryFailed(const QString& id, QString& error)
 {
     if (!ready_ || !currentPath_.isEmpty()) { error = "Report worker is unavailable or busy"; return false; }
     for (auto job : jobs()) if (job["jobId"] == id) {
         auto ext = job["extensions"].toObject();
-        if (job["state"] != "FAILED" || !job["committedMarker"].toString().isEmpty() ||
-            (ext["lastResult"].toObject()["state"] != "RETRYABLE" && job["errorCode"] != "RETRY_LIMIT_HELPER_UNAVAILABLE")) {
+        if (!canRetry(job)) {
             error = "Only a FAILED job with confirmed pre-mutation failure may retry; UNCERTAIN requires marker inspection"; return false;
         }
         auto history = ext["manualRetryHistory"].toArray(); history.append(QJsonObject{{"atUtc", utc()}, {"previousAttemptCount", job["attemptCount"]}, {"previousErrorCode", job["errorCode"]}, {"previousDispatchId", ext["dispatchId"]}});
@@ -320,12 +333,18 @@ void ReportQueue::launch(const QString& path, QJsonObject job, bool inspect)
     current_ = job; currentPath_ = path; inspecting_ = inspect;
     resultPath_ = QDir(directory_).filePath(job["jobId"].toString() + ".result." + dispatch + ".json");
     QStringList arguments{"--job", path, "--result", resultPath_}; if (inspect) arguments.append("--recover");
-    process_.setProgram(helper_); process_.setArguments(arguments); workerClock_.start(); process_.start(); deadline_.start(timeoutMs_);
+    process_.setProgram(helper_); process_.setArguments(arguments);
+    timedOut_ = false;
+    workerClock_.start();
+    deadline_.start(timeoutMs_);
+    process_.start();
 }
 void ReportQueue::finish(bool failedToStart)
 {
     if (currentPath_.isEmpty()) return; deadline_.stop();
-    QString state = failedToStart && !inspecting_ ? "RETRYABLE" : "UNCERTAIN", code = failedToStart ? "HELPER_UNAVAILABLE" : "HELPER_INTERRUPTED";
+    QString state = failedToStart && !inspecting_ ? "RETRYABLE" : "UNCERTAIN";
+    QString code = failedToStart ? "HELPER_UNAVAILABLE" : timedOut_ ? "HELPER_TIMEOUT" : "HELPER_INTERRUPTED";
+    QJsonObject dispatchResult{{"state", state}, {"errorCode", code}, {"stage", failedToStart ? "start-helper" : "wait-for-helper"}};
     QFile file(resultPath_);
     if (file.open(QIODevice::ReadOnly) && file.size() <= 1024 * 1024) {
         const auto result = QJsonDocument::fromJson(file.readAll()).object();
@@ -334,12 +353,16 @@ void ReportQueue::finish(bool failedToStart)
             (candidate == "COMMITTED" || candidate == "UNCERTAIN" || (!inspecting_ && (candidate == "RETRYABLE" || candidate == "FAILED")))) {
             state = candidate; code = result["errorCode"].toString();
             if (result.contains("marker")) current_["committedMarker"] = result["marker"];
-            auto ext = current_["extensions"].toObject(); ext["lastResult"] = result; current_["extensions"] = ext;
+            dispatchResult = result;
         }
     }
     if (state == "RETRYABLE" && current_["attemptCount"].toInt() >= 3) { state = "FAILED"; code = "RETRY_LIMIT_" + code; }
     current_["state"] = state; if (code.isEmpty()) current_.remove("errorCode"); else current_["errorCode"] = code;
-    auto ext = current_["extensions"].toObject(); ext["workerMonotonicMs"] = workerClock_.isValid() ? double(workerClock_.nsecsElapsed()) / 1000000.0 : 0; ext["nextAttemptUtc"] = QDateTime::currentDateTimeUtc().addSecs(5).toString(Qt::ISODateWithMs); current_["extensions"] = ext;
+    auto ext = current_["extensions"].toObject();
+    ext["lastResult"] = dispatchResult;
+    ext["workerMonotonicMs"] = workerClock_.isValid() ? double(workerClock_.nsecsElapsed()) / 1000000.0 : 0;
+    ext["nextAttemptUtc"] = QDateTime::currentDateTimeUtc().addSecs(5).toString(Qt::ISODateWithMs);
+    current_["extensions"] = ext;
     persist(current_, currentPath_); currentPath_.clear(); current_ = {}; resultPath_.clear();
 }
 } // namespace aitsnap

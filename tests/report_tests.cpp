@@ -159,6 +159,10 @@ int main(int argc, char** argv)
             ReportQueue queue(queueRoot, app.applicationFilePath(), nullptr, kind == QString("hang") ? 200 : 5000);
             check(queue.enqueue(outcome, options, error), "enqueue interrupted job"); behavior(queue, queueRoot, kind);
             check(await([&] { return queue.jobs()[0]["state"] == "UNCERTAIN"; }), "crash/timeout remains uncertain");
+            const auto stopped = queue.jobs()[0];
+            check(stopped["errorCode"] == (kind == QString("hang") ? "HELPER_TIMEOUT" : "HELPER_INTERRUPTED") &&
+                  stopped["extensions"].toObject()["lastResult"].toObject()["stage"] == "wait-for-helper",
+                  "timeout and interruption have distinct diagnostics");
             const int attempts = queue.jobs()[0]["attemptCount"].toInt(); queue.pump(); check(queue.jobs()[0]["attemptCount"].toInt() == attempts, "uncertain does not auto retry");
         }
         {
