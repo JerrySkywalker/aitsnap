@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <map>
+#include <numbers>
 namespace aitsnap::core {
 SceneTemplate presetScene(const CaptureProfile& profile, std::string id, std::string name, int width, int height, LayoutPreset preset)
 {
@@ -25,6 +27,135 @@ SceneTemplate presetScene(const CaptureProfile& profile, std::string id, std::st
     }
     return scene;
 }
+
+namespace {
+constexpr double canvasMargin = 16;
+constexpr double layerGap = 12;
+
+struct Bounds {
+    double left{}, top{}, right{}, bottom{};
+    bool empty() const { return right <= left || bottom <= top; }
+    double width() const { return right - left; }
+    double height() const { return bottom - top; }
+    void include(const Bounds& other)
+    {
+        if (empty()) { *this = other; return; }
+        left = std::min(left, other.left);
+        top = std::min(top, other.top);
+        right = std::max(right, other.right);
+        bottom = std::max(bottom, other.bottom);
+    }
+};
+
+Bounds rotatedBounds(const Destination& d)
+{
+    const auto radians = std::fmod(d.rotationDeg, 360) * std::numbers::pi / 180;
+    const auto cosine = std::abs(std::cos(radians)), sine = std::abs(std::sin(radians));
+    const auto halfWidth = (d.width * cosine + d.height * sine) / 2;
+    const auto halfHeight = (d.width * sine + d.height * cosine) / 2;
+    const auto centreX = d.x + d.width / 2, centreY = d.y + d.height / 2;
+    return {centreX - halfWidth, centreY - halfHeight, centreX + halfWidth, centreY + halfHeight};
+}
+
+double snapIntegralEdge(double edge)
+{
+    const auto rounded = std::round(edge);
+    return std::abs(edge - rounded) < 1e-8 ? rounded : edge;
+}
+} // namespace
+
+void arrangeLayers(SceneTemplate& scene, LayoutPreset preset)
+{
+    struct Unit { Bounds bounds; std::vector<std::size_t> members; bool locked{}; };
+    std::vector<Unit> units;
+    std::map<std::string, std::size_t> groups;
+    for (std::size_t i = 0; i < scene.layers.size(); ++i) {
+        const auto& layer = scene.layers[i];
+        std::size_t index = units.size();
+        if (!layer.groupId.empty()) index = groups.try_emplace(layer.groupId, index).first->second;
+        if (index == units.size()) units.emplace_back();
+        auto& unit = units[index];
+        unit.members.push_back(i);
+        unit.locked = unit.locked || layer.locked;
+        if (layer.visible) unit.bounds.include(rotatedBounds(layer.destination));
+    }
+
+    Bounds locked;
+    std::vector<const Unit*> movable;
+    for (const auto& unit : units) {
+        if (unit.bounds.empty()) continue;
+        if (unit.locked) locked.include(unit.bounds);
+        else movable.push_back(&unit);
+    }
+    if (movable.empty()) return;
+    const bool column = preset == LayoutPreset::Column;
+    const double startX = locked.empty() || column ? canvasMargin : locked.right + layerGap;
+    const double startY = locked.empty() || !column ? canvasMargin : locked.bottom + layerGap;
+    const auto place = [&scene](const Unit& unit, double left, double top) {
+        for (auto member : unit.members) {
+            auto& d = scene.layers[member].destination;
+            d.x += left - unit.bounds.left;
+            d.y += top - unit.bounds.top;
+        }
+    };
+    if (preset == LayoutPreset::Hero) {
+        place(*movable.front(), startX, startY);
+        double top = startY;
+        const double left = startX + movable.front()->bounds.width() + layerGap;
+        for (std::size_t i = 1; i < movable.size(); ++i) {
+            place(*movable[i], left, top);
+            top += movable[i]->bounds.height() + layerGap;
+        }
+        return;
+    }
+
+    const auto columns = column ? std::size_t{1} : preset == LayoutPreset::Row ? movable.size()
+        : std::size_t(std::ceil(std::sqrt(double(movable.size()))));
+    const auto rows = (movable.size() + columns - 1) / columns;
+    std::vector<double> widths(columns), heights(rows);
+    for (std::size_t i = 0; i < movable.size(); ++i) {
+        widths[i % columns] = std::max(widths[i % columns], movable[i]->bounds.width());
+        heights[i / columns] = std::max(heights[i / columns], movable[i]->bounds.height());
+    }
+    double top = startY;
+    for (std::size_t row = 0; row < rows; ++row) {
+        double left = startX;
+        for (std::size_t col = 0; col < columns && row * columns + col < movable.size(); ++col) {
+            place(*movable[row * columns + col], left, top);
+            left += widths[col] + layerGap;
+        }
+        top += heights[row] + layerGap;
+    }
+}
+
+Error fitCanvasToContent(SceneTemplate& scene)
+{
+    if (auto error = validateScene(scene)) return error;
+    Bounds bounds;
+    for (const auto& layer : scene.layers)
+        if (layer.visible) bounds.include(rotatedBounds(layer.destination));
+    if (bounds.empty()) return {"SCENE_EMPTY", "No visible layers to fit"};
+
+    const auto left = std::floor(snapIntegralEdge(bounds.left)) - canvasMargin;
+    const auto top = std::floor(snapIntegralEdge(bounds.top)) - canvasMargin;
+    const auto width = std::ceil(snapIntegralEdge(bounds.right)) + canvasMargin - left;
+    const auto height = std::ceil(snapIntegralEdge(bounds.bottom)) + canvasMargin - top;
+    if (width > 1000000 || height > 1000000 || width * height > 100000000) {
+        return {"SCENE_CANVAS_SIZE", std::to_string(std::int64_t(width)) + " × " + std::to_string(std::int64_t(height))};
+    }
+    auto candidate = scene;
+    candidate.width = int(width);
+    candidate.height = int(height);
+    // Rebase the scene as a whole, including hidden and locked layers.
+    for (auto& layer : candidate.layers) {
+        layer.destination.x -= left;
+        layer.destination.y -= top;
+    }
+    if (auto error = validateScene(candidate)) return error;
+    scene = std::move(candidate);
+    return {};
+}
+
 void alignLayers(SceneTemplate& scene, const std::vector<std::size_t>& selected, Align align)
 {
     if (selected.empty()) return;

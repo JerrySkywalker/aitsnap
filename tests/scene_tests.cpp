@@ -15,12 +15,17 @@
 #include <QListWidget>
 #include <QPushButton>
 #include <QCheckBox>
+#include <QComboBox>
+#include <QLabel>
+#include <QSpinBox>
 #include <QDir>
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QPainter>
 #include <QTemporaryDir>
+#include <QWheelEvent>
+#include <cmath>
 #include <iostream>
 #include <stdexcept>
 using namespace aitsnap;
@@ -35,10 +40,97 @@ struct FakeCapture final : ICaptureBackend {
     }
 };
 static QByteArray hash(const QString& path) { QFile f(path); check(f.open(QIODevice::ReadOnly), "hash read"); return QCryptographicHash::hash(f.readAll(), QCryptographicHash::Sha256).toHex(); }
+
+static void nativeCanvasAndView()
+{
+    SceneTemplate seed; seed.id = "native"; seed.name = "Native layout";
+    CaptureProfile profile; profile.id = "native-profile"; profile.name = "Native sources";
+    profile.regions = {{"wide", "Wide", {0, 0, 400, 200}}, {"portrait", "Portrait", {0, 0, 1080, 1920}}};
+    QImage wide(3840, 2160, QImage::Format_RGB32); wide.fill(Qt::red);
+    SceneEditor native(seed, profile, {{"wide", {wide, "verified-full-frame"}}}, nullptr, true);
+    const auto created = native.sceneTemplate();
+    check(created.width == 4964 && created.height == 2192 && created.layers[0].destination.width == 3840 &&
+          created.layers[1].destination.height == 1920, "new scene fits full source pixels and region fallback");
+    native.findChild<QSpinBox*>("sceneCanvasWidth")->setValue(5000);
+    native.findChild<QSpinBox*>("sceneCanvasHeight")->setValue(4000);
+    native.findChild<QPushButton*>("applySceneCanvas")->click();
+    native.findChild<QComboBox*>("sceneLayoutPreset")->setCurrentIndex(int(LayoutPreset::Column));
+    native.findChild<QPushButton*>("applyPreset")->click();
+    const auto fixed = native.sceneTemplate();
+    check(fixed.width == 5000 && fixed.height == 4000 && fixed.layers[0].destination.width == 3840 &&
+          fixed.layers[1].destination.y > 2160 && fixed.layers[1].id == created.layers[1].id,
+          "preset arranges existing native layers without changing the fixed canvas");
+    native.findChild<QPushButton*>("fitSceneContent")->click();
+    check(native.sceneTemplate().width == 3872 && native.sceneTemplate().height == 4124, "fit derives the export canvas from arranged layer bounds");
+    native.findChild<QPushButton*>("undoScene")->click();
+    check(native.sceneTemplate().width == 5000 && native.findChild<QSpinBox*>("sceneCanvasWidth")->value() == 5000,
+          "undo restores both the canvas and the displayed dimensions");
+
+    auto cropped = seed;
+    cropped.layers = {{"crop", "wide"}, {"hidden", "portrait"}};
+    cropped.layers[0].crop = {10, 20, 120, 200};
+    cropped.layers[0].destination = {-200, -100, 120, 200, 90};
+    cropped.layers[0].sourceArtifactId = "verified-full-frame";
+    cropped.layers[1].visible = false;
+    cropped.layers[1].destination = {90000, -90000, 1080, 1920, 0};
+    check(!fitCanvasToContent(cropped) && cropped.width == 232 && cropped.height == 152 &&
+          cropped.layers[0].crop.width == 120 && cropped.layers[0].sourceArtifactId == "verified-full-frame",
+          "fit encloses a rotated cropped layer at a negative origin and ignores hidden layers");
+    const auto render = renderScene(cropped, {{"wide", {wide, "verified-full-frame"}}});
+    check(render.complete && render.image.size() == QSize(232, 152) && render.image.pixelColor(16, 16) == QColor(Qt::red) &&
+          render.image.pixelColor(15, 16) == sceneColour(cropped.background), "rotated native crop uses exact fitted output pixels");
+
+    auto locked = created;
+    locked.layers[0].groupId = locked.layers[1].groupId = "pair";
+    locked.layers[0].locked = true;
+    const auto lockedBefore = sceneJson(locked);
+    arrangeLayers(locked, LayoutPreset::Hero);
+    check(sceneJson(locked) == lockedBefore, "layout respects a locked group and preserves its metadata");
+
+    auto tooLarge = profile;
+    for (auto& region : tooLarge.regions) region.rect = {0, 0, 10000, 10000};
+    SceneEditor oversized(seed, tooLarge, {}, nullptr, true);
+    oversized.findChild<QPushButton*>("saveScene")->click();
+    check(oversized.result() != QDialog::Accepted &&
+          oversized.findChild<QLabel*>("sceneEditorStatus")->text().contains("20044"),
+          "oversized automatic canvas requires an explicit decision and reports the necessary dimensions");
+
+    auto empty = seed;
+    empty.width = 600; empty.height = 400; empty.background = "#e700c0";
+    SceneEditor viewer(empty, profile, {});
+    viewer.show();
+    QApplication::processEvents();
+    auto* view = viewer.findChild<QGraphicsView*>("sceneCanvas");
+    viewer.findChild<QPushButton*>("fitSceneView")->click();
+    const auto pngBefore = renderScene(viewer.sceneTemplate(), {}).image;
+    const auto metadata = sceneJson(viewer.sceneTemplate());
+    const auto screenshot = view->viewport()->grab().toImage();
+    const auto inside = view->mapFromScene(QPointF(12, 200));
+    const auto outside = view->mapFromScene(QPointF(-12, 200));
+    const auto dpr = screenshot.devicePixelRatio();
+    check(screenshot.pixelColor(inside * dpr) == QColor("#e700c0") &&
+          screenshot.pixelColor(outside * dpr) != QColor("#e700c0"), "canvas has visible contrast against the workspace");
+    const QPoint pointer = view->viewport()->rect().center() + QPoint(35, 25);
+    const QPointF anchored = view->mapToScene(pointer);
+    const auto scale = view->transform().m11();
+    QWheelEvent wheel(QPointF(pointer), QPointF(view->viewport()->mapToGlobal(pointer)), {},
+                      QPoint(0, 120), Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
+    QApplication::sendEvent(view->viewport(), &wheel);
+    const auto after = view->mapToScene(pointer);
+    check(view->transform().m11() > scale && std::abs(after.x() - anchored.x()) * scale < 3 &&
+          std::abs(after.y() - anchored.y()) * scale < 3, "wheel zoom anchors the point under the pointer");
+    viewer.findChild<QPushButton*>("sceneViewActualSize")->click();
+    check(view->transform().m11() == 1 && viewer.findChild<QLabel*>("sceneZoomLevel")->text() == "100%",
+          "actual-size view and scale indicator");
+    check(sceneJson(viewer.sceneTemplate()) == metadata && renderScene(viewer.sceneTemplate(), {}).image == pngBefore,
+          "canvas editor chrome and viewport transforms do not affect exported pixels");
+}
+
 int main(int argc, char** argv)
 {
     compat::configureHighDpi(); QApplication app(argc, argv); app.setApplicationName("AITSnapSceneTests");
     try {
+        nativeCanvasAndView();
         QTemporaryDir temporary; check(temporary.isValid(), "temporary output");
         QString directory = temporary.path(); const auto flag = app.arguments().indexOf("--evidence");
         if (flag >= 0 && flag + 1 < app.arguments().size()) { directory = app.arguments()[flag + 1]; check(QDir().mkpath(directory), "evidence directory"); }

@@ -651,12 +651,25 @@ void MainWindow::editScene(bool createNew, bool historical, const QString& manif
     if (busy_ || editingRegions_ || editingScene_) { setStatus(aitsnap::uiText("请等待当前截图或编辑完成。"), true); return; }
     if (!applySettings()) return;
     auto profile = settings_.profiles[std::size_t(settings_.activeProfile)]; SceneSources sources;
+    const auto matchingSources = [&profile](SceneSources frames, const core::CaptureProfile& sampled) {
+        for (auto it = frames.begin(); it != frames.end();) {
+            const auto current = std::find_if(profile.regions.begin(), profile.regions.end(), [&](const auto& r) { return r.id == it->first; });
+            const auto captured = std::find_if(sampled.regions.begin(), sampled.regions.end(), [&](const auto& r) { return r.id == it->first; });
+            if (current == profile.regions.end() || captured == sampled.regions.end() || current->rect != captured->rect)
+                it = frames.erase(it);
+            else ++it;
+        }
+        return frames;
+    };
     if (historical) {
         const auto manifest = manifestOverride.isEmpty() ? QFileDialog::getOpenFileName(this, aitsnap::uiText("打开已保存批次的 batch.json"), settings_.outputDirectory, "Batch (batch.json);;JSON (*.json)") : manifestOverride;
         if (manifest.isEmpty()) return; QString error;
         if (!loadHistoricalSources(manifest, sources, profile, error)) { setStatus(error, true); return; }
-    } else if(livePreviewEnabled_->isChecked() && livePreview_->snapshot().profile.id==profile.id)sources=livePreview_->snapshot().sources;
-    else if(!livePreviewEnabled_->isChecked() && lastOutcome_ && lastOutcome_->batch.request.profile.id == profile.id) sources = batchSources(lastOutcome_->batch);
+    } else if (livePreviewEnabled_->isChecked() && livePreview_->snapshot().profile.id == profile.id) {
+        sources = matchingSources(livePreview_->snapshot().sources, livePreview_->snapshot().profile);
+    } else if (!livePreviewEnabled_->isChecked() && lastOutcome_ && lastOutcome_->batch.request.profile.id == profile.id) {
+        sources = matchingSources(batchSources(lastOutcome_->batch), lastOutcome_->batch.request.profile);
+    }
     core::SceneTemplate model; bool existing = false;
     if (!createNew && scenes_->currentItem()) {
         const auto chosen = scenes_->currentItem()->data(Qt::UserRole).toString().toStdString();
@@ -664,9 +677,12 @@ void MainWindow::editScene(bool createNew, bool historical, const QString& manif
         if (found != settings_.scenes.end()) { model = *found; existing = true; }
     }
     if (historical && existing && !std::all_of(model.layers.begin(), model.layers.end(), [&](const auto& layer) { return sources.count(layer.sourceRegionId) > 0; })) existing = false;
-    if (!existing) model = core::presetScene(profile, id(), (historical ? uiText("历史重排") : uiText("拼图 %1").arg(settings_.scenes.size() + 1)).toStdString(), 1600, 900, core::LayoutPreset::Grid);
+    if (!existing) {
+        model.id = id();
+        model.name = (historical ? uiText("历史重排") : uiText("拼图 %1").arg(settings_.scenes.size() + 1)).toStdString();
+    }
     editingScene_ = true;
-    SceneEditor dialog(model, profile, sources, this);
+    SceneEditor dialog(std::move(model), profile, std::move(sources), this, !existing);
     if(!historical && livePreviewEnabled_->isChecked())liveEditor_=&dialog;
     refreshWorkspace();const auto accepted = dialog.exec() == QDialog::Accepted;liveEditor_=nullptr; editingScene_ = false;refreshWorkspace();
     if (!accepted) { setStatus(aitsnap::uiText("已取消场景编辑，截图已恢复。")); return; }
