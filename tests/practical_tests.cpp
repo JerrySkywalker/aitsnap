@@ -6,6 +6,7 @@
 #include "desktop/appearance.h"
 #include "main_window.h"
 #include <QApplication>
+#include <QCheckBox>
 #include <QComboBox>
 #include <QClipboard>
 #include <QCryptographicHash>
@@ -18,6 +19,7 @@
 #include <QJsonDocument>
 #include <QListWidget>
 #include <QLabel>
+#include <QDialogButtonBox>
 #include <QPushButton>
 #include <QSemaphore>
 #include <QTemporaryDir>
@@ -113,6 +115,10 @@ static void captureWhileSaving(const QString& root, Settings settings)
         const auto& outcome = *completed[std::size_t(i)];
         check(outcome.batch.request.captureSequence == i + 1, "FIFO completion");
         check(QFileInfo::exists(outcome.directory + "/batch.json"), "completed manifest committed");
+        const auto timings = read(outcome.directory + "/batch.json")["extensions"].toObject();
+        check(timings["triggerToFramesMs"].toDouble(-1) >= timings["frameAcquireMs"].toDouble() &&
+              timings["outputQueueMs"].toDouble(-1) >= 0, "frame and output queue timing is persisted");
+        if (i == 1) check(timings["outputQueueMs"].toDouble() >= 1500, "the second frame waited for the blocked first output");
         const auto& file = outcome.batch.outputs.front();
         check(!file.error && file.status == "SAVED" &&
               QImage(QString::fromStdString(file.path)).pixelColor(3, 3) == expected[i],
@@ -210,6 +216,13 @@ static void firstRunWithoutSampleSources(const QString& root, const Settings& pr
         check(first && first->isVisible() && capture && !capture->isEnabled() && regions && regions->rowCount() == 0,
               "first launch starts with zero sources and exposes region selection");
         window.findChild<QPushButton*>("addRegion")->click();
+        check(regions->rowCount() == 1 && regions->item(0, 4)->text() == "32", "new default source is bounded by active display");
+        regions->item(0, 4)->setText("33");
+        window.findChild<QPushButton*>("addRegion")->click();
+        Settings unchanged;
+        check(regions->rowCount() == 1 && loadSettings(path, unchanged, error) &&
+              unchanged.profiles.front().regions.front().rect.width == 32,
+              "management cannot commit a changed region outside the active display");
         regions->item(0, 4)->setText("16");
         regions->item(0, 5)->setText("16");
         window.findChild<QPushButton*>("applySettings")->click();
@@ -235,6 +248,79 @@ static void firstRunWithoutSampleSources(const QString& root, const Settings& pr
     }
     check(original.open(QIODevice::ReadOnly) && original.readAll() == before, "startup preserves existing settings bytes");
     std::cout << "FIRST_RUN_PASS zero sources, first source saves a batch, existing settings retained\n";
+}
+
+static void reportRemovalPresentation(const QString& root, Settings settings, const CaptureOutcome& batch)
+{
+    const auto jobs = root + "/report-jobs";
+    check(QDir().mkpath(jobs), "removal UI fixture directory");
+    QString error;
+    QStringList ids;
+    const auto seed = [&](const char* state, const QString& document) {
+        ReportOptions options; options.documentPath = document;
+        auto job = makeReportJob(batch, options, "append", error);
+        check(!job.isEmpty(), "removal UI job");
+        job["state"] = state;
+        if (job["state"] == "COMMITTED") job["committedMarker"] = "receipt";
+        if (job["state"] == "QUEUED") {
+            auto ext = job["extensions"].toObject();
+            ext["nextAttemptUtc"] = QDateTime::currentDateTimeUtc().addDays(1).toString(Qt::ISODateWithMs);
+            job["extensions"] = ext;
+        }
+        const auto id = job["jobId"].toString();
+        ids.append(id);
+        check(storeReportJob(jobs + "/" + id + ".json", job, error), "persist removal UI job");
+    };
+    seed("QUEUED", root + "/waiting.docx");
+    seed("UNCERTAIN", root + "/uncertain.docx");
+    seed("COMMITTED", root + "/committed.docx");
+    const auto path = root + "/settings-v1.json";
+    check(saveSettings(path, settings, error), "removal UI settings");
+    MainWindow window(nullptr, path, "-");
+    bool verified = false;
+    QTimer::singleShot(0, &window, [&] {
+        auto* dialog = qobject_cast<QDialog*>(QApplication::activeModalWidget());
+        if (!dialog) return;
+        auto* table = dialog->findChild<QTableWidget*>("reportJobs");
+        auto* remove = dialog->findChild<QPushButton*>("removeReportJobs");
+        auto* clear = dialog->findChild<QPushButton*>("clearReportQueue");
+        auto* history = dialog->findChild<QCheckBox*>("showRemovedReportJobs");
+        if (table && remove && clear && history && table->rowCount() == 3) {
+            const auto accept = [&] {
+                QTimer::singleShot(0, dialog, [] {
+                    auto* prompt = QApplication::activeModalWidget();
+                    if (prompt && prompt->objectName() == "confirmReportRemoval")
+                        prompt->findChild<QDialogButtonBox*>()->button(QDialogButtonBox::Yes)->click();
+                });
+            };
+            for (int row = 0; row < table->rowCount(); ++row) {
+                if (table->item(row, 0)->text() != ids[0]) continue;
+                table->setCurrentCell(row, 0);
+                table->selectRow(row);
+                break;
+            }
+            if (remove->isEnabled()) {
+                accept();
+                remove->click();
+                if (table->rowCount() == 2 && clear->isEnabled()) {
+                    accept();
+                    clear->click();
+                    if (table->rowCount() == 1 && table->item(0, 0)->text() == ids[1]) {
+                        history->click();
+                        verified = table->rowCount() == 3;
+                    }
+                }
+            }
+        }
+        dialog->reject();
+    });
+    window.findChild<QPushButton*>("inspectReportQueue")->click();
+    check(verified, "operator can remove one, clear others, and review removed tasks");
+    check(read(jobs + "/" + ids[0] + ".json")["state"] == "CANCELLED" &&
+          read(jobs + "/" + ids[1] + ".json")["state"] == "UNCERTAIN" &&
+          read(jobs + "/" + ids[2] + ".json")["extensions"].toObject().contains("archivedAtUtc"),
+          "UI operations persist cancellation and archive and retain uncertain task");
+    std::cout << "WORD_REMOVAL_UI_PASS selected removal, clear, protection and history toggle\n";
 }
 int main(int argc,char** argv){QApplication app(argc,argv);try{
     QTemporaryDir temp;check(temp.isValid(),"temporary root");QString error;Backend backend;auto settings=defaultSettings();settings.hotkeysEnabled={false,false,false};settings.imagePathMode="flat";settings.filenameTemplate="same name";
@@ -267,5 +353,6 @@ int main(int argc,char** argv){QApplication app(argc,argv);try{
     captureWhileSaving(temp.filePath("pipeline"), settings);
     reportDiagnosticPresentation(temp.filePath("word-diagnostics"), settings, batch);
     firstRunWithoutSampleSources(temp.filePath("first-run"), settings);
+    reportRemovalPresentation(temp.filePath("queue-removal-ui"), settings, batch);
     std::cout<<"PRACTICAL_PASS flat/batch formats collision preservation history queue routing migration OLED NASA offline-help; real Word NOT_RUN\n";return 0;
 }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}

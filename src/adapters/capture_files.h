@@ -21,6 +21,8 @@ struct CaptureOutcome {
     double frameAcquireMs{};
     double cropMs{};
     double originalSaveMs{};
+    std::optional<double> triggerToFramesMs;
+    std::optional<double> outputQueueMs;
     std::map<std::string, QImage> composites;
     std::vector<core::SceneTemplate> sceneSnapshots;
 };

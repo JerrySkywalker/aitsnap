@@ -229,6 +229,7 @@ void MainWindow::selectBatch()
     reportCards_->clear(); if (!reportQueue_) return;
     const QMap<QString, QString> states{{"COMMITTED", uiText("已提交")}, {"QUEUED", uiText("排队中")}, {"RUNNING", uiText("正在写入")}, {"UNCERTAIN", uiText("待核对")}, {"FAILED", uiText("失败")}, {"RETRYABLE", uiText("等待重试")}};
     for (const auto& job : reportQueue_->jobs()) {
+        if (removedReportJob(job)) continue;
         const auto state = job["state"].toString(); auto* card = new QListWidgetItem(QFileInfo(job["target"].toObject()["documentPath"].toString()).fileName() + "\n" + states.value(state, state), reportCards_);
         card->setData(Qt::UserRole, job["target"].toObject()["documentPath"].toString());
         card->setSizeHint({200, 74}); card->setToolTip(job["errorMessage"].toString());

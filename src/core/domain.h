@@ -36,6 +36,7 @@ struct CaptureRequest {
     std::vector<std::pair<std::string, int>> sceneRevisions;
     std::string contextSnapshotJson;
     std::int64_t captureSequence{};
+    std::optional<std::vector<Display>> reservedDisplays;
 };
 // Owned immutable packed BGRA8, top-to-bottom, alpha 255. No Qt/platform type.
 struct Image {

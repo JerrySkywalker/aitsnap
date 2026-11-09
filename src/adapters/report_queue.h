@@ -16,6 +16,18 @@ bool validateReportJob(const QJsonObject& job, QString& error);
 bool readReportJob(const QString& path, QJsonObject& job, QString& error);
 bool storeReportJob(const QString& path, const QJsonObject& job, QString& error);
 QJsonObject makeReportJob(const CaptureOutcome&, const ReportOptions&, const QString& mode, QString& error);
+bool removedReportJob(const QJsonObject&);
+
+struct ReportRemovalPlan {
+    QStringList requested, cancel, archive, dependent, protectedJobs;
+    bool clearAll{};
+    bool operator==(const ReportRemovalPlan&) const = default;
+};
+
+struct ReportRemovalResult {
+    int cancelled{}, archived{};
+    QString error;
+};
 
 // One process owns the durable dispatcher. Office is always a child helper;
 // screenshot workers never wait for it. Uncertain jobs require marker inspection.
@@ -31,6 +43,9 @@ public:
     bool retryFailed(const QString& jobId, QString& error);
     bool canInspect(const QJsonObject&) const;
     bool canRetry(const QJsonObject&) const;
+    bool canManage() const { return ready_; }
+    ReportRemovalPlan planRemoval(const QStringList& ids, bool clearAll) const;
+    ReportRemovalResult applyRemoval(const ReportRemovalPlan& confirmed);
     QList<QJsonObject> jobs() const;
     QString diagnostic() const { return diagnostic_; }
     std::function<void()> changed;
@@ -47,6 +62,6 @@ private:
     int timeoutMs_;
     void launch(const QString& path, QJsonObject job, bool inspect);
     void finish(bool failedToStart = false);
-    bool persist(QJsonObject& job, const QString& path);
+    bool persist(QJsonObject& job, const QString& path, bool notify = true);
 };
 } // namespace aitsnap

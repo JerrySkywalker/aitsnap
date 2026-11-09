@@ -39,6 +39,7 @@ static QStringList selectedIds(QListWidget* list)
 bool MainWindow::commitObjects(const Settings& candidate, const QJsonArray& rules)
 {
     QString error; const bool changedRules = rules != eventRules_;
+    if (!validateRegionChanges(candidate, error)) { setStatus(error, true); return false; }
     if (!persistSettingsCommand(configurationPath_, candidate, changedRules ? &rules : nullptr, error)) {
         if (QFile::exists(configurationPath_ + ".before-management.json")) configurationBlocked_ = true;
         setStatus(uiText("配置操作未完成：") + error, true); return false;
@@ -85,8 +86,18 @@ void MainWindow::objectAction(ObjectKind kind, const QString& operation, const Q
         if (confirm.exec()!=QDialog::Accepted) return;
     } else if (kind==ObjectKind::Region) {
         if (operation=="new") {
+            std::vector<core::Display> displays;
+            try { displays = displayInventory_(); }
+            catch (const std::exception& failure) { setStatus(QString::fromUtf8(failure.what()), true); return; }
+            if (displays.empty()) { setStatus(uiText("当前无活动显示器，无法新增区域。"), true); return; }
+            const auto primary = std::find_if(displays.begin(), displays.end(), [](const auto& display) {
+                return core::intersect(display.rect, {0, 0, 1, 1}).has_value();
+            });
+            auto rect = (primary == displays.end() ? displays.front() : *primary).rect;
+            rect.width = std::min(rect.width, 640);
+            rect.height = std::min(rect.height, 400);
             const int number=profile.nextRegionNumber++;
-            profile.regions.push_back({freshId(),uiText("区域 %1").arg(number).toStdString(),{0,0,640,400},true,number});
+            profile.regions.push_back({freshId(),uiText("区域 %1").arg(number).toStdString(),rect,true,number});
         } else if (operation=="duplicate") {
             if(ids.size()!=1) return;
             const auto found=std::find_if(profile.regions.begin(),profile.regions.end(),[&](const auto& r){return qs(r.id)==ids.front();}); if(found==profile.regions.end()) return;

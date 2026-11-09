@@ -33,7 +33,8 @@
         "COMMITTED",
         "RETRYABLE",
         "FAILED",
-        "UNCERTAIN"
+        "UNCERTAIN",
+        "CANCELLED"
       ]
     },
     "target": {

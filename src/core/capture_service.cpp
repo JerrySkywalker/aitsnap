@@ -20,7 +20,8 @@ AcquiredDesktop CaptureService::acquireFrames(const CaptureRequest& request)
     const auto& monitors = acquisition.displays;
     acquisition.topologyChanged = !request.profile.calibratedDisplays.empty() &&
         !sameTopology(monitors, request.profile.calibratedDisplays);
-    if (!acquisition.topologyChanged) {
+    acquisition.reservationChanged = request.reservedDisplays && !sameTopology(monitors, *request.reservedDisplays);
+    if (!acquisition.topologyChanged && !acquisition.reservationChanged) {
         for (const auto& region : request.profile.regions)
             if (region.enabled && !coveredByDisplays(region.rect, monitors)) acquisition.uncoveredRegions.insert(region.id);
         for (const auto& monitor : monitors) {
@@ -44,6 +45,10 @@ CaptureBatch CaptureService::cropFrames(AcquiredDesktop acquisition)
         SourceCapture source; source.region = region;
         if (acquisition.topologyChanged) {
             source.error = {"TOPOLOGY_CHANGED", "Display arrangement changed; recalibrate the profile"};
+            batch.captures.push_back(std::move(source)); continue;
+        }
+        if (acquisition.reservationChanged) {
+            source.error = {"TOPOLOGY_CHANGED", "Display arrangement changed before frame acquisition; retry capture"};
             batch.captures.push_back(std::move(source)); continue;
         }
         if (acquisition.uncoveredRegions.count(region.id)) {

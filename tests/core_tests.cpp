@@ -36,7 +36,12 @@ int main()
         check(backend.acquired == acquiredCalls && cropped.captures[0].image.valid() &&
               *cropped.captures[0].image.bgra == *image.bgra, "deferred crop uses only the already acquired frames");
         check(service.capture(req).captures[0].error.code == "TOPOLOGY_CHANGED", "recalibration required");
+        req.reservedDisplays = req.profile.calibratedDisplays;
         req.profile.calibratedDisplays.clear();
+        const auto changed = service.capture(req);
+        check(changed.captures[0].error.code == "TOPOLOGY_CHANGED" && backend.acquired == acquiredCalls,
+              "unbound profile rejects topology that changed after memory reservation");
+        req.reservedDisplays.reset();
         const auto beforeGap = backend.acquired;
         const auto withGap = service.capture(req);
         check(withGap.captures[0].error.code == "UNCOVERED_REGION" && backend.acquired == beforeGap, "gap rejected before acquisition");

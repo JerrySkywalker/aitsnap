@@ -11,6 +11,7 @@ struct ICaptureBackend {
 struct AcquiredDesktop {
     CaptureBatch batch;
     bool topologyChanged{};
+    bool reservationChanged{};
     std::vector<Display> displays;
     std::set<std::string> uncoveredRegions;
 };

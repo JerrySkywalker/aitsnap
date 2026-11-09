@@ -4,6 +4,7 @@
 #pragma once
 
 #include <QMainWindow>
+#include <QElapsedTimer>
 #include <QJsonArray>
 #include <QThreadPool>
 #include <deque>
@@ -123,6 +124,8 @@ private:
         Settings settings;
         int mode{};
         qint64 reservedBytes{};
+        QElapsedTimer triggerClock;
+        double triggerToFramesMs{};
         AcquiredCapture acquired;
         CaptureOutcome outcome;
         bool manifestCommitted{};
@@ -139,7 +142,9 @@ private:
     void finishClipboard(const std::shared_ptr<CaptureWork>&);
     void buildUi(); void setupTray(); void loadProfile();
     bool collectSettings(Settings&, QString& error);
-    bool applySettings(); void addRegion(); void rebuildProfileMenu();
+    bool applySettings();
+    bool validateRegionChanges(const Settings&, QString& error) const;
+    void rebuildProfileMenu();
     void setStatus(const QString&, bool error = false);
     void editRegions();
     void editScene(bool createNew, bool historical = false, const QString& manifestOverride = {});
@@ -149,7 +154,7 @@ private:
     ReportOptions selectedReportOptions() const;
     QString reportTarget(const QString& batchDirectory = {}, const QString& issuedAtUtc = {}, QString* error = nullptr) const;
     void showContextStore();
-    QString startCapture(int mode, const QJsonObject& options = {}, const QJsonObject& eventSnapshot = {});
+    QString startCapture(int mode, const QJsonObject& options = {}, const QJsonObject& eventSnapshot = {}, QElapsedTimer triggerClock = {});
     void startHost(QString pipeName); void editEventRules();
     enum class ObjectKind { Region, Scene, Profile, Output };
     bool managingObjects_{}, objectMenuOpen_{};

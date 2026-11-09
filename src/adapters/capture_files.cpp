@@ -176,6 +176,8 @@ bool writeBatchManifest(const CaptureOutcome& out, QString& error)
     ext["frameAcquireMs"] = out.frameAcquireMs;
     ext["cropMs"] = out.cropMs;
     ext["originalSaveMs"] = out.originalSaveMs;
+    if (out.triggerToFramesMs) ext["triggerToFramesMs"] = *out.triggerToFramesMs;
+    if (out.outputQueueMs) ext["outputQueueMs"] = *out.outputQueueMs;
     if(!out.imageDirectory.isEmpty())ext["storageLayout"]="flat";
     QJsonArray scenes; for (const auto& scene : out.sceneSnapshots) scenes.append(sceneJson(scene)); ext["sceneSnapshots"] = scenes; object["extensions"] = ext;
     return saveBytesNew(QJsonDocument(object).toJson(), QDir(out.directory).filePath("batch.json"), error);

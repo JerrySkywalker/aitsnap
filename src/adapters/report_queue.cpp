@@ -7,6 +7,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QHash>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QSaveFile>
@@ -20,6 +21,26 @@ static QString canonicalReportPath(const QString& path)
     const QFileInfo target(path);
     return target.exists() ? target.canonicalFilePath() : QDir(target.absoluteDir().canonicalPath()).filePath(target.fileName());
 }
+
+static QString documentKey(const QJsonObject& job)
+{
+    return job["target"].toObject()["documentPath"].toString().toCaseFolded();
+}
+
+static bool confirmedBeforeMutation(const QJsonObject& job)
+{
+    const auto result = job["extensions"].toObject()["lastResult"].toObject();
+    return job["committedMarker"].toString().isEmpty() &&
+        (job["state"] == "QUEUED" || job["state"] == "RETRYABLE" ||
+         (job["state"] == "FAILED" &&
+          (result["state"] == "RETRYABLE" || job["errorCode"] == "RETRY_LIMIT_HELPER_UNAVAILABLE")));
+}
+
+bool removedReportJob(const QJsonObject& job)
+{
+    return job["state"] == "CANCELLED" || job["extensions"].toObject().contains("archivedAtUtc");
+}
+
 QString reportFingerprint(const QJsonObject& job)
 {
     const auto ext = job["extensions"].toObject();
@@ -33,7 +54,7 @@ bool validateReportJob(const QJsonObject& job, QString& error)
 {
     const auto target = job["target"].toObject(), ext = job["extensions"].toObject();
     const auto path = target["documentPath"].toString(), mode = target["mode"].toString(), id = job["jobId"].toString();
-    const QStringList states{"QUEUED", "RUNNING", "COMMITTED", "RETRYABLE", "FAILED", "UNCERTAIN"};
+    const QStringList states{"QUEUED", "RUNNING", "COMMITTED", "RETRYABLE", "FAILED", "UNCERTAIN", "CANCELLED"};
     if (job["schemaVersion"].toInt() != 1 || id.isEmpty() || id.size() > 100 ||
         id.toStdString() != core::safeSegment(id.toStdString()) || job["batchId"].toString().isEmpty() ||
         !QDateTime::fromString(job["createdAtUtc"].toString(), Qt::ISODateWithMs).isValid() ||
@@ -41,6 +62,19 @@ bool validateReportJob(const QJsonObject& job, QString& error)
         !QDir::isAbsolutePath(path) || QFileInfo(path).suffix().compare("docx", Qt::CaseInsensitive) ||
         (mode != "create" && mode != "append") || (ext["layout"] != "inline" && ext["layout"] != "table")) {
         error = "Invalid ReportJob version, identity, state, target or layout"; return false;
+    }
+    if (job["state"] == "CANCELLED") {
+        const auto cancellation = ext["cancellation"].toObject();
+        auto previous = job;
+        previous["state"] = cancellation["previousState"];
+        if (!confirmedBeforeMutation(previous) ||
+            !QDateTime::fromString(cancellation["atUtc"].toString(), Qt::ISODateWithMs).isValid()) {
+            error = "Cancelled report must retain its confirmed pre-mutation state and timestamp"; return false;
+        }
+    }
+    if (ext.contains("archivedAtUtc") && (job["state"] != "COMMITTED" ||
+        !QDateTime::fromString(ext["archivedAtUtc"].toString(), Qt::ISODateWithMs).isValid())) {
+        error = "Only a committed report may be archived"; return false;
     }
     const auto items = job["items"].toArray(), sources = ext["sources"].toArray();
     if(ext.contains("textPolicy")){
@@ -140,8 +174,11 @@ QList<QJsonObject> ReportQueue::jobs() const
     for (const auto& name : QDir(directory_).entryList({"*.json"}, QDir::Files, QDir::Name)) {
         if (name.contains(".result.")) continue;
         QJsonObject job; QString error;
-        if (readReportJob(QDir(directory_).filePath(name), job, error)) result.append(job);
-        else diagnostic_ = "Preserved invalid job " + name + ": " + error;
+        if (readReportJob(QDir(directory_).filePath(name), job, error)) {
+            if (name == job["jobId"].toString() + ".json") { result.append(job); continue; }
+            error = "Job ID does not match its filename";
+        }
+        diagnostic_ = "Preserved invalid job " + name + ": " + error;
     }
     std::sort(result.begin(), result.end(), [](const auto& a, const auto& b) {
         const double left = a["extensions"].toObject()["enqueueSequence"].toDouble(), right = b["extensions"].toObject()["enqueueSequence"].toDouble();
@@ -150,11 +187,11 @@ QList<QJsonObject> ReportQueue::jobs() const
         return a["jobId"].toString() < b["jobId"].toString();
     }); return result;
 }
-bool ReportQueue::persist(QJsonObject& job, const QString& path)
+bool ReportQueue::persist(QJsonObject& job, const QString& path, bool notify)
 {
     job["updatedAtUtc"] = utc(); QString error;
     if (!storeReportJob(path, job, error)) { diagnostic_ = error; ready_ = false; return false; }
-    if (changed) changed(); return true;
+    if (notify && changed) changed(); return true;
 }
 QString ReportQueue::resolveTarget(const ReportOptions& options, const QString& captureRoot, const QDateTime& batchTime, bool reserve, QString& error) const
 {
@@ -208,11 +245,14 @@ bool ReportQueue::enqueue(const CaptureOutcome& outcome, const ReportOptions& op
     if(makeReportJob(outcome,resolved,"create",error).isEmpty())return false;
     resolved.documentPath=resolveTarget(options,root,when,true,error);if(resolved.documentPath.isEmpty())return false;
     QString mode = QFileInfo::exists(resolved.documentPath) ? "append" : "create";
-    const auto canonicalTarget = canonicalReportPath(resolved.documentPath);
+    const auto targetKey = canonicalReportPath(resolved.documentPath).toCaseFolded();
+    const auto batchId = QString::fromStdString(outcome.batch.batchId);
     double sequence = 1;
     for (const auto& job : jobs()) {
         sequence = std::max(sequence, job["extensions"].toObject()["enqueueSequence"].toDouble() + 1);
-        if (job["state"] != "COMMITTED" && job["target"].toObject()["documentPath"].toString().compare(canonicalTarget, Qt::CaseInsensitive) == 0) mode = "append";
+        if (job["state"] == "CANCELLED" || documentKey(job) != targetKey) continue;
+        if (job["batchId"] == batchId) { error = "This batch is already linked to this report; inspect or recover its existing job"; return false; }
+        if (job["state"] != "COMMITTED") mode = "append";
     }
     auto job = makeReportJob(outcome, resolved, mode, error); if (job.isEmpty()) return false;
     auto ext = job["extensions"].toObject(); ext["enqueueSequence"] = sequence; job["extensions"] = ext;
@@ -223,8 +263,9 @@ bool ReportQueue::enqueue(const CaptureOutcome& outcome, const ReportOptions& op
 }
 bool ReportQueue::hasBatchForDocument(const QString& batchId, const QString& documentPath) const
 {
-    const auto target = canonicalReportPath(documentPath);
-    for (const auto& job : jobs()) if (job["batchId"].toString() == batchId && job["target"].toObject()["documentPath"].toString().compare(target, Qt::CaseInsensitive) == 0) return true;
+    const auto target = canonicalReportPath(documentPath).toCaseFolded();
+    for (const auto& job : jobs())
+        if (job["state"] != "CANCELLED" && job["batchId"] == batchId && documentKey(job) == target) return true;
     return false;
 }
 bool ReportQueue::enqueueHistorical(const QString& manifestPath, const ReportOptions& options, QString& error)
@@ -279,6 +320,7 @@ void ReportQueue::pump()
     const auto all = jobs();
     std::set<QString> pendingTargets;
     for (auto job : all) {
+        if (removedReportJob(job)) continue;
         const auto state = job["state"].toString();
         const auto target = job["target"].toObject()["documentPath"].toString();
         if (std::any_of(all.begin(), all.end(), [&](const auto& other) { return other["state"] == "UNCERTAIN" && other["target"].toObject()["documentPath"].toString().compare(target, Qt::CaseInsensitive) == 0; })) continue;
@@ -304,10 +346,88 @@ bool ReportQueue::canInspect(const QJsonObject& job) const
 
 bool ReportQueue::canRetry(const QJsonObject& job) const
 {
-    const auto result = job["extensions"].toObject()["lastResult"].toObject();
-    return ready_ && currentPath_.isEmpty() && job["state"] == "FAILED" &&
-        job["committedMarker"].toString().isEmpty() &&
-        (result["state"] == "RETRYABLE" || job["errorCode"] == "RETRY_LIMIT_HELPER_UNAVAILABLE");
+    return ready_ && currentPath_.isEmpty() && job["state"] == "FAILED" && confirmedBeforeMutation(job);
+}
+
+ReportRemovalPlan ReportQueue::planRemoval(const QStringList& ids, bool clearAll) const
+{
+    ReportRemovalPlan plan;
+    plan.requested = ids;
+    plan.clearAll = clearAll;
+    if (!ready_) return plan;
+
+    const auto queue = jobs();
+    const auto currentId = current_["jobId"].toString();
+    const auto canCancel = [&currentId](const QJsonObject& job) {
+        return job["jobId"].toString() != currentId && confirmedBeforeMutation(job);
+    };
+    std::set<QString> cancel, dependent;
+    for (auto it = queue.begin(); it != queue.end(); ++it) {
+        const auto& job = *it;
+        const auto id = job["jobId"].toString();
+        if (removedReportJob(job) || (!clearAll && !ids.contains(id))) continue;
+        if (id != currentId && job["state"] == "COMMITTED") { plan.archive.append(id); continue; }
+        if (!canCancel(job)) { plan.protectedJobs.append(id); continue; }
+
+        if (job["target"].toObject()["mode"] == "create") {
+            // A later append depends on this unfinished create. Even an externally
+            // placed file at the path is not evidence that this create committed.
+            const auto key = documentKey(job);
+            QStringList dependents;
+            bool blocked = false;
+            for (auto after = it + 1; after != queue.end(); ++after) {
+                if (removedReportJob(*after) || (*after)["state"] == "COMMITTED" || documentKey(*after) != key ||
+                    (*after)["target"].toObject()["mode"] != "append") continue;
+                if (!canCancel(*after)) { blocked = true; break; }
+                dependents.append((*after)["jobId"].toString());
+            }
+            if (blocked) { plan.protectedJobs.append(id); continue; }
+            cancel.insert(dependents.begin(), dependents.end());
+            dependent.insert(dependents.begin(), dependents.end());
+        }
+        cancel.insert(id);
+    }
+    // Persist later appends first so an interrupted removal never strands them.
+    for (auto it = queue.crbegin(); it != queue.crend(); ++it) {
+        const auto id = (*it)["jobId"].toString();
+        if (cancel.count(id)) plan.cancel.append(id);
+        if (dependent.count(id)) plan.dependent.append(id);
+    }
+    return plan;
+}
+
+ReportRemovalResult ReportQueue::applyRemoval(const ReportRemovalPlan& confirmed)
+{
+    ReportRemovalResult result;
+    if (!ready_) { result.error = diagnostic_; return result; }
+    if (planRemoval(confirmed.requested, confirmed.clearAll) != confirmed) {
+        result.error = "PLAN_CHANGED";
+        return result;
+    }
+    QHash<QString, QJsonObject> byId;
+    for (const auto& job : jobs()) byId.insert(job["jobId"].toString(), job);
+    const auto write = [&](const QString& id, bool cancel) {
+        auto job = byId.value(id);
+        auto ext = job["extensions"].toObject();
+        if (cancel) {
+            ext["cancellation"] = QJsonObject{{"atUtc", utc()}, {"previousState", job["state"]}};
+            ext.remove("nextAttemptUtc");
+            job["state"] = "CANCELLED";
+        } else ext["archivedAtUtc"] = utc();
+        job["extensions"] = ext;
+        return persist(job, QDir(directory_).filePath(id + ".json"), false);
+    };
+    for (const auto& id : confirmed.cancel) {
+        if (!write(id, true)) { result.error = diagnostic_; break; }
+        ++result.cancelled;
+    }
+    if (result.error.isEmpty()) for (const auto& id : confirmed.archive) {
+        if (!write(id, false)) { result.error = diagnostic_; break; }
+        ++result.archived;
+    }
+    if ((result.cancelled || result.archived || !result.error.isEmpty()) && changed) changed();
+    if (ready_ && (result.cancelled || result.archived)) QTimer::singleShot(0, this, [this] { pump(); });
+    return result;
 }
 bool ReportQueue::retryFailed(const QString& id, QString& error)
 {

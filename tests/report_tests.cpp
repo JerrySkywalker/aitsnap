@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
+#define NOMINMAX
+#include <windows.h>
 #include "adapters/report_queue.h"
 #include <QCoreApplication>
 #include <QCryptographicHash>
@@ -11,6 +13,7 @@
 #include <QTemporaryDir>
 #include <QThread>
 #include <QUuid>
+#include <algorithm>
 #include <iostream>
 #include <stdexcept>
 using namespace aitsnap;
@@ -34,7 +37,8 @@ static int fakeHelper(const QStringList& args)
         check(document.open(QIODevice::WriteOnly|QIODevice::Append),"fake daily file");document.write("synthetic-routing-only\n");document.close();
     }
     const auto state = behavior == "retry" ? "RETRYABLE" : "COMMITTED";
-    const QJsonObject result{{"jobId", job["jobId"]}, {"dispatchId", ext["dispatchId"]}, {"state", state}, {"errorCode", behavior == "retry" ? "FAKE_PREMUTATION" : ""}, {"marker", "synthetic-marker"}};
+    QJsonObject result{{"jobId", job["jobId"]}, {"dispatchId", ext["dispatchId"]}, {"state", state}, {"errorCode", behavior == "retry" ? "FAKE_PREMUTATION" : ""}};
+    if (behavior != "retry") result["marker"] = "synthetic-marker";
     check(saveBytesNew(QJsonDocument(result).toJson(), args[args.indexOf("--result") + 1], error), "fake result"); return 0;
 }
 static CaptureOutcome fixture(const QString& directory)
@@ -71,6 +75,173 @@ static void nativeDailyProbe(const QString& evidence,const QString& helper)
     check(saveBytesNew(QJsonDocument(QJsonObject{{"status","PASS"},{"scope","modern Word synthetic daily create/restart/append; no desktop input or human acceptance"},{"document",target},{"jobs",records}}).toJson(),root+"/receipt.json",error),"native daily receipt");
     std::cout<<"NATIVE_DAILY_REPORT_PASS "<<root.toStdString()<<std::endl;
 }
+
+static void reportRemoval(const QString& root, const CaptureOutcome& outcome, const QString& helper)
+{
+    QString error;
+    const auto directory = root + "/removal-queue";
+    ReportOptions options; options.documentPath = root + "/removal.docx";
+    auto next = outcome; next.batch.batchId += "-append";
+    QString createId, appendId;
+    QByteArray original;
+    const auto sourcePath = QString::fromStdString(outcome.batch.outputs.front().path);
+    QFile source(sourcePath);
+    check(source.open(QIODevice::ReadOnly), "removal source readable");
+    original = source.readAll(); source.close();
+    {
+        ReportQueue queue(directory, helper);
+        check(queue.enqueue(outcome, options, error) && queue.enqueue(next, options, error), "queue create and dependent append");
+        auto jobs = queue.jobs();
+        createId = jobs[0]["jobId"].toString(); appendId = jobs[1]["jobId"].toString();
+        const auto plan = queue.planRemoval({createId}, false);
+        check(plan.cancel == QStringList{appendId, createId} && plan.dependent == QStringList{appendId},
+              "create removal plans dependents first");
+        const auto file = QDir(directory).filePath(createId + ".json").toStdWString();
+        const auto held = CreateFileW(file.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        check(held != INVALID_HANDLE_VALUE, "lock create record against replacement");
+        const auto partial = queue.applyRemoval(plan);
+        CloseHandle(held);
+        check(partial.cancelled == 1 && !partial.error.isEmpty(), "report partial persistence accurately");
+        jobs = queue.jobs();
+        check(jobs[0]["state"] == "QUEUED" && jobs[1]["state"] == "CANCELLED", "interrupted clear leaves no dangling append");
+    }
+    {
+        ReportQueue queue(directory, helper);
+        const auto retry = queue.planRemoval({}, true);
+        check(retry.cancel == QStringList{createId} && retry.dependent.isEmpty(), "restart resumes remaining removal");
+        const auto removed = queue.applyRemoval(retry);
+        check(removed.cancelled == 1 && removed.error.isEmpty() && !QFileInfo::exists(options.documentPath),
+              "clear never opens or creates a report");
+        check(!queue.hasBatchForDocument(QString::fromStdString(outcome.batch.batchId), options.documentPath),
+              "cancelled batch may be explicitly queued again");
+        const auto history = root + "/batch.json";
+        check(writeBatchManifest(outcome, error), "cancelled source batch manifest");
+        check(queue.enqueueHistorical(history, options, error) &&
+              queue.jobs().back()["target"].toObject()["mode"] == "create", "historical requeue establishes a new create");
+        behavior(queue, directory, "daily");
+        check(await([&] { return queue.jobs().back()["state"] == "COMMITTED"; }), "new create commits");
+        const auto committed = queue.jobs().back();
+        const auto committedId = committed["jobId"].toString();
+        QFile document(options.documentPath);
+        check(document.open(QIODevice::ReadOnly), "committed document");
+        const auto beforeArchive = document.readAll(); document.close();
+        const auto archive = queue.applyRemoval(queue.planRemoval({committedId}, false));
+        check(archive.archived == 1 && archive.cancelled == 0 && archive.error.isEmpty(), "single committed job archived");
+        check(removedReportJob(queue.jobs().back()) && queue.jobs().back()["committedMarker"] == committed["committedMarker"],
+              "archive retains committed marker");
+        check(!queue.enqueueHistorical(history, options, error), "archived committed job still prevents duplicate requeue");
+        error.clear();
+        check(!queue.enqueue(outcome, options, error), "direct enqueue also rejects an archived committed duplicate");
+        check(document.open(QIODevice::ReadOnly) && document.readAll() == beforeArchive, "archive preserves document bytes");
+    }
+    {
+        ReportQueue restarted(directory, helper);
+        check(restarted.planRemoval({}, true).cancel.isEmpty() && restarted.planRemoval({}, true).archive.isEmpty(),
+              "cancelled and archived records remain hidden across restart");
+        check(restarted.hasBatchForDocument(QString::fromStdString(outcome.batch.batchId), options.documentPath),
+              "committed archive remains a dedup record across restart");
+        check(source.open(QIODevice::ReadOnly) && source.readAll() == original, "removal never changes original screenshots");
+    }
+    {
+        const auto protectedDirectory = root + "/protected-removal";
+        options.documentPath = root + "/protected.docx";
+        ReportQueue queue(protectedDirectory, helper, nullptr, 400);
+        check(queue.enqueue(outcome, options, error), "protected create");
+        behavior(queue, protectedDirectory, "hang");
+        const auto selected = queue.jobs().front()["jobId"].toString();
+        const auto stale = queue.planRemoval({selected}, false);
+        queue.pump();
+        check(queue.jobs().front()["state"] == "RUNNING" && queue.applyRemoval(stale).error == "PLAN_CHANGED",
+              "confirmation racing dispatch cannot cancel a running job");
+        check(queue.planRemoval({}, true).protectedJobs == QStringList{selected}, "clear preserves running job");
+        check(await([&] { return queue.jobs().front()["state"] == "UNCERTAIN"; }), "interrupted writer remains uncertain");
+        check(queue.planRemoval({}, true).protectedJobs == QStringList{selected}, "clear preserves uncertain job");
+    }
+    {
+        const auto protectedDirectory = root + "/dependent-removal";
+        options.documentPath = root + "/dependent.docx";
+        ReportQueue queue(protectedDirectory, helper);
+        check(queue.enqueue(outcome, options, error) && queue.enqueue(next, options, error), "protected dependency fixture");
+        const auto jobs = queue.jobs();
+        auto append = jobs.back();
+        append["state"] = "UNCERTAIN";
+        check(storeReportJob(protectedDirectory + "/" + append["jobId"].toString() + ".json", append, error),
+              "simulate uncertain dependent");
+        const auto first = jobs.front()["jobId"].toString();
+        check(queue.planRemoval({first}, false).protectedJobs == QStringList{first} &&
+              queue.planRemoval({first}, false).cancel.isEmpty(), "unresolved dependent protects its create task");
+    }
+    std::cout << "REPORT_REMOVAL_PASS dependency order, partial save, restart, confirmed requeue, archive and dispatch race\n";
+}
+
+static void nativeRemovalProbe(const QString& evidence, const QString& helper)
+{
+    const auto root = QDir(evidence).absoluteFilePath(QUuid::createUuid().toString(QUuid::WithoutBraces));
+    const auto firstPath = root + "/first-batch";
+    const auto secondPath = root + "/second-batch";
+    check(QDir().mkpath(firstPath) && QDir().mkpath(secondPath), "native removal fixture directories");
+    auto first = fixture(firstPath), second = fixture(secondPath);
+    first.batch.batchId = "native-removal-first";
+    second.batch.batchId = "native-removal-second";
+    QString error;
+    check(writeBatchManifest(first, error) && writeBatchManifest(second, error), "native saved batches");
+    ReportOptions options;
+    options.documentPath = root + "/v090-queue-test.docx";
+    options.text.titleTemplate = "V090 CANCELLED";
+    options.text.contextEnabled = false;
+    options.text.captionEnabled = false;
+    const auto directory = root + "/report-jobs";
+    {
+        ReportQueue queue(directory, helper);
+        check(queue.enqueue(first, options, error) && queue.enqueue(second, options, error), "queue native create and append");
+        const auto plan = queue.planRemoval({queue.jobs().front()["jobId"].toString()}, false);
+        check(plan.dependent.size() == 1, "native create cancellation includes its dependent append");
+        const auto removed = queue.applyRemoval(plan);
+        check(removed.cancelled == 2 && removed.error.isEmpty(), "cancel both before dispatch");
+    }
+    const auto committed = [](ReportQueue& queue, int expected) {
+        return await([&] {
+            const auto jobs = queue.jobs();
+            return int(std::count_if(jobs.cbegin(), jobs.cend(), [](const auto& job) {
+                return job["state"] == "COMMITTED";
+            })) == expected;
+        }, 90000);
+    };
+    {
+        ReportQueue queue(directory, helper);
+        queue.pump();
+        check(!QFileInfo::exists(options.documentPath) && queue.planRemoval({}, true).cancel.isEmpty(),
+              "cancelled tasks do not dispatch on restart");
+        options.text.titleTemplate = "V090 FIRST";
+        check(queue.enqueueHistorical(firstPath + "/batch.json", options, error) && committed(queue, 1),
+              "confirmed first batch can requeue and create a real report");
+    }
+    QByteArray hash;
+    QJsonArray records;
+    {
+        ReportQueue queue(directory, helper);
+        options.text.titleTemplate = "V090 SECOND";
+        check(queue.enqueueHistorical(secondPath + "/batch.json", options, error) && committed(queue, 2),
+              "confirmed second batch appends after restart");
+        QFile document(options.documentPath);
+        check(document.open(QIODevice::ReadOnly), "read native report");
+        hash = QCryptographicHash::hash(document.readAll(), QCryptographicHash::Sha256).toHex();
+        document.close();
+        const auto result = queue.applyRemoval(queue.planRemoval({}, true));
+        check(result.archived == 2 && result.cancelled == 0 && result.error.isEmpty(), "archive both actual submissions");
+        error.clear();
+        check(!queue.enqueueHistorical(firstPath + "/batch.json", options, error), "archived native batch remains deduplicated");
+        check(document.open(QIODevice::ReadOnly) &&
+              QCryptographicHash::hash(document.readAll(), QCryptographicHash::Sha256).toHex() == hash,
+              "real Word document hash unchanged by archive");
+        for (const auto& job : queue.jobs()) records.append(job);
+    }
+    check(saveBytesNew(QJsonDocument(QJsonObject{{"status", "PASS"}, {"document", options.documentPath},
+                        {"sha256", QString::fromLatin1(hash)}, {"jobs", records}}).toJson(), root + "/receipt.json", error),
+          "native removal evidence");
+    std::cout << "NATIVE_REPORT_REMOVAL_PASS " << root.toStdString() << '\n';
+}
+
 int main(int argc, char** argv)
 {
     QCoreApplication app(argc, argv);
@@ -78,6 +249,12 @@ int main(int argc, char** argv)
         if (app.arguments().contains("--job")) return fakeHelper(app.arguments());
         const int native=app.arguments().indexOf("--native-daily");
         if(native>=0){check(native+2<app.arguments().size(),"native evidence directory and helper required");nativeDailyProbe(app.arguments()[native+1],app.arguments()[native+2]);return 0;}
+        const int removal = app.arguments().indexOf("--native-removal");
+        if (removal >= 0) {
+            check(removal + 2 < app.arguments().size(), "native evidence directory and helper required");
+            nativeRemovalProbe(app.arguments()[removal + 1], app.arguments()[removal + 2]);
+            return 0;
+        }
         QTemporaryDir temporary; check(temporary.isValid(), "temporary report root");
         const auto root = temporary.path(); const auto outcome = fixture(root);
         {
@@ -181,7 +358,8 @@ int main(int argc, char** argv)
         {
             const auto queueRoot = root + "/fifo"; ReportQueue queue(queueRoot, app.applicationFilePath());
             check(queue.enqueue(outcome, options, error), "FIFO first create"); behavior(queue, queueRoot, "retry");
-            check(queue.enqueue(outcome, options, error), "FIFO second append");
+            auto append = outcome; append.batch.batchId += "-fifo-append";
+            check(queue.enqueue(append, options, error), "FIFO second append");
             check(queue.jobs()[0]["target"].toObject()["mode"] == "create" && queue.jobs()[1]["target"].toObject()["mode"] == "append", "same-target create before append");
             check(await([&] { return queue.jobs()[0]["state"] == "RETRYABLE"; }), "first FIFO task waits for retry"); queue.pump();
             check(queue.jobs()[1]["attemptCount"] == 0, "append cannot overtake delayed creation");
@@ -194,7 +372,8 @@ int main(int argc, char** argv)
             ext["lastResult"] = QJsonObject{{"state", "RETRYABLE"}}; failed["extensions"] = ext; failed["state"] = "FAILED"; failed["attemptCount"] = 3; failed["errorCode"] = "RETRY_LIMIT_FAKE_PREMUTATION";
             const auto id = failed["jobId"].toString(), fingerprint = ext["fingerprint"].toString();
             check(storeReportJob(queueRoot + "/" + id + ".json", failed, error), "persist exhausted pre-mutation failure");
-            ReportQueue queue(queueRoot, app.applicationFilePath()); check(queue.enqueue(outcome, options, error), "enqueue after failed create");
+            auto append = outcome; append.batch.batchId += "-failed-create-append";
+            ReportQueue queue(queueRoot, app.applicationFilePath()); check(queue.enqueue(append, options, error), "enqueue after failed create");
             check(queue.jobs()[1]["target"].toObject()["mode"] == "append", "failed creation still precedes append"); queue.pump();
             check(queue.jobs()[1]["attemptCount"] == 0, "failed predecessor prevents later append overtaking");
             auto other = options; other.documentPath = root + "/other-after-failure.docx"; check(queue.enqueue(outcome, other, error), "independent target after failure");
@@ -213,6 +392,7 @@ int main(int argc, char** argv)
             check(await([&] { return queue.jobs()[0]["state"] == "COMMITTED"; }), "inspection can acknowledge committed marker");
         }
         check(QFileInfo::exists(QString::fromStdString(outcome.batch.outputs[0].path)), "original source retained");
+        reportRemoval(root, outcome, app.applicationFilePath());
         std::cout << "REPORT_QUEUE_PASS persistence fingerprint async ack crash timeout retry3 restart marker-inspection source-retained\n";
     } catch (const std::exception& error) { std::cerr << "FAIL " << error.what() << '\n'; return 1; }
 }

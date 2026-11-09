@@ -42,6 +42,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QMenu>
+#include <QItemSelectionModel>
 #include <QMap>
 #include <QPainter>
 #include <QPlainTextEdit>
@@ -200,16 +201,6 @@ void MainWindow::loadProfile()
     captureDisplayDraftBaseline();rememberDisplayProfile();refreshWorkspace();
     if(displayRestorePending_ && displayChangeTimer_)QTimer::singleShot(0,this,[this]{scheduleDisplayChange();});
 }
-void MainWindow::addRegion()
-{
-    int row = regions_->rowCount(); regions_->insertRow(row);
-    auto* enabled = new QTableWidgetItem; enabled->setCheckState(Qt::Checked); regions_->setItem(row, 0, enabled);
-    auto& profile = settings_.profiles[std::size_t(settings_.activeProfile)];
-    const int number = profile.nextRegionNumber++;
-    auto* name = new QTableWidgetItem(aitsnap::uiText("区域 %1").arg(number)); name->setData(Qt::UserRole, QString::fromStdString(id())); name->setData(Qt::UserRole + 1, number); regions_->setItem(row, 1, name);
-    regions_->setVerticalHeaderItem(row, new QTableWidgetItem(QString::number(number)));
-    const int values[]{0, 0, 640, 400}; for (int i = 0; i < 4; ++i) regions_->setItem(row, i + 2, new QTableWidgetItem(QString::number(values[i])));
-}
 bool MainWindow::collectSettings(Settings& c, QString& e)
 {
     auto& p = c.profiles[std::size_t(c.activeProfile)]; p.name = profileName_->text().trimmed().toStdString(); p.regions.clear();
@@ -240,6 +231,32 @@ bool MainWindow::collectSettings(Settings& c, QString& e)
     core::Region example{"", uiText("区域").toStdString(), {0, 0, 1, 1}, true, 1};
     expandFilename(c, sample, p.regions.empty() ? example : p.regions.front(), e); return e.isEmpty();
 }
+bool MainWindow::validateRegionChanges(const Settings& candidate, QString& error) const
+{
+    std::vector<const core::Region*> changedRegions;
+    for (const auto& profile : candidate.profiles) {
+        const auto previousProfile = std::find_if(settings_.profiles.begin(), settings_.profiles.end(),
+            [&](const auto& previous) { return previous.id == profile.id; });
+        for (const auto& region : profile.regions) {
+            if (!region.enabled) continue;
+            if (previousProfile == settings_.profiles.end() ||
+                std::none_of(previousProfile->regions.begin(), previousProfile->regions.end(), [&](const auto& previous) {
+                    return previous.id == region.id && previous.enabled && previous.rect == region.rect;
+                })) changedRegions.push_back(&region);
+        }
+    }
+    if (!changedRegions.empty()) {
+        try {
+            const auto displays = displayInventory_();
+            for (const auto* region : changedRegions) {
+                if (core::coveredByDisplays(region->rect, displays)) continue;
+                error = regionCoverageError(*region);
+                return false;
+            }
+        } catch (const std::exception& failure) { error = QString::fromUtf8(failure.what()); return false; }
+    }
+    return true;
+}
 bool MainWindow::applySettings()
 {
     Settings c = settings_; QString e;
@@ -248,24 +265,7 @@ bool MainWindow::applySettings()
         const auto backup = configurationPath_ + ".preserved-" + QString::fromStdString(id());
         if (!QFile::copy(configurationPath_, backup)) { setStatus(aitsnap::uiText("无法保留旧配置，配置未改写。"), true); return false; }
     }
-    if(!collectSettings(c,e)){setStatus(e,true);return false;}
-    const auto& previousRegions = settings_.profiles[std::size_t(settings_.activeProfile)].regions;
-    std::vector<const core::Region*> changedRegions;
-    for (const auto& region : c.profiles[std::size_t(c.activeProfile)].regions) {
-        if (region.enabled && std::none_of(previousRegions.begin(), previousRegions.end(), [&region](const auto& previous) {
-                return previous.id == region.id && previous.enabled && previous.rect == region.rect;
-            })) changedRegions.push_back(&region);
-    }
-    if (!changedRegions.empty()) {
-        try {
-            const auto displays = displayInventory_();
-            for (const auto* region : changedRegions) {
-                if (core::coveredByDisplays(region->rect, displays)) continue;
-                setStatus(regionCoverageError(*region), true);
-                return false;
-            }
-        } catch (const std::exception& failure) { setStatus(QString::fromUtf8(failure.what()), true); return false; }
-    }
+    if (!collectSettings(c, e) || !validateRegionChanges(c, e)) { setStatus(e, true); return false; }
     const bool changedKeys=c.saveHotkey!=settings_.saveHotkey || c.copyHotkey!=settings_.copyHotkey || c.bothHotkey!=settings_.bothHotkey ||
         c.saveHotkeyAlternate!=settings_.saveHotkeyAlternate || c.copyHotkeyAlternate!=settings_.copyHotkeyAlternate || c.bothHotkeyAlternate!=settings_.bothHotkeyAlternate || c.hotkeysEnabled!=settings_.hotkeysEnabled;
     // New shortcut edits remain transactional. An unchanged saved shortcut can
@@ -307,10 +307,12 @@ void MainWindow::updateCaptureActions(bool canCapture)
 }
 void MainWindow::triggerCapture(int mode)
 {
+    QElapsedTimer triggerClock;
+    triggerClock.start();
     if(mode<0 || mode>2){setStatus(uiText("无效的截图动作。"),true);return;}
     // Every UI entry commits the same draft before taking its immutable snapshot.
     if(busy_ || captureQueueFull() || paused_ || configurationBlocked_ || editingRegions_ || editingScene_ || managingObjects_ || shuttingDown_){startCapture(mode);return;}
-    if(applySettings())startCapture(mode);
+    if(applySettings())startCapture(mode, {}, {}, triggerClock);
 }
 bool MainWindow::eventFilter(QObject* object,QEvent* event)
 {
@@ -353,8 +355,9 @@ static qint64 captureBytes(const Settings& settings, const std::vector<core::Dis
     return bytes;
 }
 
-QString MainWindow::startCapture(int mode, const QJsonObject& options, const QJsonObject& eventSnapshot)
+QString MainWindow::startCapture(int mode, const QJsonObject& options, const QJsonObject& eventSnapshot, QElapsedTimer triggerClock)
 {
+    if (!triggerClock.isValid()) triggerClock.start();
     if (shuttingDown_) return {};
     if (managingObjects_) { setStatus(uiText("正在修改配置，请稍候。"), true); return {}; }
     if (editingScene_) { setStatus(aitsnap::uiText("拼图编辑中，截图热键暂停；保存或取消后恢复。"), true); return {}; }
@@ -372,9 +375,11 @@ QString MainWindow::startCapture(int mode, const QJsonObject& options, const QJs
     if (auto error = core::validateProfile(snapshot.profiles[std::size_t(snapshot.activeProfile)]); error) {
         setStatus(error.code == "NO_REGIONS" ? uiText("请先添加并启用源区域。") : qs(error.message), true); return {};
     }
+    std::vector<core::Display> displays;
     qint64 reservedBytes;
     try {
-        reservedBytes = captureBytes(snapshot, displayInventory_(), mode);
+        displays = displayInventory_();
+        reservedBytes = captureBytes(snapshot, displays, mode);
     } catch (const std::exception& error) {
         setStatus(QString::fromUtf8(error.what()), true);
         return {};
@@ -392,6 +397,7 @@ QString MainWindow::startCapture(int mode, const QJsonObject& options, const QJs
     settings_.sequence = snapshot.sequence; core::CaptureRequest request;
     request.requestId = QDateTime::currentDateTimeUtc().toString("yyyyMMdd-HHmmss-zzz").toStdString() + "-" + id();
     request.issuedAtUtc = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs).toStdString(); request.profile = snapshot.profiles[std::size_t(snapshot.activeProfile)];
+    request.reservedDisplays = std::move(displays);
     request.context.testId = snapshot.testId.toStdString(); request.context.deviceId = snapshot.device.toStdString();
     request.context.stationId = snapshot.station.toStdString(); request.context.operatorId = snapshot.operatorName.toStdString();
     if (!selectedContextSnapshot_.isEmpty()) { request.context = selectedContext_; request.context.stationId = snapshot.station.toStdString(); request.context.operatorId = snapshot.operatorName.toStdString(); request.contextSnapshotJson = QJsonDocument(selectedContextSnapshot_).toJson(QJsonDocument::Compact).toStdString(); }
@@ -401,6 +407,7 @@ QString MainWindow::startCapture(int mode, const QJsonObject& options, const QJs
     work->settings = std::move(snapshot);
     work->mode = mode;
     work->reservedBytes = reservedBytes;
+    work->triggerClock = triggerClock;
     captureReservedBytes_ += reservedBytes;
     ++captureOutstanding_;
     busy_=true;if(livePreview_)livePreview_->setActive(false);restoreLiveWindows_.clear();for(auto* window:liveOutputs_)if(window->isVisible()){restoreLiveWindows_.push_back(window);window->hide();}
@@ -419,6 +426,7 @@ QString MainWindow::startCapture(int mode, const QJsonObject& options, const QJs
             batch.request = request;
             batch.outputs.push_back({"capture", "", "FAILED", {"CAPTURE", error.what()}});
         }
+        work->triggerToFramesMs = double(work->triggerClock.nsecsElapsed()) / 1000000.0;
         QMetaObject::invokeMethod(this, [this, work] { frameLocked(work); }, Qt::QueuedConnection);
     }));
     return currentRequestId_;
@@ -458,6 +466,7 @@ void MainWindow::startNextOutput()
     auto work = std::move(captured_.front());
     captured_.pop_front();
     outputPool_.start(QRunnable::create([this, work] {
+        const auto outputQueueMs = double(work->triggerClock.nsecsElapsed()) / 1000000.0 - work->triggerToFramesMs;
         const auto request = work->acquired.desktop.batch.request;
         try {
             work->outcome = captureOperations_.output(std::move(work->acquired), work->settings, work->mode != 1);
@@ -466,6 +475,8 @@ void MainWindow::startNextOutput()
             work->outcome.batch.request = request;
             work->outcome.batch.outputs.push_back({"output", "", "FAILED", {"OUTPUT", error.what()}});
         }
+        work->outcome.triggerToFramesMs = work->triggerToFramesMs;
+        work->outcome.outputQueueMs = outputQueueMs;
         QMetaObject::invokeMethod(this, [this, work] { finishClipboard(work); }, Qt::QueuedConnection);
     }));
 }
@@ -551,7 +562,7 @@ QString MainWindow::reportTarget(const QString& batchDirectory,const QString& is
 void MainWindow::refreshReportStatus()
 {
     if (!reportQueue_ || !reportStatus_) return; int committed = 0, pending = 0, uncertain = 0, failed = 0;
-    for (const auto& job : reportQueue_->jobs()) { const auto state = job["state"].toString(); if (state == "COMMITTED") ++committed; else if (state == "UNCERTAIN") ++uncertain; else if (state == "FAILED") ++failed; else ++pending; }
+    for (const auto& job : reportQueue_->jobs()) { const auto state = job["state"].toString(); if (state == "COMMITTED") ++committed; else if (state == "UNCERTAIN") ++uncertain; else if (state == "FAILED") ++failed; else if (state != "CANCELLED") ++pending; }
     reportStatus_->setText(aitsnap::uiText("Word：已提交 %1 · 排队/执行 %2 · 待核对 %3 · 失败 %4").arg(committed).arg(pending).arg(uncertain).arg(failed) + (reportQueue_->diagnostic().isEmpty() ? "" : "\n" + reportQueue_->diagnostic()));
     QString targetError;const auto today=reportTarget({},{},&targetError);
     const bool automatic=reportTargetMode_->currentData()=="automatic";
@@ -595,6 +606,7 @@ void MainWindow::showContextStore()
 }
 static QString reportFailureReason(const QJsonObject& job)
 {
+    if (removedReportJob(job)) return {};
     auto code = job["errorCode"].toString();
     if (code.isEmpty()) return {};
     if (code.startsWith("RETRY_LIMIT_")) code.remove(0, 12);
@@ -663,32 +675,44 @@ void MainWindow::showReportQueue()
     QDialog dialog(this); dialog.setWindowTitle(aitsnap::uiText("Word 报告任务")); dialog.resize(980, 500); auto* layout = new QVBoxLayout(&dialog);
     auto* note = new QLabel(aitsnap::uiText("截图与 Word 独立。失败或待核对会暂停同一报告的后续任务。排除原因后，仅修改前失败的任务可重试；UNCERTAIN 必须核对标记，不会盲目重插。未发布 pending.docx 保留供核对。")); note->setWordWrap(true); layout->addWidget(note);
     auto* table = new QTableWidget(0, 5); table->setObjectName("reportJobs"); table->setHorizontalHeaderLabels({aitsnap::uiText("任务"), aitsnap::uiText("报告"), aitsnap::uiText("状态"), aitsnap::uiText("尝试"), aitsnap::uiText("错误 / 原因")}); table->setSelectionBehavior(QAbstractItemView::SelectRows); table->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    table->setSelectionMode(QAbstractItemView::ExtendedSelection);
     table->setTextElideMode(Qt::ElideMiddle); table->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
     table->setColumnWidth(0, 120); table->setColumnWidth(1, 270); table->setColumnWidth(2, 110); table->setColumnWidth(3, 50); table->horizontalHeader()->setStretchLastSection(true); layout->addWidget(table);
     const auto selectedJob = [table] {
         const auto* item = table->item(table->currentRow(), 0);
         return item ? item->data(Qt::UserRole).toJsonObject() : QJsonObject{};
     };
-    auto refresh = [this, table, selectedJob] {
+    const auto selectedIds = [table] {
+        QStringList ids;
+        for (const auto& index : table->selectionModel()->selectedRows())
+            if (const auto* item = table->item(index.row(), 0)) ids.append(item->text());
+        return ids;
+    };
+    auto* history = new QCheckBox(uiText("显示已移除的记录"));
+    history->setObjectName("showRemovedReportJobs");
+    layout->addWidget(history);
+    auto refresh = [this, table, history, selectedJob, selectedIds] {
         const auto selected = selectedJob()["jobId"].toString();
+        const auto selectedRows = selectedIds();
         const QSignalBlocker block(table);
         table->setRowCount(0);
-        const QMap<QString, QString> labels{{"QUEUED", uiText("排队中")}, {"RUNNING", uiText("正在写入")}, {"COMMITTED", uiText("已保存提交")}, {"RETRYABLE", uiText("等待重试")}, {"FAILED", uiText("失败")}, {"UNCERTAIN", uiText("待核对")}};
+        const QMap<QString, QString> labels{{"QUEUED", uiText("排队中")}, {"RUNNING", uiText("正在写入")}, {"COMMITTED", uiText("已保存提交")}, {"RETRYABLE", uiText("等待重试")}, {"FAILED", uiText("失败")}, {"UNCERTAIN", uiText("待核对")}, {"CANCELLED", uiText("已取消")}};
         for (const auto& job : reportQueue_->jobs()) {
+            if (!history->isChecked() && removedReportJob(job)) continue;
             const int row = table->rowCount(); table->insertRow(row);
             const auto state = job["state"].toString();
+            const auto label = state == "COMMITTED" && removedReportJob(job) ? uiText("已归档") : labels.value(state, state);
             const QStringList values{job["jobId"].toString(), job["target"].toObject()["documentPath"].toString(),
-                                     labels.value(state, state), QString::number(job["attemptCount"].toInt()), reportFailureReason(job)};
+                                     label, QString::number(job["attemptCount"].toInt()), reportFailureReason(job)};
             for (int col = 0; col < values.size(); ++col) {
                 auto* cell = new QTableWidgetItem(values[col]);
                 cell->setToolTip(values[col]);
                 table->setItem(row, col, cell);
             }
             table->item(row, 0)->setData(Qt::UserRole, QVariant::fromValue(job));
-            if (values[0] == selected) {
-                table->setCurrentCell(row, 0);
-                table->selectRow(row);
-            }
+            if (values[0] == selected) table->setCurrentCell(row, 0, QItemSelectionModel::NoUpdate);
+            if (selectedRows.contains(values[0]))
+                table->selectionModel()->select(table->model()->index(row, 0), QItemSelectionModel::Select | QItemSelectionModel::Rows);
         }
     };
     auto* details = new QLabel;
@@ -707,17 +731,28 @@ void MainWindow::showReportQueue()
     auto* copy = new QPushButton(uiText("复制诊断详情"));
     copy->setObjectName("copyReportDiagnostics");
     actions->addWidget(copy);
-    const auto updateSelection = [this, details, inspect, retry, copy, selectedJob] {
+    auto* remove = new QPushButton(uiText("移除所选任务"));
+    remove->setObjectName("removeReportJobs");
+    actions->addWidget(remove);
+    auto* clearQueue = new QPushButton(uiText("清空队列"));
+    clearQueue->setObjectName("clearReportQueue");
+    actions->addWidget(clearQueue);
+    const auto updateSelection = [this, details, inspect, retry, copy, remove, clearQueue, table, selectedJob, selectedIds] {
         const auto job = selectedJob();
+        const auto ids = selectedIds();
         const auto reason = reportFailureReason(job), next = reportNextStep(job);
         details->setText(QStringList{reason, next}.join(' ').trimmed());
         details->setVisible(!reason.isEmpty() || !next.isEmpty());
-        inspect->setEnabled(reportQueue_->canInspect(job));
-        retry->setEnabled(reportQueue_->canRetry(job));
-        copy->setEnabled(!job.isEmpty());
+        const bool single = ids.size() == 1 && ids.contains(job["jobId"].toString());
+        inspect->setEnabled(single && reportQueue_->canInspect(job));
+        retry->setEnabled(single && reportQueue_->canRetry(job));
+        copy->setEnabled(single);
+        remove->setEnabled(reportQueue_->canManage() && !ids.isEmpty());
+        clearQueue->setEnabled(reportQueue_->canManage() && table->rowCount() > 0);
     };
     const auto update = [refresh, updateSelection] { refresh(); updateSelection(); };
     connect(table, &QTableWidget::itemSelectionChanged, &dialog, updateSelection);
+    connect(history, &QCheckBox::toggled, &dialog, update);
     connect(copy, &QPushButton::clicked, &dialog, [selectedJob] { QApplication::clipboard()->setText(reportDiagnostics(selectedJob())); });
     connect(inspect, &QPushButton::clicked, &dialog, [this, note, selectedJob, update] {
         QString error;
@@ -730,6 +765,44 @@ void MainWindow::showReportQueue()
             ? uiText("原任务已重新排队，保留顺序与重试历史。") : error);
         update();
     });
+    const auto manage = [this, &dialog, note, update, selectedIds](bool all) {
+        const auto plan = reportQueue_->planRemoval(selectedIds(), all);
+        if (plan.cancel.isEmpty() && plan.archive.isEmpty()) {
+            note->setText(uiText("没有可移除的任务。运行中、待核对或可能已写入的任务会保留。"));
+            return;
+        }
+        QDialog confirm(&dialog);
+        confirm.setWindowTitle(all ? uiText("清空队列") : uiText("移除所选任务"));
+        confirm.setObjectName("confirmReportRemoval");
+        auto* confirmationLayout = new QVBoxLayout(&confirm);
+        auto* summary = new QLabel(uiText("将取消 %1 项、归档 %2 项，保留 %3 项受保护任务。已写报告和截图原件会保留。")
+                                   .arg(plan.cancel.size()).arg(plan.archive.size()).arg(plan.protectedJobs.size()));
+        summary->setWordWrap(true);
+        confirmationLayout->addWidget(summary);
+        if (!plan.dependent.isEmpty()) {
+            confirmationLayout->addWidget(new QLabel(uiText("其中 %1 项追加依赖将随创建任务一并取消。").arg(plan.dependent.size())));
+            auto* dependencies = new QPlainTextEdit(plan.dependent.join('\n'));
+            dependencies->setReadOnly(true);
+            confirmationLayout->addWidget(dependencies);
+        }
+        auto* buttons = new QDialogButtonBox(QDialogButtonBox::Yes | QDialogButtonBox::No);
+        buttons->button(QDialogButtonBox::No)->setDefault(true);
+        connect(buttons, &QDialogButtonBox::accepted, &confirm, &QDialog::accept);
+        connect(buttons, &QDialogButtonBox::rejected, &confirm, &QDialog::reject);
+        confirmationLayout->addWidget(buttons);
+        confirm.resize(440, confirm.sizeHint().height());
+        if (confirm.exec() != QDialog::Accepted) return;
+        const auto result = reportQueue_->applyRemoval(plan);
+        if (result.error == "PLAN_CHANGED") note->setText(uiText("队列状态已变化，请重新核对后再移除。"));
+        else {
+            auto message = uiText("已取消 %1 项、归档 %2 项。").arg(result.cancelled).arg(result.archived);
+            if (!result.error.isEmpty()) message += "\n" + uiText("操作未全部写入。请检查队列目录后重试。") + "\n" + result.error;
+            note->setText(message);
+        }
+        update();
+    };
+    connect(remove, &QPushButton::clicked, &dialog, [manage] { manage(false); });
+    connect(clearQueue, &QPushButton::clicked, &dialog, [manage] { manage(true); });
     QTimer timer; connect(&timer, &QTimer::timeout, &dialog, update); timer.start(1000);
     auto* close = new QDialogButtonBox(QDialogButtonBox::Close);
     connect(close, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
