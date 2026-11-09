@@ -26,6 +26,7 @@
 #include <QTemporaryDir>
 #include <QTimer>
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <iostream>
 #include <stdexcept>
@@ -37,10 +38,79 @@ static LRESULT CALLBACK paint(HWND hwnd, UINT msg, WPARAM w, LPARAM l)
         PAINTSTRUCT ps{}; HDC dc = BeginPaint(hwnd, &ps);
         RECT a{0, 0, 100, 200}, b{100, 0, 200, 200};
         auto red = CreateSolidBrush(RGB(255, 0, 0)), green = CreateSolidBrush(RGB(0, 255, 0));
-        FillRect(dc, &a, red); FillRect(dc, &b, green); DeleteObject(red); DeleteObject(green); EndPaint(hwnd, &ps); return 0;
+        const auto solid = GetWindowLongPtrW(hwnd, GWLP_USERDATA);
+        if (solid) {
+            RECT client{}; GetClientRect(hwnd, &client);
+            FillRect(dc, &client, solid == 1 ? red : green);
+        } else {
+            FillRect(dc, &a, red); FillRect(dc, &b, green);
+        }
+        DeleteObject(red); DeleteObject(green); EndPaint(hwnd, &ps); return 0;
     }
     return DefWindowProcW(hwnd, msg, w, l);
 }
+
+static void nativeSeam(const std::vector<core::Display>& displays, std::vector<HWND>& windows, Settings settings)
+{
+    core::Rect first, second;
+    bool horizontal = false;
+    for (const auto& a : displays) {
+        for (const auto& b : displays) {
+            const auto left = std::max(a.rect.x, b.rect.x);
+            const auto right = std::min(a.rect.x + a.rect.width, b.rect.x + b.rect.width);
+            const auto top = std::max(a.rect.y, b.rect.y);
+            const auto bottom = std::min(a.rect.y + a.rect.height, b.rect.y + b.rect.height);
+            if (a.rect.x + a.rect.width == b.rect.x && bottom - top >= 16) {
+                const auto y = (top + bottom) / 2 - 8;
+                first = {b.rect.x - 8, y, 8, 16}; second = {b.rect.x, y, 8, 16};
+                horizontal = true;
+                break;
+            }
+            if (a.rect.y + a.rect.height == b.rect.y && right - left >= 16) {
+                const auto x = (left + right) / 2 - 8;
+                first = {x, b.rect.y - 8, 16, 8}; second = {x, b.rect.y, 16, 8};
+                break;
+            }
+        }
+        if (first.valid()) break;
+    }
+    if (!first.valid()) { std::cout << "NATIVE_CROSS_HOLD no adjacent physical outputs\n"; return; }
+    int color = 1;
+    for (const auto& pattern : {first, second}) {
+        const auto window = CreateWindowExW(WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
+            L"AITSnapDesktopTest", L"Synthetic seam", WS_POPUP,
+            pattern.x, pattern.y, pattern.width, pattern.height, nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
+        check(window != nullptr, "create native seam color tile");
+        windows.push_back(window);
+        SetWindowLongPtrW(window, GWLP_USERDATA, color++);
+        ShowWindow(window, SW_SHOWNOACTIVATE); UpdateWindow(window);
+    }
+    DwmFlush(); Sleep(150);
+    auto profile = settings.profiles.front();
+    profile.regions = {{"native-seam", "Native seam", {first.x, first.y, 16, 16}, true, 1}};
+    core::CaptureRequest request;
+    request.requestId = "native-seam";
+    request.issuedAtUtc = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs).toStdString();
+    request.profile = profile;
+    settings.outputDirectory = QDir(settings.outputDirectory).filePath("cross");
+    WinCaptureBackend backend;
+    auto result = captureToFiles(backend, settings, request, true);
+    check(result.batch.captures.size() == 1 && !result.batch.captures[0].error &&
+          result.batch.captures[0].displayIds.size() == 2, "native region spans two displays");
+    QString error;
+    check(writeBatchManifest(result, error), "native seam manifest");
+    const auto& output = result.batch.outputs.front();
+    check(output.status == "SAVED" && !output.error, "native seam file saved");
+    const QImage image(QString::fromStdString(output.path));
+    check(image.size() == QSize(16, 16), "native seam dimensions preserved");
+    for (int y = 0; y < 16; ++y)
+        for (int x = 0; x < 16; ++x)
+            check(image.pixelColor(x, y) == QColor((horizontal ? x : y) < 8 ? Qt::red : Qt::green),
+                  "every native seam pixel matches its display color");
+    std::cout << "NATIVE_CROSS_PASS 256 exact pixels across two displays axis=" << (horizontal ? "x" : "y")
+              << " manifest=" << result.directory.toStdString() << "/batch.json\n";
+}
+
 int main(int argc, char** argv)
 {
     compat::configureHighDpi(); QApplication app(argc, argv); app.setApplicationName("AITSnapTests"); app.setQuitOnLastWindowClosed(false);
@@ -123,7 +193,17 @@ int main(int argc, char** argv)
             }
             const bool hotkeyConflict=app.arguments().contains("--hotkey-conflict");
             if(hotkeyConflict)check(RegisterHotKey(nullptr,0x4800,MOD_CONTROL|MOD_ALT|MOD_SHIFT,VK_F20),"reserve saved shortcut before native main window");
-            MainWindow host(nullptr, path,"-");int extraCaptures=0;
+            HWND hostHwnd{};
+            std::atomic_bool mainHiddenAtAcquisition{};
+            MainWindow::CaptureOperations nativeOperations;
+            nativeOperations.acquire = [&](const auto& snapshot, const auto& request, bool save, bool copy) {
+                mainHiddenAtAcquisition = !IsWindowVisible(hostHwnd);
+                WinCaptureBackend captureBackend;
+                return acquireCapture(captureBackend, snapshot, request, save, copy);
+            };
+            MainWindow host(nullptr, path, "-", {}, false, {}, std::move(nativeOperations));
+            hostHwnd = reinterpret_cast<HWND>(host.winId());
+            int extraCaptures=0;
             const bool compatibleMain=app.arguments().contains("--compatible-main");
             if(compatibleMain){
                 const auto area=profile.regions.front().rect;host.setAttribute(Qt::WA_ShowWithoutActivating);host.setWindowFlag(Qt::WindowStaysOnTopHint);host.setGeometry(area.x-40,area.y-40,600,400);host.show();
@@ -156,12 +236,11 @@ int main(int argc, char** argv)
             std::shared_ptr<CaptureOutcome> outcome;
             host.captureFinished = [&](auto result) { outcome = result; wait.quit(); };
             const auto foreground = GetForegroundWindow();
-            bool mainHiddenBeforeCapture=false;
-            QTimer::singleShot(0, &host, [&] { if(hotkeyConflict)host.findChild<QPushButton*>("captureBoth")->click();else PostThreadMessageW(GetCurrentThreadId(), WM_HOTKEY, 0x4152, 0);mainHiddenBeforeCapture=!host.isVisible(); });
+            QTimer::singleShot(0, &host, [&] { if(hotkeyConflict)host.findChild<QPushButton*>("captureBoth")->click();else PostThreadMessageW(GetCurrentThreadId(), WM_HOTKEY, 0x4152, 0); });
             QTimer::singleShot(10000, &wait, &QEventLoop::quit); wait.exec();
             check(bool(outcome), "capture completion timeout");
             check(GetForegroundWindow() == foreground && (compatibleMain?host.isVisible():!host.isVisible()), "capture restores prior main visibility without taking foreground focus");
-            if(compatibleMain)check(mainHiddenBeforeCapture,"visible main hides before acquisition in compatibility mode");
+            if(compatibleMain)check(mainHiddenAtAcquisition,"visible main hides before acquisition in compatibility mode");
             check(outcome->batch.captures.size() == 5, "five region batch");
             int saved = 0, copied = 0;
             for (const auto& capture : outcome->batch.captures) {
@@ -234,6 +313,7 @@ int main(int argc, char** argv)
                 std::cout << "REGION_EDITOR_NATIVE_PASS windows=" << overlays.size() << " capture_guard=PASS cancel_roundtrip=PASS editing_switch_rejected=PASS stable_profile_accept=PASS post_editor_switch=PASS\n";
             }
             if(hotkeyConflict){UnregisterHotKey(nullptr,0x4800);std::cout<<"HOTKEY_CONFLICT_NATIVE_PASS occupied saved shortcut did not block requested mouse workflows\n";}
+            if (app.arguments().contains("--native-cross")) nativeSeam(profile.calibratedDisplays, windows, settings);
             if (app.arguments().contains("--benchmark")) {
                 std::vector<double> elapsed, skews;
                 core::CaptureRequest bench = outcome->batch.request;
