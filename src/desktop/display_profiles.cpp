@@ -4,6 +4,8 @@
 #include "adapters/settings_commands.h"
 #include "adapters/live_preview.h"
 #include "desktop/appearance.h"
+#include "desktop/region_editor.h"
+#include "core/region_edit.h"
 #include <QApplication>
 #include <QCheckBox>
 #include <QFileInfo>
@@ -101,8 +103,16 @@ void MainWindow::bindCurrentDisplayProfile(){
     if(!displayProfiles_ || !displayProfiles_->ready()){setStatus(uiText("布局记忆不可用，请先核对记忆文件。"),true);return;}
     std::vector<core::Display> current;try{current=displayInventory_();}catch(const std::exception& e){setStatus(QString::fromUtf8(e.what()),true);return;}
     if(current.empty()){setStatus(uiText("当前没有活动显示器，未绑定方案。"),true);return;}
+    auto draft = settings_;
+    QString error;
+    if (!collectSettings(draft, error)) { setStatus(error, true); return; }
+    for (const auto& region : draft.profiles[std::size_t(draft.activeProfile)].regions) {
+        if (!region.enabled || core::coveredByDisplays(region.rect, current)) continue;
+        setStatus(regionCoverageError(region), true);
+        return;
+    }
     if(!applySettings())return;auto next=settings_;auto& profile=next.profiles[std::size_t(next.activeProfile)];profile.calibratedDisplays=current;++profile.revision;
-    QString error;if(!saveSettings(configurationPath_,next,error)){setStatus(error,true);return;}
+    if(!saveSettings(configurationPath_,next,error)){setStatus(error,true);return;}
     settings_=next;displayRestorePending_=false;
     if(!displayProfiles_->remember(profile,error)){displayMemoryWarning_=error;loadProfile();setStatus(error,true);return;}
     displayMemoryWarning_.clear();loadProfile();setStatus(uiText("已绑定当前显示器组合与方案，请核对物理区域后截图。"));

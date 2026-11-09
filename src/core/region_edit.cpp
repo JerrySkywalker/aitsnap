@@ -7,6 +7,41 @@ bool contains(Rect r, Point p)
 {
     return r.valid() && p.x >= r.x && p.y >= r.y && std::int64_t(p.x) < std::int64_t(r.x) + r.width && std::int64_t(p.y) < std::int64_t(r.y) + r.height;
 }
+bool coveredByDisplays(Rect region, const std::vector<Display>& displays)
+{
+    if (!region.valid()) return false;
+    const auto right = std::int64_t(region.x) + region.width;
+    const auto bottom = std::int64_t(region.y) + region.height;
+    std::vector<Rect> intersections;
+    std::vector<std::int64_t> rowEdges{region.y, bottom};
+    for (const auto& display : displays) {
+        const auto overlap = intersect(region, display.rect);
+        if (!overlap) continue;
+        if (*overlap == region) return true;
+        intersections.push_back(*overlap);
+        rowEdges.push_back(overlap->y);
+        rowEdges.push_back(std::int64_t(overlap->y) + overlap->height);
+    }
+    std::sort(rowEdges.begin(), rowEdges.end());
+    rowEdges.erase(std::unique(rowEdges.begin(), rowEdges.end()), rowEdges.end());
+    std::vector<std::pair<std::int64_t, std::int64_t>> intervals;
+    for (auto edge = rowEdges.begin(); edge + 1 != rowEdges.end(); ++edge) {
+        // Display coverage is constant between consecutive horizontal edges.
+        intervals.clear();
+        for (const auto& overlap : intersections)
+            if (overlap.y <= *edge && *edge < std::int64_t(overlap.y) + overlap.height)
+                intervals.emplace_back(overlap.x, std::int64_t(overlap.x) + overlap.width);
+        std::sort(intervals.begin(), intervals.end());
+        std::int64_t end = region.x;
+        for (const auto& [left, next] : intervals) {
+            if (left > end) break;
+            end = std::max(end, next);
+        }
+        if (end < right) return false;
+    }
+    return true;
+}
+
 Rect draggedRect(Rect r, Point start, Point end, RegionDrag mode)
 {
     auto clamp = [](std::int64_t n) { return std::clamp(n, std::int64_t(std::numeric_limits<int>::min()), std::int64_t(std::numeric_limits<int>::max())); };

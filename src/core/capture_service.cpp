@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "capture_service.h"
+#include "region_edit.h"
 #include <algorithm>
 #include <cstring>
 #include <exception>
@@ -15,13 +16,18 @@ AcquiredDesktop CaptureService::acquireFrames(const CaptureRequest& request)
         batch.outputs.push_back({"capture", "", "FAILED", profileError});
         return acquisition;
     }
-    const auto monitors = backend_.displays();
+    acquisition.displays = backend_.displays();
+    const auto& monitors = acquisition.displays;
     acquisition.topologyChanged = !request.profile.calibratedDisplays.empty() &&
         !sameTopology(monitors, request.profile.calibratedDisplays);
     if (!acquisition.topologyChanged) {
+        for (const auto& region : request.profile.regions)
+            if (region.enabled && !coveredByDisplays(region.rect, monitors)) acquisition.uncoveredRegions.insert(region.id);
         for (const auto& monitor : monitors) {
             if (std::none_of(request.profile.regions.begin(), request.profile.regions.end(),
-                [&](const auto& r) { return r.enabled && intersect(r.rect, monitor.rect).has_value(); })) continue;
+                [&](const auto& r) {
+                    return r.enabled && !acquisition.uncoveredRegions.count(r.id) && intersect(r.rect, monitor.rect).has_value();
+                })) continue;
             try { batch.displayFrames.push_back(backend_.acquire(monitor)); }
             catch (const std::exception& e) { batch.displayFrames.push_back({monitor, {}, "", 0, 0, {"ACQUIRE", e.what()}}); }
         }
@@ -39,6 +45,13 @@ CaptureBatch CaptureService::cropFrames(AcquiredDesktop acquisition)
         if (acquisition.topologyChanged) {
             source.error = {"TOPOLOGY_CHANGED", "Display arrangement changed; recalibrate the profile"};
             batch.captures.push_back(std::move(source)); continue;
+        }
+        if (acquisition.uncoveredRegions.count(region.id)) {
+            source.error = {"UNCOVERED_REGION", "Region extends beyond active display pixels"};
+            for (const auto& display : acquisition.displays)
+                if (intersect(region.rect, display.rect)) source.displayIds.push_back(display.id);
+            batch.captures.push_back(std::move(source));
+            continue;
         }
         const auto size = std::size_t(region.rect.width) * std::size_t(region.rect.height) * 4;
         auto pixels = std::make_shared<std::vector<std::uint8_t>>(size, 0);

@@ -13,6 +13,7 @@
 #include <QLineEdit>
 #include <QPushButton>
 #include <QTemporaryDir>
+#include <QTableWidget>
 #include <QThread>
 #include <QTimer>
 #include <iostream>
@@ -64,6 +65,17 @@ int main(int argc,char** argv){QApplication app(argc,argv);try{
         window.findChild<QPushButton*>("forgetDisplayProfile")->click();settle();DisplayProfiles removed(temp.filePath("ui/display-layouts-v1.json"));check(removed.boundProfile(two).isEmpty(),"UI forget persisted");
         window.findChild<QPushButton*>("bindDisplayProfile")->click();settle();DisplayProfiles rebound(temp.filePath("ui/display-layouts-v1.json"));check(rebound.boundProfile(two)=="two","UI explicit binding persisted");
         window.findChild<QCheckBox*>("displayAutoRestore")->setChecked(false);inventory=four;QMetaObject::invokeMethod(timer,"timeout");settle();check(profiles->currentIndex()==1,"disabled auto restore keeps selected profile");
+        auto* regions = window.findChild<QTableWidget*>("regions");
+        auto* apply = window.findChild<QPushButton*>("applySettings");
+        check(regions && apply, "coverage test controls");
+        regions->item(0, 2)->setText("1590");
+        apply->click();
+        check(loadSettings(config, saved, error) && saved.profiles[1].regions[0].rect.x == 10,
+              "out-of-desktop coordinates rejected at settings save");
+        regions->item(0, 2)->setText("790");
+        apply->click();
+        check(loadSettings(config, saved, error) && saved.profiles[1].regions[0].rect.x == 790,
+              "coordinates spanning a fully covered seam are saved");
     }
     std::cout<<"PASS display layout fingerprints, snapshots, preservation, current-only canvas and UI deferred restoration\n";return 0;
 }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}

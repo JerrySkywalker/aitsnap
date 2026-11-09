@@ -27,13 +27,42 @@
 #include <stdexcept>
 
 namespace aitsnap {
+QString regionCoverageError(const core::Region& region)
+{
+    return uiText("%1 超出活动显示器范围或跨过无像素间隙。").arg(regionLabel(region));
+}
+
 struct EditState {
     core::CaptureProfile profile;
     int selected{-1}; bool dragging{}, closing{};
     core::Point start; core::Rect original; core::RegionDrag mode{};
     std::vector<QWidget*> overlays;
+    std::vector<QPushButton*> acceptButtons;
+    std::vector<QLabel*> messages;
     std::function<void(bool)> finish;
-    void refresh() { for (auto* overlay : overlays) overlay->update(); }
+    QString validationError() const
+    {
+        const auto error = core::validateProfile(profile);
+        if (error) return error.code == "NO_REGIONS" ? uiText("请先添加并启用源区域。") : QString::fromStdString(error.message);
+        for (const auto& region : profile.regions)
+            if (region.enabled && !core::coveredByDisplays(region.rect, profile.calibratedDisplays))
+                return regionCoverageError(region);
+        return {};
+    }
+    void showError(const QString& error)
+    {
+        for (auto* button : acceptButtons) button->setEnabled(error.isEmpty());
+        for (auto* message : messages) {
+            message->setText(error);
+            message->setVisible(!error.isEmpty());
+            message->parentWidget()->adjustSize();
+        }
+    }
+    void refresh()
+    {
+        showError(validationError());
+        for (auto* overlay : overlays) overlay->update();
+    }
 };
 static core::Point physicalCursor() { POINT p{}; GetCursorPos(&p); return {p.x, p.y}; }
 class RegionOverlay final : public QWidget {
@@ -46,8 +75,15 @@ public:
         setWindowTitle(aitsnap::uiText("AITSnap · 屏幕区域编辑 [%1,%2]").arg(display_.rect.x).arg(display_.rect.y));
         auto* bar = new QWidget(this); toolbar_ = bar; bar->setStyleSheet("background:#172332; color:white; border-radius:5px;");
         auto* layout = new QVBoxLayout(bar); auto* hint = new QLabel(aitsnap::uiText("空白处框选 · 拖动区域/角点 · Tab 切换 · 方向键微调")); hint->setWordWrap(true); layout->addWidget(hint);
+        auto* message = new QLabel;
+        message->setWordWrap(true);
+        message->setStyleSheet("color:#ff9292;");
+        message->hide();
+        layout->addWidget(message);
+        state_->messages.push_back(message);
         auto* actions = new QHBoxLayout; layout->addLayout(actions);
         auto* accept = new QPushButton(aitsnap::uiText("完成 Enter")); auto* cancel = new QPushButton(aitsnap::uiText("取消 Esc"));
+        state_->acceptButtons.push_back(accept);
         auto* rename = new QPushButton(uiText("重命名 F2")); rename->setObjectName("renameRegion");
         actions->addWidget(rename); actions->addWidget(accept); actions->addWidget(cancel); actions->addStretch(); bar->move(16, 16); bar->adjustSize();
         connect(rename, &QPushButton::clicked, this, [this] { renameSelected(); });
@@ -79,8 +115,10 @@ protected:
         for (int i = 0; i < int(state_->profile.regions.size()); ++i) {
             const auto& r = state_->profile.regions[std::size_t(i)];
             const QRectF area((double(r.rect.x) - display_.rect.x) * sx, (double(r.rect.y) - display_.rect.y) * sy, r.rect.width * sx, r.rect.height * sy);
+            if (!area.intersects(QRectF(rect()))) continue;
             const bool selected = i == state_->selected;
-            painter.setPen(QPen(selected ? QColor("#46D8FF") : QColor("#9BE8BA"), 2, r.enabled ? Qt::SolidLine : Qt::DashLine));
+            const bool uncovered = r.enabled && !core::coveredByDisplays(r.rect, state_->profile.calibratedDisplays);
+            painter.setPen(QPen(uncovered ? QColor("#ff6565") : selected ? QColor("#46D8FF") : QColor("#9BE8BA"), 2, r.enabled ? Qt::SolidLine : Qt::DashLine));
             painter.setBrush(QColor(40, 140, 200, selected ? 55 : 20)); painter.drawRect(area);
             const auto label = regionLabel(r) + QString(" · %1×%2").arg(r.rect.width).arg(r.rect.height);
             const double labelWidth = std::min(double(width()), double(std::max(240, painter.fontMetrics().horizontalAdvance(label) + 12)));
@@ -175,7 +213,17 @@ void openRegionEditor(QWidget* owner, const core::CaptureProfile& profile, std::
     QPointer<QWidget> ownerGuard(owner);
     state->finish = [weak, finished, ownerGuard](bool accepted) {
         auto current = weak.lock(); if (!current || current->closing) return;
-        if (accepted && core::validateProfile(current->profile)) return;
+        if (accepted) {
+            auto error = current->validationError();
+            if (error.isEmpty()) {
+                try {
+                    WinCaptureBackend currentBackend;
+                    if (!core::sameTopology(current->profile.calibratedDisplays, currentBackend.displays()))
+                        error = uiText("显示器布局已变化，请取消并重新打开区域编辑。");
+                } catch (const std::exception& failure) { error = QString::fromUtf8(failure.what()); }
+            }
+            if (!error.isEmpty()) { current->showError(error); return; }
+        }
         current->closing = true;
         if (QWidget::mouseGrabber()) QWidget::mouseGrabber()->releaseMouse();
         for (auto* overlay : current->overlays) { overlay->hide(); overlay->deleteLater(); }
@@ -188,7 +236,7 @@ void openRegionEditor(QWidget* owner, const core::CaptureProfile& profile, std::
         QObject::connect(owner, &QObject::destroyed, overlay, [overlay, state] { state->closing = true; overlay->hide(); overlay->deleteLater(); });
         overlay->showOnDisplay();
     }
-    if (!state->overlays.empty()) { state->overlays.front()->activateWindow(); state->overlays.front()->setFocus(); }
+    if (!state->overlays.empty()) { state->refresh(); state->overlays.front()->activateWindow(); state->overlays.front()->setFocus(); }
     else throw std::runtime_error("No interactive displays");
 }
 } // namespace aitsnap

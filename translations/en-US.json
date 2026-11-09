@@ -290,6 +290,8 @@
   "文件名预览": "Filename preview",
   "显示器 %1": "Display %1",
   "显示器布局": "Display layout",
+  "%1 超出活动显示器范围或跨过无像素间隙。": "%1 extends outside the active displays or across a gap without screen pixels.",
+  "显示器布局已变化，请取消并重新打开区域编辑。": "The display layout changed. Cancel and reopen the region editor.",
   "显示高级坐标编辑": "Show advanced coordinate editor",
   "暂无显示器布局": "No display layout available",
   "最近一次截图 · 尚未采集": "Latest capture · Not captured yet",

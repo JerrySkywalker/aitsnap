@@ -37,7 +37,13 @@ int main()
               *cropped.captures[0].image.bgra == *image.bgra, "deferred crop uses only the already acquired frames");
         check(service.capture(req).captures[0].error.code == "TOPOLOGY_CHANGED", "recalibration required");
         req.profile.calibratedDisplays.clear();
-        check(service.capture(req).captures[0].error.code == "UNCOVERED_REGION", "gap rejected");
+        const auto beforeGap = backend.acquired;
+        const auto withGap = service.capture(req);
+        check(withGap.captures[0].error.code == "UNCOVERED_REGION" && backend.acquired == beforeGap, "gap rejected before acquisition");
+        req.profile.regions[1].rect.x = 10;
+        const auto partial = service.capture(req);
+        check(partial.captures[0].error.code == "UNCOVERED_REGION" && partial.captures[1].image.valid() &&
+              backend.acquired == beforeGap + 1, "invalid source does not prevent a covered source from being acquired");
         req.profile.regions.push_back(req.profile.regions.front());
         check(bool(validateProfile(req.profile)), "duplicate region rejected");
         auto draft = req.profile; draft.regions.clear();
@@ -62,6 +68,19 @@ int main()
         check(draggedRect({-100, -100, 200, 200}, {-50, -50}, {50, 50}, RegionDrag::Move) == Rect{0, 0, 200, 200}, "physical drag delta");
         check(draggedRect({-10, -10, 20, 20}, {10, 10}, {30, 50}, RegionDrag::BottomRight) == Rect{-10, -10, 40, 60}, "resize handle physical dimensions");
         check(draggedRect({0, 0, 20, 20}, {0, 0}, {30, 40}, RegionDrag::TopLeft) == Rect{20, 20, 10, 20}, "resize through opposite corner");
+        const std::vector<Display> aligned{{"left", {-100, 0, 100, 80}}, {"right", {0, 0, 100, 80}}};
+        check(coveredByDisplays({-20, 0, 40, 10}, aligned), "adjacent displays cover the shared seam");
+        check(coveredByDisplays({-1, 0, 1, 80}, aligned), "half-open region ends exactly on the left display edge");
+        check(!coveredByDisplays({80, 20, 30, 10}, aligned), "outer edge of desktop is uncovered");
+        auto offset = aligned;
+        offset[1].rect.y = 15;
+        check(!coveredByDisplays({-20, 5, 40, 25}, offset), "corners in desktop bounds do not imply coverage");
+        check(coveredByDisplays({-20, 15, 40, 25}, offset), "offset displays cover an aligned subset");
+        auto gap = aligned;
+        ++gap[1].rect.x;
+        check(!coveredByDisplays({-20, 0, 40, 10}, gap), "one-pixel gap fails");
+        const std::vector<Display> rows{{"top", {0, -80, 100, 80}}, {"bottom", {0, 0, 100, 80}}};
+        check(coveredByDisplays({0, -20, 100, 40}, rows), "vertically adjacent displays cover the shared seam");
         std::cout << "CORE_PASS physical spanning pixels, topology/gap, snapshots, ids, versions, names, scenes, report transitions\n";
     } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
 }

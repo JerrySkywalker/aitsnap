@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 #include "domain.h"
+#include <set>
 namespace aitsnap::core {
 struct ICaptureBackend {
     virtual ~ICaptureBackend() = default;
@@ -10,6 +11,8 @@ struct ICaptureBackend {
 struct AcquiredDesktop {
     CaptureBatch batch;
     bool topologyChanged{};
+    std::vector<Display> displays;
+    std::set<std::string> uncoveredRegions;
 };
 // One logical batch. Calling host supplies queue/thread policy and frozen request.
 class CaptureService {

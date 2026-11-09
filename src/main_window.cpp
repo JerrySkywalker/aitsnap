@@ -19,6 +19,7 @@
 #include "adapters/display_profiles.h"
 #include "adapters/batch_paths.h"
 #include "core/scene_geometry.h"
+#include "core/region_edit.h"
 #include <QAction>
 #include <QApplication>
 #include <QCheckBox>
@@ -249,6 +250,23 @@ bool MainWindow::applySettings()
         if (!QFile::copy(configurationPath_, backup)) { setStatus(aitsnap::uiText("无法保留旧配置，配置未改写。"), true); return false; }
     }
     if(!collectSettings(c,e)){setStatus(e,true);return false;}
+    const auto& previousRegions = settings_.profiles[std::size_t(settings_.activeProfile)].regions;
+    std::vector<const core::Region*> changedRegions;
+    for (const auto& region : c.profiles[std::size_t(c.activeProfile)].regions) {
+        if (region.enabled && std::none_of(previousRegions.begin(), previousRegions.end(), [&region](const auto& previous) {
+                return previous.id == region.id && previous.enabled && previous.rect == region.rect;
+            })) changedRegions.push_back(&region);
+    }
+    if (!changedRegions.empty()) {
+        try {
+            const auto displays = displayInventory_();
+            for (const auto* region : changedRegions) {
+                if (core::coveredByDisplays(region->rect, displays)) continue;
+                setStatus(regionCoverageError(*region), true);
+                return false;
+            }
+        } catch (const std::exception& failure) { setStatus(QString::fromUtf8(failure.what()), true); return false; }
+    }
     const bool changedKeys=c.saveHotkey!=settings_.saveHotkey || c.copyHotkey!=settings_.copyHotkey || c.bothHotkey!=settings_.bothHotkey ||
         c.saveHotkeyAlternate!=settings_.saveHotkeyAlternate || c.copyHotkeyAlternate!=settings_.copyHotkeyAlternate || c.bothHotkeyAlternate!=settings_.bothHotkeyAlternate || c.hotkeysEnabled!=settings_.hotkeysEnabled;
     // New shortcut edits remain transactional. An unchanged saved shortcut can

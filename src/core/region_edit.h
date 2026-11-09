@@ -6,4 +6,5 @@ struct Point { int x{}, y{}; };
 enum class RegionDrag { Create, Move, TopLeft, TopRight, BottomLeft, BottomRight };
 Rect draggedRect(Rect original, Point start, Point current, RegionDrag mode);
 bool contains(Rect rect, Point point);
+bool coveredByDisplays(Rect region, const std::vector<Display>& displays);
 } // namespace aitsnap::core
