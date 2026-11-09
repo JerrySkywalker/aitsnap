@@ -36,6 +36,11 @@ int main(int argc, char** argv)
         check(QDir().mkpath(root), "native output root"); QString error;
         CaptureOutcome outcome; outcome.directory = root; outcome.batch.batchId = "native-synthetic-word";
         outcome.batch.request.issuedAtUtc = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs).toStdString(); outcome.batch.request.context.testId = "PUBLIC-SYNTHETIC";
+        outcome.batch.request.profile.regions.push_back({"r0", "Source r0", {0, 0, 1600, 400}, true, 1});
+        core::SceneTemplate scene;
+        scene.id = "row";
+        scene.name = "Scene row";
+        outcome.sceneSnapshots.push_back(std::move(scene));
         for (int i = 0; i < 2; ++i) {
             QImage image(i ? 120 : 1600, i ? 1200 : 400, QImage::Format_RGB32); image.fill(i ? Qt::green : Qt::blue);
             const auto path = root + QStringLiteral("/合成 synthetic source %1.png").arg(i); check(saveImageNew(image, path, "PNG", error), "native source PNG");
@@ -44,6 +49,8 @@ int main(int argc, char** argv)
             outcome.batch.outputs.push_back(output);
         }
         ReportOptions options; options.documentPath = root + QStringLiteral("/合成 synthetic report with spaces.docx");
+        options.text.captionEnabled = true;
+        options.text.captionTemplate = "{name}";
         const auto helper = QCoreApplication::applicationDirPath() + "/aitsnap-word-bridge.exe";
         QString retryId;
         {
