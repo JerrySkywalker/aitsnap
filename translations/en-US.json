@@ -290,6 +290,8 @@
   "文件名预览": "Filename preview",
   "显示器 %1": "Display %1",
   "显示器布局": "Display layout",
+  "框选第一个区域": "Select the first region",
+  "当前没有截图源。请先框选第一个区域。": "There are no capture sources. Select the first region to get started.",
   "无法启动 Word 或报告助手。检查 Word 安装和 AITSnap 安装完整性。": "Word or the report helper could not start. Check the Word and AITSnap installations.",
   "等待 Word 响应超时。检查 Word 是否有未关闭的对话框。": "Word did not respond in time. Check for an open Word dialog.",
   "写入进程中断，未收到完成确认。": "The writing process was interrupted before it confirmed completion.",

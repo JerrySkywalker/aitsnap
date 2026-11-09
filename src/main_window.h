@@ -104,6 +104,7 @@ private:
     QTabWidget* sourceViews_{};
     QString selectedBatchManifest_;
     QPushButton *appendLast_{}, *appendBatch_{};
+    QPushButton* firstRegion_{};
     void refreshWorkspace(); void refreshBatches(); void selectBatch(); void selectBatchImage();
     QAction* captureActions_[3]{};
     QAction* regionEditAction_{};

@@ -59,6 +59,11 @@ void MainWindow::buildUi()
     auto page = [this] { auto* p = new QWidget; pages_->addWidget(p); return new QVBoxLayout(p); };
     auto subtitle = [](QVBoxLayout* layout, const QString& text) { auto* label = new QLabel(text); label->setWordWrap(true); label->setProperty("muted", true); layout->addWidget(label); return label; };
     auto* workbench = page(); overviewSummary_ = subtitle(workbench, {}); overviewSummary_->setObjectName("workspaceSummary");
+    firstRegion_ = new QPushButton(uiText("框选第一个区域"));
+    firstRegion_->setObjectName("selectFirstRegion");
+    firstRegion_->setProperty("primary", true);
+    workbench->addWidget(firstRegion_, 0, Qt::AlignLeft);
+    connect(firstRegion_, &QPushButton::clicked, this, &MainWindow::editRegions);
     auto* workSplit = new QSplitter; workSplit->setObjectName("workbenchColumns");
     auto panel = [workSplit](const QString& name, const QString& title) {
         auto* frame = new QWidget; frame->setObjectName(name); frame->setProperty("card",true);

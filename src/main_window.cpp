@@ -91,13 +91,10 @@ MainWindow::MainWindow(QWidget* parent, QString path, QString pipeName, std::fun
     if(forceCompatibleDisplay)settings_.compatibleDisplay=true;
     setOwnCaptureExclusionEnabled(!settings_.compatibleDisplay);
     if (settings_.profiles.empty()) {
-        core::CaptureProfile p; p.id = id(); p.name = uiText("默认多屏").toStdString();
-        try { p.calibratedDisplays = displayInventory_(); } catch (const std::exception& e) { loadError = QString::fromUtf8(e.what()); }
-        for (int i = 0; i < 5; ++i) {
-            const auto b = p.calibratedDisplays.empty() ? core::Rect{0, 0, 1920, 1080} : p.calibratedDisplays[std::size_t(i) % p.calibratedDisplays.size()].rect;
-            p.regions.push_back({id(), uiText("区域 %1").arg(i + 1).toStdString(), {b.x + 60 + i * 20, b.y + 60 + i * 20, std::max(1, std::min(640, b.width / 2)), std::max(1, std::min(400, b.height / 2))}, true});
-        }
-        core::numberRegions(p); settings_.profiles.push_back(p);
+        core::CaptureProfile profile;
+        profile.id = id();
+        profile.name = uiText("默认多屏").toStdString();
+        settings_.profiles.push_back(std::move(profile));
     }
     if (QFile::exists(configurationPath_ + ".before-management.json")) loadError = "Previous management operation needs recovery: " + configurationPath_ + ".before-management.json";
     configurationBlocked_ = !loadError.isEmpty();
@@ -122,6 +119,8 @@ MainWindow::MainWindow(QWidget* parent, QString path, QString pipeName, std::fun
     hotkeys_.pause(true,e);
     if (!hotkeys_.configureBindings(hotkeyBindings(settings_), e) || !hotkeys_.pause(false,e)) setStatus(uiText("全局热键暂不可用；仍可编辑和使用鼠标截图。%1").arg(e), true);
     else setStatus(aitsnap::uiText("就绪 · %1 保存，%2 复制，%3 保存并复制").arg(settings_.saveHotkey, settings_.copyHotkey, settings_.bothHotkey));
+    if (!configurationBlocked_ && settings_.profiles[std::size_t(settings_.activeProfile)].regions.empty())
+        setStatus(uiText("当前没有截图源。请先框选第一个区域。"));
     if (!loadError.isEmpty()) setStatus(aitsnap::uiText("配置未载入，原文件保留：") + loadError + aitsnap::uiText("。核对后应用配置。"), true);
     stage("main-context-hotkeys-loaded");
     startHost(std::move(pipeName)); stage("main-constructor-return");

@@ -191,6 +191,51 @@ static void reportDiagnosticPresentation(const QString& root, Settings settings,
     installLanguage("en-US");
     std::cout << "WORD_DIAGNOSTIC_UI_PASS bilingual timeout, legacy code, marker/retry gates and copied diagnostics\n";
 }
+
+static void firstRunWithoutSampleSources(const QString& root, const Settings& previous)
+{
+    const auto path = root + "/settings-v1.json";
+    QString error;
+    MainWindow::CaptureOperations operations;
+    operations.acquire = [](const auto& snapshot, const auto& request, bool save, bool copy) {
+        Backend backend;
+        return acquireCapture(backend, snapshot, request, save, copy);
+    };
+    {
+        MainWindow window(nullptr, path, "-", {}, false, [] { return Backend{}.displays(); }, operations);
+        window.show();
+        auto* first = window.findChild<QPushButton*>("selectFirstRegion");
+        auto* capture = window.findChild<QPushButton*>("captureSave");
+        auto* regions = window.findChild<QTableWidget*>("regions");
+        check(first && first->isVisible() && capture && !capture->isEnabled() && regions && regions->rowCount() == 0,
+              "first launch starts with zero sources and exposes region selection");
+        window.findChild<QPushButton*>("addRegion")->click();
+        regions->item(0, 4)->setText("16");
+        regions->item(0, 5)->setText("16");
+        window.findChild<QPushButton*>("applySettings")->click();
+        check(regions->rowCount() == 1 && first->isHidden() && capture->isEnabled(), "first valid source enables capture");
+        std::shared_ptr<CaptureOutcome> outcome;
+        window.captureFinished = [&](auto result) { outcome = std::move(result); };
+        capture->click();
+        check(await([&] { return bool(outcome); }, 8000) && outcome->batch.captures.size() == 1 &&
+              !outcome->batch.captures.front().error && QFileInfo::exists(outcome->directory + "/batch.json"),
+              "new first source captures through the normal save entry");
+    }
+    const auto upgradePath = root + "/upgrade/settings-v1.json";
+    check(saveSettings(upgradePath, previous, error), "existing 0.8.3 schema fixture");
+    QFile original(upgradePath);
+    check(original.open(QIODevice::ReadOnly), "upgrade fixture readable");
+    const auto before = original.readAll();
+    original.close();
+    {
+        MainWindow upgraded(nullptr, upgradePath, "-", {}, false, [] { return Backend{}.displays(); });
+        check(upgraded.findChild<QTableWidget*>("regions")->rowCount() ==
+              int(previous.profiles[std::size_t(previous.activeProfile)].regions.size()), "existing sources survive startup");
+        check(upgraded.findChild<QPushButton*>("selectFirstRegion")->isHidden(), "populated profile omits first-source prompt");
+    }
+    check(original.open(QIODevice::ReadOnly) && original.readAll() == before, "startup preserves existing settings bytes");
+    std::cout << "FIRST_RUN_PASS zero sources, first source saves a batch, existing settings retained\n";
+}
 int main(int argc,char** argv){QApplication app(argc,argv);try{
     QTemporaryDir temp;check(temp.isValid(),"temporary root");QString error;Backend backend;auto settings=defaultSettings();settings.hotkeysEnabled={false,false,false};settings.imagePathMode="flat";settings.filenameTemplate="same name";
     core::CaptureProfile profile;profile.id="p";profile.name="Profile";profile.regions={{"r","Voltage",{0,0,16,16},true,1}};profile.calibratedDisplays=backend.displays();settings.profiles={profile};settings.scenes={core::presetScene(profile,"s","Scene",160,90,core::LayoutPreset::Grid)};settings.selectedSceneIds=QStringList{"s"};settings.outputMode="both";
@@ -221,5 +266,6 @@ int main(int argc,char** argv){QApplication app(argc,argv);try{
     }
     captureWhileSaving(temp.filePath("pipeline"), settings);
     reportDiagnosticPresentation(temp.filePath("word-diagnostics"), settings, batch);
+    firstRunWithoutSampleSources(temp.filePath("first-run"), settings);
     std::cout<<"PRACTICAL_PASS flat/batch formats collision preservation history queue routing migration OLED NASA offline-help; real Word NOT_RUN\n";return 0;
 }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}

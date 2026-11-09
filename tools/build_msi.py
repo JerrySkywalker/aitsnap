@@ -8,6 +8,7 @@ from pathlib import Path
 import subprocess
 import uuid
 from msi_ui import author_ui
+from package_preview import validate_production_paths
 
 UPGRADE = uuid.UUID('476109b6-03ef-4f9d-a55d-e796ae147379')
 msi = C.WinDLL('msi')
@@ -67,6 +68,8 @@ def main():
     manifest=json.loads((package/'package-manifest.json').read_text(encoding='utf-8'))
     if manifest.get('product','').startswith('TABLE-FIXTURE') and not a.table_fixture:
         p.error('Table-only payloads require --table-fixture and cannot be authored as installable packages')
+    if not a.table_fixture:
+        validate_production_paths(file['path'] for file in manifest['files'])
     package_upgrade = uuid.uuid5(UPGRADE,'non-installable-table-fixture') if a.table_fixture else UPGRADE
     for file in manifest['files']:
         if not (package/file['path']).resolve().is_relative_to(package): raise RuntimeError('Package path leaves its root')

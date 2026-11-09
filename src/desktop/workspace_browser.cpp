@@ -122,6 +122,7 @@ void MainWindow::refreshWorkspace()
     appearanceTopology_->setLayout(profile, displays, selected);
     const bool canCapture = !core::validateProfile(profile);
     updateCaptureActions(canCapture);
+    firstRegion_->setVisible(profile.regions.empty() && !configurationBlocked_);
     if (profile.regions.empty()) {
         sourcePreview_->setImage({}, uiText("请先添加源区域")); preview_->setImage({}, uiText("请先添加源区域"));
         sourceDetail_->setText(uiText("当前配置暂无源区域，可新建或屏幕框选。"));
