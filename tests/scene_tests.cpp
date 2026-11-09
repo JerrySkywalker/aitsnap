@@ -2,6 +2,7 @@
 #include "adapters/capture_files.h"
 #include "core/scene_geometry.h"
 #include "compat/qt_widgets_compat.h"
+#include "desktop/appearance.h"
 #include "desktop/scene_editor.h"
 #include <QApplication>
 #include <QAction>
@@ -12,6 +13,7 @@
 #include <QGraphicsScene>
 #include <QGraphicsItem>
 #include <QFileInfo>
+#include <QLineEdit>
 #include <QListWidget>
 #include <QPushButton>
 #include <QCheckBox>
@@ -25,6 +27,7 @@
 #include <QPainter>
 #include <QTemporaryDir>
 #include <QWheelEvent>
+#include <array>
 #include <cmath>
 #include <iostream>
 #include <stdexcept>
@@ -40,6 +43,103 @@ struct FakeCapture final : ICaptureBackend {
     }
 };
 static QByteArray hash(const QString& path) { QFile f(path); check(f.open(QIODevice::ReadOnly), "hash read"); return QCryptographicHash::hash(f.readAll(), QCryptographicHash::Sha256).toHex(); }
+
+static void distributionButtons(const SceneTemplate& scene, const CaptureProfile& profile)
+{
+    auto fixture = scene;
+    fixture.layers.push_back(fixture.layers[0]);
+    fixture.layers.back().id = "c";
+    fixture.layers.back().zIndex = 2;
+    const std::array<Destination, 3> positions{{{0, 0, 20, 30, 0}, {25, 40, 30, 20, 0}, {100, 120, 10, 25, 0}}};
+    for (std::size_t i = 0; i < positions.size(); ++i) {
+        fixture.layers[i].destination = positions[i];
+        fixture.layers[i].preserveAspect = false;
+    }
+    bool bothAxesPass = true;
+    for (const bool horizontal : {true, false}) {
+        const auto label = horizontal ? uiText("水平分布") : uiText("垂直分布");
+        const auto distributionButton = [&](const SceneEditor& editor) {
+            for (auto* candidate : editor.findChildren<QPushButton*>())
+                if (candidate->text() == label) return candidate;
+            throw std::runtime_error("distribution button");
+        };
+        auto expected = fixture;
+        if (horizontal) expected.layers[1].destination.x = 45;
+        else expected.layers[1].destination.y = 65;
+        {
+            SceneEditor editor(fixture, profile, {});
+            editor.findChild<QListWidget*>("sceneLayers")->selectAll();
+            distributionButton(editor)->click();
+            check(sceneJson(editor.sceneTemplate()) == sceneJson(expected), "three unlocked layers distribute");
+        }
+        auto anchored = fixture;
+        anchored.layers[0].locked = true;
+        anchored.layers[2].locked = true;
+        expected.layers[0].locked = true;
+        expected.layers[2].locked = true;
+        SceneEditor editor(anchored, profile, {});
+        auto* list = editor.findChild<QListWidget*>("sceneLayers");
+        auto* status = editor.findChild<QLabel*>("sceneEditorStatus");
+        auto* button = distributionButton(editor);
+        list->item(0)->setSelected(true);
+        list->item(1)->setSelected(true);
+        const auto previousMessage = status->text();
+        button->click();
+        const bool gaveGuidance = status->text() != previousMessage &&
+            sceneJson(editor.sceneTemplate()) == sceneJson(anchored);
+        list->selectAll();
+        button->click();
+        const bool moved = sceneJson(editor.sceneTemplate()) == sceneJson(expected);
+        if (moved) {
+            button->click();
+            editor.findChild<QPushButton*>("undoScene")->click();
+            check(sceneJson(editor.sceneTemplate()) == sceneJson(anchored), "one undo restores distribution");
+        }
+        std::cout << (horizontal ? "HORIZONTAL" : "VERTICAL") << " distribution: three-unlocked=1 two-object guidance="
+                  << gaveGuidance << " fixed-endpoint movement=" << moved << '\n';
+        bothAxesPass = bothAxesPass && gaveGuidance && moved;
+    }
+    check(bothAxesPass, "distribution must guide two-object selections and respect fixed endpoints");
+
+    auto segmented = fixture;
+    segmented.layers[2].locked = true;
+    segmented.layers.push_back(fixture.layers[0]);
+    segmented.layers.back().id = "d";
+    segmented.layers.back().destination.x = 160;
+    segmented.layers.push_back(fixture.layers[0]);
+    segmented.layers.back().id = "e";
+    segmented.layers.back().destination.x = 200;
+    distributeLayers(segmented, {0, 1, 2, 3, 4}, true);
+    check(segmented.layers[1].destination.x == 45 && segmented.layers[2].destination.x == 100 &&
+          segmented.layers[3].destination.x == 145, "an interior locked object splits the equal-gap intervals");
+}
+
+static void backgroundPresets(SceneTemplate scene, const CaptureProfile& profile, const QString& directory)
+{
+    scene.layers.clear();
+    SceneEditor editor(scene, profile, {});
+    auto* field = editor.findChild<QLineEdit*>("sceneBackground");
+    auto* canvas = editor.findChild<QGraphicsView*>("sceneCanvas")->scene();
+    const auto verify = [&](const char* colour, const QColor& pixel, const QString& name) {
+        check(field->text() == QString::fromLatin1(colour) && editor.sceneTemplate().background == colour &&
+              canvas->backgroundBrush().color() == pixel, "background field, saved model and canvas agree");
+        const auto path = QDir(directory).filePath(name + ".png");
+        QString error;
+        check(editor.exportDerived(path, error) && QImage(path).pixelColor(0, 0) == pixel, "exported PNG background pixel");
+    };
+    editor.findChild<QPushButton*>("sceneBackgroundBlack")->click();
+    verify("#000000", QColor(Qt::black), "black");
+    editor.findChild<QPushButton*>("sceneBackgroundWhite")->click();
+    verify("#FFFFFF", QColor(Qt::white), "white");
+    editor.findChild<QPushButton*>("sceneBackgroundTransparent")->click();
+    verify("#00000000", QColor(0, 0, 0, 0), "transparent");
+    editor.findChild<QPushButton*>("undoScene")->click();
+    check(field->text() == "#FFFFFF" && canvas->backgroundBrush().color() == QColor(Qt::white),
+          "undo restores the previous background in the preview and field");
+    field->setText("#12345680");
+    field->editingFinished();
+    verify("#12345680", QColor(0x12, 0x34, 0x56, 0x80), "custom-rgba");
+}
 
 static void nativeCanvasAndView()
 {
@@ -213,6 +313,8 @@ int main(int argc, char** argv)
         SceneSources historical; CaptureProfile historicalProfile;
         check(loadHistoricalSources(QDir(outcome.directory).filePath("batch.json"), historical, historicalProfile, error) && historical.size() == 2, "historical original hashes and sources");
         check(saveImageNew(renderScene(column, historical).image, QDir(outcome.directory).filePath("rerender-new.png"), "PNG", error), "historical unique derivation");
+        distributionButtons(row, profile);
+        backgroundPresets(row, profile, directory);
         SceneEditor editor(row, profile, historical);
         auto* layerList = editor.findChild<QListWidget*>("sceneLayers"); auto* view = editor.findChild<QGraphicsView*>("sceneCanvas");
         check(layerList && view, "scene editor widgets");

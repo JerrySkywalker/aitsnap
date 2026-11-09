@@ -197,13 +197,33 @@ void alignLayers(SceneTemplate& scene, const std::vector<std::size_t>& selected,
 void distributeLayers(SceneTemplate& scene, const std::vector<std::size_t>& selected, bool horizontal)
 {
     auto indices = selected;
-    indices.erase(std::remove_if(indices.begin(), indices.end(), [&](auto i) { return i >= scene.layers.size() || scene.layers[i].locked; }), indices.end());
+    std::erase_if(indices, [&](auto i) { return i >= scene.layers.size(); });
     if (indices.size() < 3) return;
-    std::sort(indices.begin(), indices.end(), [&](auto a, auto b) { const auto& x = scene.layers[a].destination; const auto& y = scene.layers[b].destination; return horizontal ? x.x < y.x : x.y < y.y; });
-    const auto& first = scene.layers[indices.front()].destination; const auto& last = scene.layers[indices.back()].destination;
-    const double start = horizontal ? first.x : first.y, end = horizontal ? last.x + last.width : last.y + last.height;
-    double occupied = 0; for (auto i : indices) occupied += horizontal ? scene.layers[i].destination.width : scene.layers[i].destination.height;
-    const double gap = (end - start - occupied) / (indices.size() - 1); double position = start;
-    for (auto i : indices) { auto& d = scene.layers[i].destination; if (horizontal) d.x = position; else d.y = position; position += (horizontal ? d.width : d.height) + gap; }
+    const auto coordinate = [&](std::size_t index) -> double& {
+        auto& d = scene.layers[index].destination;
+        return horizontal ? d.x : d.y;
+    };
+    const auto extent = [&](std::size_t index) {
+        const auto& d = scene.layers[index].destination;
+        return horizontal ? d.width : d.height;
+    };
+    std::stable_sort(indices.begin(), indices.end(), [&](auto a, auto b) { return coordinate(a) < coordinate(b); });
+
+    // The two outer objects and any locked objects are fixed endpoints.
+    std::size_t first = 0;
+    for (std::size_t last = 1; last < indices.size(); ++last) {
+        if (last + 1 < indices.size() && !scene.layers[indices[last]].locked) continue;
+        double occupied = 0;
+        for (auto i = first; i < last; ++i) occupied += extent(indices[i]);
+        const double start = coordinate(indices[first]);
+        const double gap = (coordinate(indices[last]) - start - occupied) / (last - first);
+        double next = start + extent(indices[first]) + gap;
+        for (auto i = first + 1; i < last; ++i) {
+            auto& position = coordinate(indices[i]);
+            if (std::abs(position - next) > 1e-9) position = next;
+            next += extent(indices[i]) + gap;
+        }
+        first = last;
+    }
 }
 } // namespace aitsnap::core

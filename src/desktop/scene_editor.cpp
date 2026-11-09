@@ -217,6 +217,7 @@ void SceneEditor::buildUi()
     const QStringList alignmentNames{uiText("左"),uiText("右"),uiText("顶"),uiText("底"),uiText("中X"),uiText("中Y"),uiText("水平分布"),uiText("垂直分布"),uiText("等宽"),uiText("等高")};
     for(int i=0;i<alignmentNames.size();++i){
         auto* action=new QPushButton(alignmentNames[i]);
+        if(i==6 || i==7)action->setToolTip(uiText("选择至少 3 个可见对象，在两端之间等距分布。组合算一个对象，锁定对象固定。"));
         if(i==8)action->setObjectName("matchLayerWidth");
         if(i==9)action->setObjectName("matchLayerHeight");
         placement->addWidget(action);connect(action,&QPushButton::clicked,this,[this,i]{geometryAction(i);});
@@ -256,7 +257,26 @@ void SceneEditor::buildUi()
     auto integerSpin = [&form](const QString& label, int min, int max) { auto* s = new QSpinBox; s->setRange(min, max); form->addRow(label, s); return s; };
     canvasWidth_ = integerSpin(aitsnap::uiText("画布宽 px"), 1, 1000000); canvasHeight_ = integerSpin(aitsnap::uiText("画布高 px"), 1, 1000000);
     canvasWidth_->setObjectName("sceneCanvasWidth"); canvasHeight_->setObjectName("sceneCanvasHeight");
-    canvasWidth_->setValue(model_.width); canvasHeight_->setValue(model_.height); background_ = new QLineEdit(qs(model_.background)); form->addRow(aitsnap::uiText("背景 #RRGGBB[AA]"), background_);
+    canvasWidth_->setValue(model_.width); canvasHeight_->setValue(model_.height);
+    background_ = new QLineEdit(qs(model_.background));
+    background_->setObjectName("sceneBackground");
+    form->addRow(uiText("背景 #RRGGBB[AA]"), background_);
+    auto* backgroundPresets = new QHBoxLayout;
+    const auto addBackgroundPreset = [&](const QString& label, const char* colour, const char* name) {
+        auto* preset = new QPushButton(label);
+        preset->setObjectName(name);
+        preset->setAutoDefault(false);
+        preset->setToolTip(QString::fromLatin1(colour));
+        backgroundPresets->addWidget(preset);
+        connect(preset, &QPushButton::clicked, this, [this, colour] {
+            background_->setText(QString::fromLatin1(colour));
+            applyCanvasDraft();
+        });
+    };
+    addBackgroundPreset(uiText("黑色"), "#000000", "sceneBackgroundBlack");
+    addBackgroundPreset(uiText("白色"), "#FFFFFF", "sceneBackgroundWhite");
+    addBackgroundPreset(uiText("透明"), "#00000000", "sceneBackgroundTransparent");
+    form->addRow(backgroundPresets);
     auto* applyCanvas = new QPushButton(aitsnap::uiText("设置固定画布")); applyCanvas->setObjectName("applySceneCanvas"); form->addRow(applyCanvas);
     auto* fitContent = new QPushButton(aitsnap::uiText("画布适合内容")); fitContent->setObjectName("fitSceneContent"); form->addRow(fitContent);
     connect(fitContent, &QPushButton::clicked, this, [this] { fitCanvas(); });
@@ -566,7 +586,7 @@ void SceneEditor::applyCanvasDraft()
        candidate.height==model_.height && candidate.background==model_.background)return;
     pushUndo();
     model_=std::move(candidate);pendingCanvasError_.clear();rebuild();
-    status_->setText(uiText("已应用固定画布尺寸。"));
+    status_->setText(uiText("已应用画布设置。"));
 }
 core::Destination SceneEditor::layerBounds(const core::Layer& layer) const
 {
@@ -599,7 +619,9 @@ void SceneEditor::fitCanvas()
 }
 void SceneEditor::geometryAction(int action)
 {
-    const auto indices=selectedIndices();if(indices.empty())return;
+    const bool distribution = action == 6 || action == 7;
+    const auto indices=selectedIndices();
+    if(indices.empty() && !distribution)return;
     std::map<std::string, std::vector<std::size_t>> units;
     std::string reference;
     for (auto i : indices) { const auto& layer = model_.layers[i]; if(!layer.visible)continue;
@@ -616,6 +638,10 @@ void SceneEditor::geometryAction(int action)
             left=std::min(left,d.x);top=std::min(top,d.y);right=std::max(right,d.x+d.width);bottom=std::max(bottom,d.y+d.height);
         }
         box.destination = {left, top, right - left, bottom - top, 0}; proxy.layers.push_back(box); members.push_back(unit.second);
+    }
+    if (distribution && members.size() < 3) {
+        status_->setText(uiText("等距分布需要至少 3 个可见对象，组合算一个对象。两张图可勾选「仅排选中」后用行排列或列排列。"));
+        return;
     }
     auto candidate=model_;
     bool changed=false;
@@ -648,9 +674,13 @@ void SceneEditor::geometryAction(int action)
             for(auto member:members[i]){candidate.layers[member].destination.x+=dx;candidate.layers[member].destination.y+=dy;}
         }
     }
-    if(!changed)return;
+    if(!changed){
+        if(distribution)status_->setText(uiText("对象已等距，或两端之间没有可移动的对象。"));
+        return;
+    }
     if(const auto error=core::validateScene(candidate);error){status_->setText(qs(error.message));return;}
     pushUndo();model_=std::move(candidate);rebuild();
+    if(distribution)status_->setText(uiText("已等距分布所选对象。"));
 }
 bool SceneEditor::exportDerived(const QString& path, QString& error) const
 {
